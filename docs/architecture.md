@@ -47,7 +47,7 @@ dungeon/
 │  ├─ proofs/                      # proof system facade/backends
 │  ├─ server/                      # NPC authority services
 │  └─ client/
-│     ├─ agent/                    # lib crate (authoritative runtime)
+│     ├─ runtime/                  # lib crate (authoritative runtime)
 │     ├─ cli/                      # bin crate (headless)
 │     └─ ui/                       # bin crate (Bevy UI)
 └─ onchain/
@@ -65,7 +65,8 @@ Workspace entrypoints: `cargo run -p client-cli` and `cargo run -p client-ui`.
 
 * **game-core**
 
-  * Pure domain logic: data types for state/action; `step(s, a) -> s'`
+  * Pure state machine reducer: data types for state/action plus `step(state, env, action) -> state'`.
+  * Each action implements `ActionTransition` hooks (`pre_validate → apply → post_validate`) so software and zk proofs enforce the same constraints.
   * Integer/fixed‑point arithmetic only; deterministic tick length; no RNG inside core.
   * Interfaces for Map/Inventory/Status oracles (callers provide proofs/witnesses).
 
@@ -219,16 +220,16 @@ Definition of Done (per feature): tests passing, metrics instrumented, docs upda
 * Implement witness builders bridging `game-core` to proof inputs; provide local verification helpers.
 * Establish dummy proof pipeline and CI job to guard serialization compatibility.
 
-### Phase 3 — Agent Runtime Skeleton (wks 3–5)
+### Phase 3 — Runtime Skeleton (wks 3–5)
 
-* Flesh out `client/agent` modules: command API, event bus, simulation/proof queues.
+* Flesh out `client/runtime` modules: command API, event bus, simulation/proof queues.
 * Integrate `game-core` and `proofs` crates; stub out chain/server adapters behind traits.
 * Provide integration tests for action replay, proof request lifecycle, and failure handling.
 
 ### Phase 4 — Interfaces: CLI & UI (wks 4–6)
 
-* `client/cli`: implement subcommands (`play`, `prove`, `submit`, `inspect`, `bench`) calling agent API.
-* `client/ui`: stand up Bevy harness, snapshot rendering, and user input → agent command bridge.
+* `client/cli`: implement subcommands (`play`, `prove`, `submit`, `inspect`, `bench`) calling runtime API.
+* `client/ui`: stand up Bevy harness, snapshot rendering, and user input → runtime command bridge.
 * Define shared configuration (YAML/TOML) for runtime parameters, documented under `crates/client`.
 
 ### Phase 5 — NPC Authority & Networking (wks 5–7)
@@ -240,7 +241,7 @@ Definition of Done (per feature): tests passing, metrics instrumented, docs upda
 ### Phase 6 — On-Chain Contracts & Integration (wks 6–9)
 
 * Prototype verifier/state contract in `onchain/contracts` with Foundry tests.
-* Connect agent submission flow to local Anvil; add e2e harness covering client → proof → contract.
+* Connect runtime submission flow to local Anvil; add e2e harness covering client → proof → contract.
 * Measure proof verification gas and iterate on circuit/front-end adjustments as needed.
 
 ### Phase 7 — Hardening & Observability (wks 8–10)

@@ -3,7 +3,15 @@
 version = 4
 
 [[package]]
-name = "client-agent"
+name = "client-cli"
+version = "0.1.0"
+dependencies = [
+ "client-runtime",
+ "types",
+]
+
+[[package]]
+name = "client-runtime"
 version = "0.1.0"
 dependencies = [
  "game-core",
@@ -12,18 +20,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "client-cli"
-version = "0.1.0"
-dependencies = [
- "client-agent",
- "types",
-]
-
-[[package]]
 name = "client-ui"
 version = "0.1.0"
 dependencies = [
- "client-agent",
+ "client-runtime",
  "types",
 ]
 

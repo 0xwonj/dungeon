@@ -4,7 +4,7 @@ members = [
     "crates/types",
     "crates/proofs",
     "crates/server",
-    "crates/client/agent",
+    "crates/client/runtime",
     "crates/client/cli",
     "crates/client/ui",
 ]

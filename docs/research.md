@@ -106,12 +106,12 @@ Alternative modes (for later consideration): **Full ZK** (prove NPC logic), **Co
 
 * **Proof backend choice**: Compare RISC Zero vs. SP1 vs. Plonky2 for developer ergonomics, performance, and licensing; prototype benchmarks (proof time, memory footprint) with representative action sequences.
 * **Signature scheme**: Decide between Ed25519, secp256k1, or BLS for NPC orders; evaluate verifier cost (in proof vs. on-chain) and key management implications.
-* **Networking protocol**: Determine whether HTTP/JSON or gRPC suits agent ↔ server messaging best; measure latency and streaming support for live sessions.
+* **Networking protocol**: Determine whether HTTP/JSON or gRPC suits runtime ↔ server messaging best; measure latency and streaming support for live sessions.
 * **State commitment design**: Validate Poseidon parameters, tree arity, and collision resistance; confirm compatibility with chosen proof backend.
 * **Submission policy**: Model latency vs. gas/proof amortization for different proof spans, and define dynamic adjustment rules for PvE/PvP modes.
 * **Nullifier compression**: Investigate accumulators or rolling hashes to reduce public input size without weakening replay protection.
 * **Audit log storage**: Explore append-only Merkle log retention (on server vs. decentralized storage) and challenge-response workflows.
-* **Client platform targets**: Assess feasibility of WebAssembly build for agent/cli, and implications on cryptography/proof tooling.
+* **Client platform targets**: Assess feasibility of WebAssembly build for runtime/cli, and implications on cryptography/proof tooling.
 
 ---
 

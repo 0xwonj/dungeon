@@ -1,25 +1,25 @@
-# Dungeon — `agent` Specification
+# Dungeon — `runtime` Specification
 
 *Mode: **Light ZK + Single Server** · Chain: **EVM** · Principle: **Functional core, imperative shell***
 
-This document defines the **`dungeon-agent`** crate: its purpose, public API (ports), internal architecture (queues, workers, repositories), how it integrates with `dungeon-core`, `dungeon-proofs`, storage, and EVM. It complements the `game-core` spec and fixes the boundary between the two.
+This document defines the **`dungeon-runtime`** crate: its purpose, public API (ports), internal architecture (queues, workers, repositories), how it integrates with `dungeon-core`, `dungeon-proofs`, storage, and EVM. It complements the `game-core` spec and fixes the boundary between the two.
 
 ---
 
 ## 1) Mission & Non-Goals
 
-### Mission (what `agent` **is**)
+### Mission (what `runtime` **is**)
 
 * The **authoritative runtime** that owns: time/scheduling, state custody, witness collection, proof generation, EVM submission, persistence, and secrets.
 * The only component that **implements oracles** (`MapOracle`, `TablesOracle`) and exposes a **stable API** to UI/CLI (commands/queries/events).
 
-### Non-Goals (what `agent` **is not**)
+### Non-Goals (what `runtime` **is not**)
 
 * No rendering or user input handling (UI’s job).
 * No domain rule decisions beyond calling `game-core` (core’s job).
 * No on-chain rule interpretation; the chain just verifies proofs.
 
-> If it touches I/O, crypto, DB, networking, retries, or secrets → it belongs in **`agent`**.
+> If it touches I/O, crypto, DB, networking, retries, or secrets → it belongs in **`runtime`**.
 
 ---
 
@@ -28,7 +28,7 @@ This document defines the **`dungeon-agent`** crate: its purpose, public API (po
 Expose **ports** (traits). Provide an **in-process adapter** now; later you can add gRPC/WebSocket clients/servers without changing UI/CLI code.
 
 ```rust
-// crates/client/agent/src/api.rs
+// crates/client/runtime/src/api.rs
 use dungeon_core::{Action};
 
 pub struct Snapshot {
@@ -37,7 +37,7 @@ pub struct Snapshot {
     // Optional: render-friendly view (positions, stats) derived from State
 }
 
-pub struct AgentMetrics {
+pub struct RuntimeMetrics {
     pub proof_queue_len: usize,
     pub submit_queue_len: usize,
     pub avg_proof_ms: u64,
@@ -52,27 +52,27 @@ pub enum Event {
 }
 
 #[async_trait::async_trait]
-pub trait AgentControl {
+pub trait RuntimeControl {
     async fn start_session(&self, game_id: [u8;32], map_root: [u8;32]) -> anyhow::Result<()>;
     async fn apply_action(&self, action: Action) -> anyhow::Result<()>;
     async fn submit_pending(&self) -> anyhow::Result<()>; // force-submit queued proofs
 }
 
 #[async_trait::async_trait]
-pub trait AgentQuery {
+pub trait RuntimeQuery {
     async fn snapshot(&self) -> anyhow::Result<Snapshot>;
-    async fn metrics(&self) -> anyhow::Result<AgentMetrics>;
+    async fn metrics(&self) -> anyhow::Result<RuntimeMetrics>;
 }
 
-pub trait AgentEvents {
+pub trait RuntimeEvents {
     fn subscribe(&self) -> tokio::sync::broadcast::Receiver<Event>;
 }
 ```
 
 **Adapters (initial + future)**
 
-* `InProcAgentClient` (MVP): wraps the runtime in the same process using channels.
-* `GrpcAgentClient` / `WsAgentClient`: later, when you run `agentd`.
+* `InProcRuntimeClient` (MVP): wraps the runtime in the same process using channels.
+* `GrpcRuntimeClient` / `WsRuntimeClient`: later, when you run `runtimed`.
 
 ---
 
@@ -117,7 +117,7 @@ Commands (mpsc) --->|  Command Handler    |----+
                    +-----------+------------+
 
 Events (broadcast): SnapshotUpdated / ProofProgress / ProofSubmitted / ProofFailed
-Queries: read snapshot/metrics from Agent state & repos
+Queries: read snapshot/metrics from Runtime state & repos
 ```
 
 ### 3.1 Tasks & Queues
@@ -135,7 +135,7 @@ Queries: read snapshot/metrics from Agent state & repos
 
 ### 4.1 Oracles (core-facing, read-only)
 
-`agent` **implements** `MapOracle` and `TablesOracle` backed by repositories + in-memory caches.
+`runtime` **implements** `MapOracle` and `TablesOracle` backed by repositories + in-memory caches.
 
 ```rust
 struct MapOracleImpl { root: [u8;32], cache: LruCache<(i32,i32), Tile>, map_repo: Arc<dyn MapRepo> }
@@ -156,7 +156,7 @@ impl TablesOracle for TablesOracleImpl {
 
 > **Ingestion** of tiles/orders must verify proofs/signatures **before** they enter repos (anti-corruption layer).
 
-### 4.2 Repositories (agent-side, behind traits)
+### 4.2 Repositories (runtime-side, behind traits)
 
 Use traits for testability; start with SQLite or sled; add caches where it helps.
 
@@ -221,9 +221,9 @@ pub trait MetricsRepo { /* ... */ }
 
 ## 6) Commit & Proof Pipeline
 
-### 6.1 Commit hashing (agent-side)
+### 6.1 Commit hashing (runtime-side)
 
-Use the **commit shape** from core to ensure canonical ordering; the agent selects the hash (e.g., Poseidon).
+Use the **commit shape** from core to ensure canonical ordering; the runtime selects the hash (e.g., Poseidon).
 
 ```rust
 fn commit_state(s: &dungeon_core::State) -> [u8;32] {
@@ -276,7 +276,7 @@ let bundle = dungeon_proofs::prove(ProofInput {
 Support file + env overrides:
 
 ```toml
-# agent.toml
+# runtime.toml
 [session]
 game_id = "0x..."
 map_root = "0x..."
@@ -312,9 +312,9 @@ keystore = "os-keychain"  # or "file:~/.dungeon/keystore.json"
 ## 11) File Layout (crate)
 
 ```
-crates/client/agent/
+crates/client/runtime/
   src/
-    lib.rs            // re-exports; constructors for InProcAgentClient
+    lib.rs            // re-exports; constructors for InProcRuntimeClient
     api.rs            // ports (traits) + DTOs (Snapshot, Metrics, Event)
     runtime.rs        // queues, workers, scheduler, event bus
     oracles.rs        // MapOracleImpl, TablesOracleImpl
@@ -326,7 +326,7 @@ crates/client/agent/
       mod.rs          // traits: StateRepo, MapRepo, ...
       sqlite.rs       // sqlite implementation (or sled.rs)
     config.rs         // load/merge config
-    errors.rs         // AgentError categories
+    errors.rs         // RuntimeError categories
 ```
 
 ---
@@ -335,22 +335,22 @@ crates/client/agent/
 
 ```rust
 // in lib.rs
-pub fn new_inproc_agent(cfg: Config) -> anyhow::Result<InProcAgentClient> {
+pub fn new_inproc_runtime(cfg: Config) -> anyhow::Result<InProcRuntimeClient> {
     // init repos, caches, event bus
     // start tokio tasks: sim_worker, proof_worker(s), submit_worker
-    // return a handle implementing AgentControl + AgentQuery + AgentEvents
+    // return a handle implementing RuntimeControl + RuntimeQuery + RuntimeEvents
 }
 ```
 
-UI/CLI will call `new_inproc_agent(config)` and then use the **ports** only.
+UI/CLI will call `new_inproc_runtime(config)` and then use the **ports** only.
 
 ---
 
 ## 13) Security & Determinism Guardrails
 
-* **Secrets** (wallet, proving keys, RPC tokens) live only in Agent; never leak to UI/CLI.
+* **Secrets** (wallet, proving keys, RPC tokens) live only in Runtime; never leak to UI/CLI.
 * **Verify before trust**: Merkle proofs and signatures are validated during ingestion (before repos/oracles).
-* **No floats or time** influence rule decisions; core handles all rules; agent ensures consistent oracles.
+* **No floats or time** influence rule decisions; core handles all rules; runtime ensures consistent oracles.
 * **Record/Replay** step-by-step: record each `(S_i, a_i) → S_{i+1}` with transcript hash; re-run to assert equality.
 * **Canonical commits** only via `commit_state()`; forbid ad-hoc hashing elsewhere.
 
@@ -365,18 +365,18 @@ UI/CLI will call `new_inproc_agent(config)` and then use the **ports** only.
 
 ---
 
-## 15) Migration to `agentd` (daemon) — later
+## 15) Migration to `runtimed` (daemon) — later
 
 * Keep ports (traits) as is.
-* Add `agentd` binary exposing gRPC/WS; map 1:1 from RPC to ports.
-* UI/CLI switch adapters from `InProcAgentClient` → `GrpcAgentClient`.
+* Add `runtimed` binary exposing gRPC/WS; map 1:1 from RPC to ports.
+* UI/CLI switch adapters from `InProcRuntimeClient` → `GrpcRuntimeClient`.
 * Secrets/config remain in the daemon process; multiple clients supported.
 
 ---
 
 ### TL;DR
 
-* `agent` is the **imperative shell** around `game-core`: it **implements oracles**, **collects witnesses**, **proves**, **submits**, and **journals**.
-* Expose **ports** (AgentControl/Query/Events); run **workers** behind **bounded queues**; store everything behind **repository traits**.
-* Use core’s **commit shape**; keep secrets in Agent; validate inputs before they reach oracles; record/replay for confidence.
+* `runtime` is the **imperative shell** around `game-core`: it **implements oracles**, **collects witnesses**, **proves**, **submits**, and **journals**.
+* Expose **ports** (RuntimeControl/Query/Events); run **workers** behind **bounded queues**; store everything behind **repository traits**.
+* Use core’s **commit shape**; keep secrets in Runtime; validate inputs before they reach oracles; record/replay for confidence.
 * Start **in-proc**; you can flip to a **daemon** without touching UI/CLI or core.

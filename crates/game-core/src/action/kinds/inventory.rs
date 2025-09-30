@@ -1,4 +1,7 @@
-use crate::state::{EntityId, Position};
+use core::convert::Infallible;
+
+use crate::action::ActionTransition;
+use crate::state::{EntityId, GameState, Position};
 
 /// Consumes or activates an item from the actor's inventory.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,4 +31,12 @@ impl InventorySlot {
 pub enum ItemTarget {
     Entity(EntityId),
     Position(Position),
+}
+
+impl<Env> ActionTransition<Env> for UseItemAction {
+    type Error = Infallible;
+
+    fn apply(&self, _state: &mut GameState, _env: &Env) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
