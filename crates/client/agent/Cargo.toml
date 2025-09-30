@@ -1,0 +1,9 @@
+[package]
+name = "client-agent"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+game-core = { path = "../../game-core" }
+game-proofs = { path = "../../proofs" }
+types = { path = "../../types" }
