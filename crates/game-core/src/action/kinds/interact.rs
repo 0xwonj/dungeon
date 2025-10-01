@@ -1,6 +1,7 @@
 use core::convert::Infallible;
 
 use crate::action::ActionTransition;
+use crate::env::GameEnv;
 use crate::state::{EntityId, GameState};
 
 /// Performs an interaction with a nearby prop or entity.
@@ -15,10 +16,10 @@ impl InteractAction {
     }
 }
 
-impl<Env> ActionTransition<Env> for InteractAction {
+impl ActionTransition for InteractAction {
     type Error = Infallible;
 
-    fn apply(&self, _state: &mut GameState, _env: &Env) -> Result<(), Self::Error> {
+    fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
         Ok(())
     }
 }

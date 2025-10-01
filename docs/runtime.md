@@ -2,7 +2,7 @@
 
 *Mode: **Light ZK + Single Server** · Chain: **EVM** · Principle: **Functional core, imperative shell***
 
-This document defines the **`dungeon-runtime`** crate: its purpose, public API (ports), internal architecture (queues, workers, repositories), how it integrates with `dungeon-core`, `dungeon-proofs`, storage, and EVM. It complements the `game-core` spec and fixes the boundary between the two.
+This document defines the **`dungeon-runtime`** crate: its purpose, public API (ports), internal architecture (queues, workers, repositories), how it integrates with `dungeon-core`, `proofs`, storage, and EVM. It complements the `game-core` spec and fixes the boundary between the two.
 
 ---
 
@@ -102,7 +102,7 @@ Commands (mpsc) --->|  Command Handler    |----+
                                v
                    +-----------+------------+
                    |   Proof Worker(s)      |
-                   | (calls dungeon-proofs) |
+                   |    (calls proofs)      |
                    +-----------+------------+
                                |
                                v
@@ -124,7 +124,7 @@ Queries: read snapshot/metrics from Runtime state & repos
 
 * **Command handler**: validates commands, appends to `sim_queue`.
 * **Simulation worker**: builds `Env` (oracles) and calls `core::step` one action at a time; collects `WitnessDelta`s, updates local state, emits `SnapshotUpdated`, enqueues a `ProofJob`.
-* **Proof worker(s)**: heavy jobs via `spawn_blocking` or a worker threadpool; calls `dungeon-proofs`; reports `ProofProgress`; enqueues `SubmitJob`.
+* **Proof worker(s)**: heavy jobs via `spawn_blocking` or a worker threadpool; calls `proofs`; reports `ProofProgress`; enqueues `SubmitJob`.
 * **Submit worker**: sends tx via `ethers`/`alloy`, retries with backoff; upon receipt, updates repos and emits `ProofSubmitted` / `ProofFailed`.
 
 **Determinism & safety**: single writer principle for state; bounded queues to apply backpressure.
@@ -241,7 +241,7 @@ fn commit_state(s: &dungeon_core::State) -> [u8;32] {
 ### 6.2 Proving
 
 ```rust
-let bundle = dungeon_proofs::prove(ProofInput {
+let bundle = proofs::prove(ProofInput {
     start_commit,
     end_commit,
     witness_transcript,
@@ -320,7 +320,7 @@ crates/client/runtime/
     oracles.rs        // MapOracleImpl, TablesOracleImpl
     transcript.rs     // build witness transcript from WitnessDelta + context
     commit.rs         // commit_state() using core::state_fields_order
-    prover.rs         // calls to dungeon-proofs (+ feature flags)
+    prover.rs         // calls to proofs (+ feature flags)
     chain.rs          // ethers/alloy tx submission, receipts
     repos/
       mod.rs          // traits: StateRepo, MapRepo, ...

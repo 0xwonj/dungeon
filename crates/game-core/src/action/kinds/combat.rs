@@ -1,6 +1,7 @@
 use core::convert::Infallible;
 
 use crate::action::ActionTransition;
+use crate::env::GameEnv;
 use crate::state::{EntityId, GameState};
 
 /// Offensive action against a target entity.
@@ -21,10 +22,10 @@ pub enum AttackStyle {
     Melee,
 }
 
-impl<Env> ActionTransition<Env> for AttackAction {
+impl ActionTransition for AttackAction {
     type Error = Infallible;
 
-    fn apply(&self, _state: &mut GameState, _env: &Env) -> Result<(), Self::Error> {
+    fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
         Ok(())
     }
 }

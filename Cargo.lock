@@ -15,7 +15,7 @@ name = "client-runtime"
 version = "0.1.0"
 dependencies = [
  "game-core",
- "game-proofs",
+ "proofs",
  "types",
 ]
 
@@ -29,13 +29,6 @@ dependencies = [
 
 [[package]]
 name = "game-core"
-version = "0.1.0"
-dependencies = [
- "types",
-]
-
-[[package]]
-name = "game-proofs"
 version = "0.1.0"
 dependencies = [
  "types",
@@ -61,6 +54,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89ae43fd86e4158d6db51ad8e2b80f313af9cc74f5c0e03ccb87de09998732de"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "proofs"
+version = "0.1.0"
+dependencies = [
+ "types",
 ]
 
 [[package]]

@@ -1,6 +1,7 @@
 use core::convert::Infallible;
 
 use crate::action::ActionTransition;
+use crate::env::GameEnv;
 use crate::state::GameState;
 
 /// Cardinal grid movement action.
@@ -34,10 +35,10 @@ impl CardinalDirection {
     }
 }
 
-impl<Env> ActionTransition<Env> for MoveAction {
+impl ActionTransition for MoveAction {
     type Error = Infallible;
 
-    fn apply(&self, _state: &mut GameState, _env: &Env) -> Result<(), Self::Error> {
+    fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
         Ok(())
     }
 }

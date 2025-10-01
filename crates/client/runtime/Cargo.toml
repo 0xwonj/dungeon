@@ -5,5 +5,5 @@ edition = "2024"
 
 [dependencies]
 game-core = { path = "../../game-core" }
-game-proofs = { path = "../../proofs" }
+proofs = { path = "../../proofs" }
 types = { path = "../../types" }

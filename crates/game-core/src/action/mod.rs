@@ -23,13 +23,13 @@ impl Action {
         Self { actor, kind }
     }
 
-    pub fn from_command<Env, C>(
+    pub fn from_command<C>(
         actor: EntityId,
         command: C,
-        ctx: CommandContext<'_, Env>,
+        ctx: CommandContext<'_>,
     ) -> Result<Self, C::Error>
     where
-        C: ActionCommand<Env>,
+        C: ActionCommand,
     {
         command.into_action(actor, ctx)
     }
@@ -71,13 +71,91 @@ impl From<InteractAction> for ActionKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::GameState;
+    use crate::env::{
+        AttackProfile, Env, GameEnv, InitialEntityKind, InitialEntitySpec, ItemCategory,
+        ItemDefinition, ItemOracle, MapDimensions, MapOracle, MovementRules, StaticTile,
+        TablesOracle, TerrainKind,
+    };
+    use crate::state::{EntityId, GameState, ItemHandle, Position};
+
+    #[derive(Debug, Default)]
+    struct StubMap;
+
+    impl MapOracle for StubMap {
+        fn dimensions(&self) -> MapDimensions {
+            MapDimensions::new(4, 4)
+        }
+
+        fn tile(&self, position: Position) -> Option<StaticTile> {
+            if self.dimensions().contains(position) {
+                Some(StaticTile::new(TerrainKind::Floor))
+            } else {
+                None
+            }
+        }
+
+        fn initial_entities(&self) -> Vec<InitialEntitySpec> {
+            vec![InitialEntitySpec {
+                id: EntityId::PLAYER,
+                position: Position::new(0, 0),
+                kind: InitialEntityKind::Player,
+            }]
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct StubItems;
+
+    impl ItemOracle for StubItems {
+        fn definition(&self, handle: ItemHandle) -> Option<ItemDefinition> {
+            Some(ItemDefinition::new(handle, ItemCategory::Utility, None, None))
+        }
+    }
+
+    #[derive(Debug)]
+    struct StubTables {
+        max_step: u8,
+    }
+
+    impl StubTables {
+        fn new(max_step: u8) -> Self {
+            Self { max_step }
+        }
+    }
+
+    impl Default for StubTables {
+        fn default() -> Self {
+            Self::new(1)
+        }
+    }
+
+    impl TablesOracle for StubTables {
+        fn movement_rules(&self) -> MovementRules {
+            MovementRules::new(self.max_step, 1)
+        }
+
+        fn attack_profile(&self, _style: AttackStyle) -> Option<AttackProfile> {
+            Some(AttackProfile::new(1, 0))
+        }
+    }
+
+    fn build_env<'a>(
+        map: &'a StubMap,
+        items: &'a StubItems,
+        tables: &'a StubTables,
+    ) -> GameEnv<'a> {
+        Env::with_all(map, items, tables).into_game_env()
+    }
 
     #[test]
     fn move_action_materializes_via_command() {
         let actor = EntityId(7);
         let state = GameState::default();
-        let ctx = CommandContext::stateless(&state);
+        let map = StubMap::default();
+        let items = StubItems::default();
+        let tables = StubTables::default();
+        let env = build_env(&map, &items, &tables);
+        let ctx = CommandContext::new(&state, env);
         let command = MoveAction::new(CardinalDirection::North);
 
         let action = Action::from_command(actor, command, ctx).expect("MoveAction is infallible");
@@ -93,21 +171,25 @@ mod tests {
 
     #[test]
     fn custom_command_uses_env_before_emitting_action() {
-        struct TestEnv {
-            allow_wait: bool,
-        }
-
         struct WaitIfAllowed;
 
-        impl ActionCommand<TestEnv> for WaitIfAllowed {
+        impl ActionCommand for WaitIfAllowed {
             type Error = &'static str;
 
             fn into_action(
                 self,
                 actor: EntityId,
-                ctx: CommandContext<'_, TestEnv>,
+                ctx: CommandContext<'_>,
             ) -> Result<Action, Self::Error> {
-                if ctx.env().allow_wait {
+                let can_wait = ctx
+                    .env()
+                    .tables()
+                    .expect("tables oracle should exist")
+                    .movement_rules()
+                    .max_step_distance
+                    > 0;
+
+                if can_wait {
                     Ok(Action::new(actor, ActionKind::Wait))
                 } else {
                     Err("wait not permitted")
@@ -117,15 +199,19 @@ mod tests {
 
         let actor = EntityId(3);
         let state = GameState::default();
-        let env = TestEnv { allow_wait: true };
-        let ctx = CommandContext::new(&state, &env);
+        let map = StubMap::default();
+        let items = StubItems::default();
+        let tables = StubTables::new(1);
+        let env = build_env(&map, &items, &tables);
+        let ctx = CommandContext::new(&state, env);
 
         let action = Action::from_command(actor, WaitIfAllowed, ctx)
             .expect("env allows waiting, so command should succeed");
         assert!(matches!(action.kind, ActionKind::Wait));
 
-        let env = TestEnv { allow_wait: false };
-        let ctx = CommandContext::new(&state, &env);
+        let tables = StubTables::new(0);
+        let env = build_env(&map, &items, &tables);
+        let ctx = CommandContext::new(&state, env);
         let result = Action::from_command(actor, WaitIfAllowed, ctx);
         assert!(result.is_err());
     }

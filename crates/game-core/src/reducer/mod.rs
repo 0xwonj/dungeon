@@ -1,6 +1,7 @@
 use crate::action::{
     Action, ActionKind, ActionTransition, AttackAction, InteractAction, MoveAction, UseItemAction,
 };
+use crate::env::GameEnv;
 use crate::state::GameState;
 
 type TransitionResult<E> = Result<(), TransitionPhaseError<E>>;
@@ -41,21 +42,15 @@ impl<E> TransitionPhaseError<E> {
 
 /// Errors surfaced while executing an action through the reducer.
 #[derive(Clone, Debug)]
-pub enum StepError<Env> {
-    Move(TransitionPhaseError<<MoveAction as ActionTransition<Env>>::Error>),
-    Attack(TransitionPhaseError<<AttackAction as ActionTransition<Env>>::Error>),
-    UseItem(TransitionPhaseError<<UseItemAction as ActionTransition<Env>>::Error>),
-    Interact(TransitionPhaseError<<InteractAction as ActionTransition<Env>>::Error>),
+pub enum StepError {
+    Move(TransitionPhaseError<<MoveAction as ActionTransition>::Error>),
+    Attack(TransitionPhaseError<<AttackAction as ActionTransition>::Error>),
+    UseItem(TransitionPhaseError<<UseItemAction as ActionTransition>::Error>),
+    Interact(TransitionPhaseError<<InteractAction as ActionTransition>::Error>),
 }
 
 /// Drives the state machine by routing actions through their transition hooks.
-pub fn step<Env>(state: &mut GameState, env: &Env, action: &Action) -> Result<(), StepError<Env>>
-where
-    MoveAction: ActionTransition<Env>,
-    AttackAction: ActionTransition<Env>,
-    UseItemAction: ActionTransition<Env>,
-    InteractAction: ActionTransition<Env>,
-{
+pub fn step(state: &mut GameState, env: GameEnv<'_>, action: &Action) -> Result<(), StepError> {
     dispatch_transition!(action, state, env, {
         Move => Move,
         Attack => Attack,
@@ -65,44 +60,87 @@ where
 }
 
 #[inline]
-fn drive_transition<T, Env>(
+fn drive_transition<T>(
     transition: &T,
     state: &mut GameState,
-    env: &Env,
+    env: GameEnv<'_>,
 ) -> TransitionResult<T::Error>
 where
-    T: ActionTransition<Env>,
+    T: ActionTransition,
 {
     transition
-        .pre_validate(&*state, env)
+        .pre_validate(&*state, &env)
         .map_err(|error| TransitionPhaseError::new(TransitionPhase::PreValidate, error))?;
 
     transition
-        .apply(state, env)
+        .apply(state, &env)
         .map_err(|error| TransitionPhaseError::new(TransitionPhase::Apply, error))?;
 
     transition
-        .post_validate(&*state, env)
+        .post_validate(&*state, &env)
         .map_err(|error| TransitionPhaseError::new(TransitionPhase::PostValidate, error))
 }
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::action::{Action, ActionKind, CardinalDirection, MoveAction};
-    use crate::state::{EntityId, GameState};
+    use crate::env::{
+        AttackProfile, Env, ItemCategory, ItemDefinition, ItemOracle, MapDimensions, MapOracle,
+        MovementRules, StaticTile, TablesOracle, TerrainKind,
+    };
+    use crate::state::{EntityId, GameState, ItemHandle, Position};
 
     #[derive(Debug, Default)]
-    struct StubEnv;
+    struct StubMap;
+
+    impl MapOracle for StubMap {
+        fn dimensions(&self) -> MapDimensions {
+            MapDimensions::new(4, 4)
+        }
+
+        fn tile(&self, position: Position) -> Option<StaticTile> {
+            if self.dimensions().contains(position) {
+                Some(StaticTile::new(TerrainKind::Floor))
+            } else {
+                None
+            }
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct StubItems;
+
+    impl ItemOracle for StubItems {
+        fn definition(&self, handle: ItemHandle) -> Option<ItemDefinition> {
+            Some(ItemDefinition::new(handle, ItemCategory::Utility, None, None))
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct StubTables;
+
+    impl TablesOracle for StubTables {
+        fn movement_rules(&self) -> MovementRules {
+            MovementRules::new(1, 1)
+        }
+
+        fn attack_profile(&self, _style: crate::action::AttackStyle) -> Option<AttackProfile> {
+            Some(AttackProfile::new(1, 0))
+        }
+    }
 
     #[test]
     fn step_routes_to_transition_hooks() {
         let mut state = GameState::default();
-        let env = StubEnv::default();
+        static MAP: StubMap = StubMap;
+        static ITEMS: StubItems = StubItems;
+        static TABLES: StubTables = StubTables;
+        let env = Env::with_all(&MAP, &ITEMS, &TABLES).into_game_env();
         let action = Action::new(
             EntityId::PLAYER,
             ActionKind::Move(MoveAction::new(CardinalDirection::North)),
         );
 
-        step(&mut state, &env, &action).expect("stub transition should succeed");
+        step(&mut state, env, &action).expect("stub transition should succeed");
     }
 }

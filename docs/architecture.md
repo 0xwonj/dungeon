@@ -76,7 +76,7 @@ Workspace entrypoints: `cargo run -p client-cli` and `cargo run -p client-ui`.
   * Plugins: networking (HTTP/gRPC for server), prover adapter, submission packager.
   * Deterministic loop: fixed cadence driving `step`.
 
-* **game-proofs**
+* **proofs**
 
   * Facade with two backends:
 
