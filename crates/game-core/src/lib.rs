@@ -4,13 +4,14 @@ pub mod reducer;
 pub mod state;
 
 pub use action::{
-    Action, ActionCommand, ActionKind, ActionTransition, AttackAction, AttackStyle,
-    CardinalDirection, CommandContext, InteractAction, InventorySlot, ItemTarget, MoveAction,
-    UseItemAction,
+    Action, ActionCommand, ActionKind, ActionTransition, AttackAction, AttackCommand, AttackStyle,
+    CardinalDirection, CommandContext, InteractAction, InteractCommand, InventorySlot, ItemTarget,
+    MoveAction, MoveCommand, MoveError, UseItemAction, UseItemCommand,
 };
 pub use env::{
-    AttackProfile, Env, GameEnv, InitialEntityKind, InitialEntitySpec, ItemCategory, ItemDefinition,
-    ItemOracle, MapDimensions, MapOracle, MovementRules, StaticTile, TablesOracle, TerrainKind,
+    AttackProfile, Env, GameEnv, InitialEntityKind, InitialEntitySpec, ItemCategory,
+    ItemDefinition, ItemOracle, MapDimensions, MapOracle, MovementRules, StaticTile, TablesOracle,
+    TerrainKind,
 };
 pub use reducer::{StepError, TransitionPhase, TransitionPhaseError, step};
 pub use state::{

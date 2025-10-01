@@ -7,11 +7,29 @@ use crate::state::{EntityId, GameState, Position};
 /// Consumes or activates an item from the actor's inventory.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UseItemAction {
+    pub actor: EntityId,
     pub slot: InventorySlot,
     pub target: Option<ItemTarget>,
 }
 
 impl UseItemAction {
+    pub fn new(actor: EntityId, slot: InventorySlot, target: Option<ItemTarget>) -> Self {
+        Self {
+            actor,
+            slot,
+            target,
+        }
+    }
+}
+
+/// Command describing how an item should be used.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UseItemCommand {
+    pub slot: InventorySlot,
+    pub target: Option<ItemTarget>,
+}
+
+impl UseItemCommand {
     pub fn new(slot: InventorySlot, target: Option<ItemTarget>) -> Self {
         Self { slot, target }
     }

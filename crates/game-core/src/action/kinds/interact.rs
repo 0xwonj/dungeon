@@ -7,10 +7,23 @@ use crate::state::{EntityId, GameState};
 /// Performs an interaction with a nearby prop or entity.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InteractAction {
+    pub actor: EntityId,
     pub target: EntityId,
 }
 
 impl InteractAction {
+    pub fn new(actor: EntityId, target: EntityId) -> Self {
+        Self { actor, target }
+    }
+}
+
+/// Command describing a generic interaction intent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InteractCommand {
+    pub target: EntityId,
+}
+
+impl InteractCommand {
     pub fn new(target: EntityId) -> Self {
         Self { target }
     }

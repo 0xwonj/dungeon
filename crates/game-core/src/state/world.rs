@@ -20,7 +20,7 @@ impl WorldState {
     /// Produces a merged view combining static tile data with dynamic overlays and occupants.
     pub fn tile_view<'a, M>(&'a self, map: &M, position: Position) -> Option<TileView<'a>>
     where
-        M: MapOracle,
+        M: MapOracle + ?Sized,
     {
         let static_tile = map.tile(position)?;
         let overlay = self.tile_map.overlay(&position);
@@ -219,6 +219,26 @@ impl OccupancyIndex {
         } else {
             self.slots.insert(position, occupants);
         }
+    }
+
+    pub fn add(&mut self, position: Position, entity: EntityId) {
+        let slot = self.slots.entry(position).or_default();
+        if !slot.iter().any(|occupant| *occupant == entity) {
+            slot.push(entity);
+        }
+    }
+
+    pub fn remove(&mut self, position: &Position, entity: EntityId) -> bool {
+        if let Some(slot) = self.slots.get_mut(position) {
+            if let Some(index) = slot.iter().position(|occupant| *occupant == entity) {
+                slot.swap_remove(index);
+                if slot.is_empty() {
+                    self.slots.remove(position);
+                }
+                return true;
+            }
+        }
+        false
     }
 
     pub fn clear(&mut self, position: &Position) {

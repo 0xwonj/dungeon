@@ -112,7 +112,12 @@ mod tests {
 
     impl ItemOracle for StubItems {
         fn definition(&self, handle: ItemHandle) -> Option<ItemDefinition> {
-            Some(ItemDefinition::new(handle, ItemCategory::Utility, None, None))
+            Some(ItemDefinition::new(
+                handle,
+                ItemCategory::Utility,
+                None,
+                None,
+            ))
         }
     }
 
@@ -132,14 +137,17 @@ mod tests {
     #[test]
     fn step_routes_to_transition_hooks() {
         let mut state = GameState::default();
+        state
+            .world
+            .tile_map
+            .replace_occupants(Position::ORIGIN, vec![EntityId::PLAYER]);
         static MAP: StubMap = StubMap;
         static ITEMS: StubItems = StubItems;
         static TABLES: StubTables = StubTables;
         let env = Env::with_all(&MAP, &ITEMS, &TABLES).into_game_env();
-        let action = Action::new(
-            EntityId::PLAYER,
-            ActionKind::Move(MoveAction::new(CardinalDirection::North)),
-        );
+        let actor = EntityId::PLAYER;
+        let move_action = MoveAction::new(actor, CardinalDirection::North, 1);
+        let action = Action::new(actor, ActionKind::Move(move_action));
 
         step(&mut state, env, &action).expect("stub transition should succeed");
     }

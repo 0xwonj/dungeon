@@ -21,12 +21,7 @@ where
     tables: Option<&'a T>,
 }
 
-pub type GameEnv<'a> = Env<
-    'a,
-    dyn MapOracle + 'a,
-    dyn ItemOracle + 'a,
-    dyn TablesOracle + 'a,
->;
+pub type GameEnv<'a> = Env<'a, dyn MapOracle + 'a, dyn ItemOracle + 'a, dyn TablesOracle + 'a>;
 
 impl<'a, M, I, T> Env<'a, M, I, T>
 where

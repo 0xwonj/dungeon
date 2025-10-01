@@ -31,8 +31,10 @@ mod tests {
     use core::cell::Cell;
 
     use super::ActionTransition;
-    use crate::env::{AttackProfile, Env, GameEnv, ItemCategory, ItemDefinition, ItemOracle,
-        MapDimensions, MapOracle, MovementRules, StaticTile, TablesOracle, TerrainKind};
+    use crate::env::{
+        AttackProfile, Env, GameEnv, ItemCategory, ItemDefinition, ItemOracle, MapDimensions,
+        MapOracle, MovementRules, StaticTile, TablesOracle, TerrainKind,
+    };
     use crate::state::GameState;
 
     struct NoopAction;
@@ -145,10 +147,7 @@ mod tests {
             MovementRules::new(1, 1)
         }
 
-        fn attack_profile(
-            &self,
-            _style: crate::action::AttackStyle,
-        ) -> Option<AttackProfile> {
+        fn attack_profile(&self, _style: crate::action::AttackStyle) -> Option<AttackProfile> {
             Some(AttackProfile::new(1, 0))
         }
     }

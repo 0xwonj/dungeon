@@ -3,7 +3,7 @@ pub mod interact;
 pub mod inventory;
 pub mod movement;
 
-pub use combat::{AttackAction, AttackStyle};
-pub use interact::InteractAction;
-pub use inventory::{InventorySlot, ItemTarget, UseItemAction};
-pub use movement::{CardinalDirection, MoveAction};
+pub use combat::{AttackAction, AttackCommand, AttackStyle};
+pub use interact::{InteractAction, InteractCommand};
+pub use inventory::{InventorySlot, ItemTarget, UseItemAction, UseItemCommand};
+pub use movement::{CardinalDirection, MoveAction, MoveCommand, MoveError};

@@ -6,8 +6,8 @@ use crate::state::EntityId;
 
 pub use command::{ActionCommand, CommandContext};
 pub use kinds::{
-    AttackAction, AttackStyle, CardinalDirection, InteractAction, InventorySlot, ItemTarget,
-    MoveAction, UseItemAction,
+    AttackAction, AttackCommand, AttackStyle, CardinalDirection, InteractAction, InteractCommand,
+    InventorySlot, ItemTarget, MoveAction, MoveCommand, MoveError, UseItemAction, UseItemCommand,
 };
 pub use transition::ActionTransition;
 
@@ -20,6 +20,13 @@ pub struct Action {
 
 impl Action {
     pub fn new(actor: EntityId, kind: ActionKind) -> Self {
+        debug_assert!(match &kind {
+            ActionKind::Move(move_action) => move_action.actor == actor,
+            ActionKind::Attack(attack_action) => attack_action.actor == actor,
+            ActionKind::UseItem(use_item_action) => use_item_action.actor == actor,
+            ActionKind::Interact(interact_action) => interact_action.actor == actor,
+            _ => true,
+        });
         Self { actor, kind }
     }
 
@@ -108,7 +115,12 @@ mod tests {
 
     impl ItemOracle for StubItems {
         fn definition(&self, handle: ItemHandle) -> Option<ItemDefinition> {
-            Some(ItemDefinition::new(handle, ItemCategory::Utility, None, None))
+            Some(ItemDefinition::new(
+                handle,
+                ItemCategory::Utility,
+                None,
+                None,
+            ))
         }
     }
 
@@ -156,14 +168,16 @@ mod tests {
         let tables = StubTables::default();
         let env = build_env(&map, &items, &tables);
         let ctx = CommandContext::new(&state, env);
-        let command = MoveAction::new(CardinalDirection::North);
+        let command = MoveCommand::new(CardinalDirection::North, 1);
 
-        let action = Action::from_command(actor, command, ctx).expect("MoveAction is infallible");
+        let action = Action::from_command(actor, command, ctx).expect("MoveCommand is infallible");
 
         assert_eq!(action.actor, actor);
         match action.kind {
             ActionKind::Move(move_action) => {
-                assert_eq!(move_action.direction, CardinalDirection::North)
+                assert_eq!(move_action.actor, actor);
+                assert_eq!(move_action.direction, CardinalDirection::North);
+                assert_eq!(move_action.distance, 1);
             }
             other => panic!("expected move action, got {other:?}"),
         }

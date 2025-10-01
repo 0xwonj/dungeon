@@ -23,6 +23,20 @@ impl EntitiesState {
             items,
         }
     }
+
+    pub fn actor(&self, id: EntityId) -> Option<&ActorState> {
+        if self.player.id == id {
+            return Some(&self.player);
+        }
+        self.npcs.iter().find(|actor| actor.id == id)
+    }
+
+    pub fn actor_mut(&mut self, id: EntityId) -> Option<&mut ActorState> {
+        if self.player.id == id {
+            return Some(&mut self.player);
+        }
+        self.npcs.iter_mut().find(|actor| actor.id == id)
+    }
 }
 
 /// Minimal representation of any active actor (player or NPC).

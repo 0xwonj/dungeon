@@ -3,7 +3,10 @@ use core::convert::Infallible;
 use crate::env::GameEnv;
 use crate::state::{EntityId, GameState};
 
-use super::{Action, ActionKind, AttackAction, InteractAction, MoveAction, UseItemAction};
+use super::{
+    Action, ActionKind, AttackAction, AttackCommand, InteractAction, InteractCommand, MoveAction,
+    MoveCommand, UseItemAction, UseItemCommand,
+};
 
 /// Shared context available when materializing high-level commands into canonical actions.
 pub struct CommandContext<'a> {
@@ -29,69 +32,50 @@ impl<'a> CommandContext<'a> {
 pub trait ActionCommand {
     type Error;
 
-    fn into_action(
-        self,
-        actor: EntityId,
-        ctx: CommandContext<'_>,
-    ) -> Result<Action, Self::Error>;
+    fn into_action(self, actor: EntityId, ctx: CommandContext<'_>) -> Result<Action, Self::Error>;
 }
 
 impl ActionCommand for ActionKind {
     type Error = Infallible;
 
-    fn into_action(
-        self,
-        actor: EntityId,
-        _ctx: CommandContext<'_>,
-    ) -> Result<Action, Self::Error> {
+    fn into_action(self, actor: EntityId, _ctx: CommandContext<'_>) -> Result<Action, Self::Error> {
         Ok(Action::new(actor, self))
     }
 }
 
-impl ActionCommand for MoveAction {
+impl ActionCommand for MoveCommand {
     type Error = Infallible;
 
-    fn into_action(
-        self,
-        actor: EntityId,
-        _ctx: CommandContext<'_>,
-    ) -> Result<Action, Self::Error> {
-        Ok(Action::new(actor, self.into()))
+    fn into_action(self, actor: EntityId, _ctx: CommandContext<'_>) -> Result<Action, Self::Error> {
+        debug_assert!(self.distance > 0, "distance must be positive");
+        let action = MoveAction::new(actor, self.direction, self.distance);
+        Ok(Action::new(actor, action.into()))
     }
 }
 
-impl ActionCommand for AttackAction {
+impl ActionCommand for AttackCommand {
     type Error = Infallible;
 
-    fn into_action(
-        self,
-        actor: EntityId,
-        _ctx: CommandContext<'_>,
-    ) -> Result<Action, Self::Error> {
-        Ok(Action::new(actor, self.into()))
+    fn into_action(self, actor: EntityId, _ctx: CommandContext<'_>) -> Result<Action, Self::Error> {
+        let action = AttackAction::new(actor, self.target, self.style);
+        Ok(Action::new(actor, action.into()))
     }
 }
 
-impl ActionCommand for UseItemAction {
+impl ActionCommand for UseItemCommand {
     type Error = Infallible;
 
-    fn into_action(
-        self,
-        actor: EntityId,
-        _ctx: CommandContext<'_>,
-    ) -> Result<Action, Self::Error> {
-        Ok(Action::new(actor, self.into()))
+    fn into_action(self, actor: EntityId, _ctx: CommandContext<'_>) -> Result<Action, Self::Error> {
+        let action = UseItemAction::new(actor, self.slot, self.target);
+        Ok(Action::new(actor, action.into()))
     }
 }
 
-impl ActionCommand for InteractAction {
+impl ActionCommand for InteractCommand {
     type Error = Infallible;
 
-    fn into_action(
-        self,
-        actor: EntityId,
-        _ctx: CommandContext<'_>,
-    ) -> Result<Action, Self::Error> {
-        Ok(Action::new(actor, self.into()))
+    fn into_action(self, actor: EntityId, _ctx: CommandContext<'_>) -> Result<Action, Self::Error> {
+        let action = InteractAction::new(actor, self.target);
+        Ok(Action::new(actor, action.into()))
     }
 }

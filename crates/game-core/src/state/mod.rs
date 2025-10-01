@@ -38,7 +38,7 @@ impl GameState {
     /// Returns a merged tile view that combines static map data with runtime overlays.
     pub fn tile_view<'a, M>(&'a self, map: &M, position: Position) -> Option<TileView<'a>>
     where
-        M: MapOracle,
+        M: MapOracle + ?Sized,
     {
         self.world.tile_view(map, position)
     }
@@ -46,7 +46,7 @@ impl GameState {
     /// Determines whether a tile can be entered considering terrain passability and occupancy.
     pub fn can_enter<M>(&self, map: &M, position: Position) -> bool
     where
-        M: MapOracle,
+        M: MapOracle + ?Sized,
     {
         self.tile_view(map, position)
             .map(|view| view.is_passable() && !view.is_occupied())
