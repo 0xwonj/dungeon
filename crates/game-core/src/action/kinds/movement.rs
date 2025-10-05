@@ -129,14 +129,18 @@ impl ActionTransition for MoveAction {
         let origin = actor_state.position;
         let destination = self.destination_from(origin);
 
-        let occupancy = state.world.tile_map.occupancy_mut();
-        if !occupancy.remove(&origin, self.actor) {
+        if !state.world.tile_map.remove_occupant(&origin, self.actor) {
             return Err(MoveError::OccupancyDesync {
                 actor: self.actor,
                 position: origin,
             });
         }
-        occupancy.add(destination, self.actor);
+        if !state.world.tile_map.add_occupant(destination, self.actor) {
+            return Err(MoveError::OccupancyDesync {
+                actor: self.actor,
+                position: destination,
+            });
+        }
 
         actor_state.position = destination;
         Ok(())
@@ -147,13 +151,14 @@ impl ActionTransition for MoveAction {
             .entities
             .actor(self.actor)
             .ok_or(MoveError::ActorNotFound(self.actor))?;
-        let occupants = state
+        let is_present = state
             .world
             .tile_map
-            .occupants_slice(&actor_state.position)
-            .unwrap_or(&[]);
+            .occupants(&actor_state.position)
+            .map(|slot| slot.iter().copied().any(|id| id == self.actor))
+            .unwrap_or(false);
 
-        if occupants.iter().any(|&id| id == self.actor) {
+        if is_present {
             Ok(())
         } else {
             Err(MoveError::MissingOccupant {
@@ -167,6 +172,7 @@ impl ActionTransition for MoveAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::GameConfig;
     use crate::env::{
         AttackProfile, Env, GameEnv, ItemCategory, ItemDefinition, ItemOracle, MapDimensions,
         MapOracle, MovementRules, StaticTile, TablesOracle, TerrainKind,
@@ -224,13 +230,23 @@ mod tests {
         Env::with_all(&MAP, &ITEMS, &TABLES).into_game_env()
     }
 
+    fn occupant_slots(
+        ids: &[EntityId],
+    ) -> arrayvec::ArrayVec<EntityId, { GameConfig::MAX_OCCUPANTS_PER_TILE }> {
+        let mut slots = arrayvec::ArrayVec::new();
+        for id in ids {
+            slots.try_push(*id).expect("occupant slots capacity");
+        }
+        slots
+    }
+
     #[test]
     fn move_action_updates_state_and_occupancy() {
         let mut state = GameState::default();
         state
             .world
             .tile_map
-            .replace_occupants(Position::ORIGIN, vec![EntityId::PLAYER]);
+            .replace_occupants(Position::ORIGIN, occupant_slots(&[EntityId::PLAYER]));
         let env = test_env();
         let action = MoveAction::new(EntityId::PLAYER, CardinalDirection::North, 1);
 
@@ -246,19 +262,16 @@ mod tests {
 
         let expected = Position::new(0, 1);
         assert_eq!(state.entities.player.position, expected);
-        let occupants = state
+        let occupant_ids: Vec<_> = state
             .world
             .tile_map
-            .occupants_slice(&expected)
-            .expect("player should occupy destination");
-        assert_eq!(occupants, &[EntityId::PLAYER]);
-        assert!(
-            state
-                .world
-                .tile_map
-                .occupants_slice(&Position::ORIGIN)
-                .is_none()
-        );
+            .occupants(&expected)
+            .expect("player should occupy destination")
+            .iter()
+            .copied()
+            .collect();
+        assert_eq!(occupant_ids.as_slice(), &[EntityId::PLAYER]);
+        assert!(state.world.tile_map.occupants(&Position::ORIGIN).is_none());
     }
 
     #[test]
@@ -268,12 +281,12 @@ mod tests {
             state
                 .world
                 .tile_map
-                .replace_occupants(Position::ORIGIN, vec![EntityId::PLAYER]);
+                .replace_occupants(Position::ORIGIN, occupant_slots(&[EntityId::PLAYER]));
             let destination = Position::new(0, 1);
             state
                 .world
                 .tile_map
-                .replace_occupants(destination, vec![EntityId(7)]);
+                .replace_occupants(destination, occupant_slots(&[EntityId(7)]));
             state
         };
         let env = test_env();
@@ -297,7 +310,7 @@ mod tests {
             state
                 .world
                 .tile_map
-                .replace_occupants(Position::new(0, 3), vec![EntityId::PLAYER]);
+                .replace_occupants(Position::new(0, 3), occupant_slots(&[EntityId::PLAYER]));
             state.entities.player.position = Position::new(0, 3);
             state
         };

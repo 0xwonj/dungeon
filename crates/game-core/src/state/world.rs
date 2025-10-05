@@ -1,10 +1,14 @@
 use std::collections::BTreeMap;
 
+use arrayvec::ArrayVec;
+
+use crate::config::GameConfig;
 use crate::env::{MapOracle, StaticTile};
 
 use super::{EntityId, Position};
 
-const EMPTY_OCCUPANTS: &[EntityId] = &[];
+type OverlaySlots = ArrayVec<Overlay, { GameConfig::MAX_OVERLAYS_PER_TILE }>;
+type OccupantSlots = ArrayVec<EntityId, { GameConfig::MAX_OCCUPANTS_PER_TILE }>;
 
 /// Aggregated world-level state layered on top of the static map commitment.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -26,8 +30,9 @@ impl WorldState {
         let overlay = self.tile_map.overlay(&position);
         let occupants = self
             .tile_map
-            .occupants_slice(&position)
-            .unwrap_or(EMPTY_OCCUPANTS);
+            .occupants(&position)
+            .cloned()
+            .unwrap_or_default();
 
         Some(TileView {
             position,
@@ -42,11 +47,14 @@ impl WorldState {
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct TileMap {
     overlays: BTreeMap<Position, OverlaySet>,
-    occupancy: OccupancyIndex,
+    occupancy: BTreeMap<Position, OccupantSlots>,
 }
 
 impl TileMap {
-    pub fn new(overlays: BTreeMap<Position, OverlaySet>, occupancy: OccupancyIndex) -> Self {
+    pub fn new(
+        overlays: BTreeMap<Position, OverlaySet>,
+        occupancy: BTreeMap<Position, OccupantSlots>,
+    ) -> Self {
         Self {
             overlays,
             occupancy,
@@ -83,48 +91,73 @@ impl TileMap {
         }
     }
 
-    pub fn occupancy(&self) -> &OccupancyIndex {
+    pub fn occupancy(&self) -> &BTreeMap<Position, OccupantSlots> {
         &self.occupancy
     }
 
-    pub fn occupancy_mut(&mut self) -> &mut OccupancyIndex {
-        &mut self.occupancy
+    pub fn occupants(&self, position: &Position) -> Option<&OccupantSlots> {
+        self.occupancy.get(position)
     }
 
-    pub fn occupants_slice(&self, position: &Position) -> Option<&[EntityId]> {
-        self.occupancy.occupants(position)
+    pub fn replace_occupants(&mut self, position: Position, occupants: OccupantSlots) {
+        if occupants.is_empty() {
+            self.occupancy.remove(&position);
+        } else {
+            self.occupancy.insert(position, occupants);
+        }
     }
 
-    pub fn replace_occupants(&mut self, position: Position, occupants: Vec<EntityId>) {
-        self.occupancy.replace(position, occupants);
+    pub fn add_occupant(&mut self, position: Position, entity: EntityId) -> bool {
+        let slot = self.occupancy.entry(position).or_default();
+        if slot.iter().any(|occupant| *occupant == entity) {
+            return true;
+        }
+
+        slot.try_push(entity).is_ok()
+    }
+
+    pub fn remove_occupant(&mut self, position: &Position, entity: EntityId) -> bool {
+        if let Some(slot) = self.occupancy.get_mut(position) {
+            if let Some(index) = slot.iter().position(|occupant| *occupant == entity) {
+                slot.swap_remove(index);
+                if slot.is_empty() {
+                    self.occupancy.remove(position);
+                }
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
     }
 
     pub fn clear_occupants(&mut self, position: &Position) {
-        self.occupancy.clear(position);
+        self.occupancy.remove(position);
     }
 }
 
 /// Collection of dynamic overlays that modify an individual tile.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct OverlaySet {
-    overlays: Vec<Overlay>,
+    overlays: OverlaySlots,
 }
 
 impl OverlaySet {
-    pub fn new(overlays: Vec<Overlay>) -> Self {
+    pub fn new(overlays: OverlaySlots) -> Self {
         Self { overlays }
     }
 
-    pub fn overlays(&self) -> &[Overlay] {
-        &self.overlays
+    pub fn iter(&self) -> impl Iterator<Item = &Overlay> + '_ {
+        self.overlays.iter()
     }
 
-    pub fn overlays_mut(&mut self) -> &mut Vec<Overlay> {
-        &mut self.overlays
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Overlay> + '_ {
+        self.overlays.iter_mut()
     }
 
-    pub fn push_overlay(&mut self, overlay: Overlay) {
-        self.overlays.push(overlay);
+    pub fn push_overlay(&mut self, overlay: Overlay) -> Result<(), Overlay> {
+        self.overlays.try_push(overlay).map_err(|err| err.element())
     }
 
     pub fn retain_overlays<F>(&mut self, mut predicate: F)
@@ -143,7 +176,7 @@ impl OverlaySet {
     }
 
     pub fn is_passable(&self) -> bool {
-        self.overlays.iter().all(|overlay| overlay.is_passable())
+        self.iter().all(|overlay| overlay.is_passable())
     }
 }
 
@@ -198,64 +231,12 @@ impl HazardOverlay {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EventId(pub u16);
 
-/// Sparse occupancy index keyed by tile position.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct OccupancyIndex {
-    slots: BTreeMap<Position, Vec<EntityId>>,
-}
-
-impl OccupancyIndex {
-    pub fn new(slots: BTreeMap<Position, Vec<EntityId>>) -> Self {
-        Self { slots }
-    }
-
-    pub fn occupants(&self, position: &Position) -> Option<&[EntityId]> {
-        self.slots.get(position).map(|entities| entities.as_slice())
-    }
-
-    pub fn replace(&mut self, position: Position, occupants: Vec<EntityId>) {
-        if occupants.is_empty() {
-            self.slots.remove(&position);
-        } else {
-            self.slots.insert(position, occupants);
-        }
-    }
-
-    pub fn add(&mut self, position: Position, entity: EntityId) {
-        let slot = self.slots.entry(position).or_default();
-        if !slot.iter().any(|occupant| *occupant == entity) {
-            slot.push(entity);
-        }
-    }
-
-    pub fn remove(&mut self, position: &Position, entity: EntityId) -> bool {
-        if let Some(slot) = self.slots.get_mut(position) {
-            if let Some(index) = slot.iter().position(|occupant| *occupant == entity) {
-                slot.swap_remove(index);
-                if slot.is_empty() {
-                    self.slots.remove(position);
-                }
-                return true;
-            }
-        }
-        false
-    }
-
-    pub fn clear(&mut self, position: &Position) {
-        self.slots.remove(position);
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.slots.is_empty()
-    }
-}
-
 /// Aggregated tile information used by reducers and commands.
 pub struct TileView<'a> {
     position: Position,
     static_tile: StaticTile,
     overlay: Option<&'a OverlaySet>,
-    occupants: &'a [EntityId],
+    occupants: OccupantSlots,
 }
 
 impl<'a> TileView<'a> {
@@ -271,8 +252,12 @@ impl<'a> TileView<'a> {
         self.overlay
     }
 
-    pub fn occupants(&self) -> &'a [EntityId] {
-        self.occupants
+    pub fn occupants(&self) -> impl Iterator<Item = EntityId> + '_ {
+        self.occupants.iter().copied()
+    }
+
+    pub fn occupants_slots(&self) -> &OccupantSlots {
+        &self.occupants
     }
 
     pub fn is_occupied(&self) -> bool {
@@ -283,7 +268,6 @@ impl<'a> TileView<'a> {
         self.overlay
             .map(|overlay| {
                 overlay
-                    .overlays()
                     .iter()
                     .any(|overlay| matches!(overlay, Overlay::Hazard(_)))
             })
@@ -331,14 +315,18 @@ mod tests {
         let mut world = WorldState::default();
         let pos = Position::new(1, 1);
         world.tile_map.with_overlay(pos, |overlay| {
-            overlay.push_overlay(Overlay::Hazard(HazardOverlay {
-                remaining_turns: 2,
-                passable: false,
-            }));
+            overlay
+                .push_overlay(Overlay::Hazard(HazardOverlay {
+                    remaining_turns: 2,
+                    passable: false,
+                }))
+                .expect("overlay capacity");
         });
-        world
-            .tile_map
-            .replace_occupants(pos, vec![EntityId::PLAYER]);
+        let mut occupants = OccupantSlots::default();
+        occupants
+            .try_push(EntityId::PLAYER)
+            .expect("occupancy capacity");
+        world.tile_map.replace_occupants(pos, occupants);
 
         let map = StubMap;
         let view = world.tile_view(&map, pos).expect("tile should exist");
@@ -354,11 +342,15 @@ mod tests {
         let mut world = WorldState::default();
         let pos = Position::new(0, 0);
         world.tile_map.with_overlay(pos, |overlay| {
-            overlay.push_overlay(Overlay::EventMarker(EventId(1)));
-            overlay.push_overlay(Overlay::Hazard(HazardOverlay {
-                remaining_turns: 1,
-                passable: true,
-            }));
+            overlay
+                .push_overlay(Overlay::EventMarker(EventId(1)))
+                .expect("overlay capacity");
+            overlay
+                .push_overlay(Overlay::Hazard(HazardOverlay {
+                    remaining_turns: 1,
+                    passable: true,
+                }))
+                .expect("overlay capacity");
         });
 
         let map = StubMap;

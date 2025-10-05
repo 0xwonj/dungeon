@@ -33,7 +33,7 @@
 * **Base semantics:**
 
   * **Walkability:** Only walkable tiles can be entered.
-  * **Occupancy:** At most one entity per tile (no stacking in MVP).
+  * **Occupancy:** Fixed number of entities per tile.
   * **Triggers:** Tiles may define hooks—**on-enter**, **on-stand**, **on EoT**—with deterministic effects.
   * **Topology changes:** Doors/switches can toggle walkability or hazards in a visible, immediate way.
 

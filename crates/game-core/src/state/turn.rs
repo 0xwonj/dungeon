@@ -1,24 +1,31 @@
-/// Turn index plus intra-turn cursor to keep the phase explicit.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+use std::collections::HashSet;
+
+use super::{EntityId, Tick};
+
+/// Turn state managing the timeline-based scheduling system.
+/// This is the canonical state for ZK proofs - it explicitly tracks which actors are active.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TurnState {
-    pub index: u64,
-    pub phase: TurnPhase,
+    /// Current timeline clock.
+    pub clock: Tick,
+
+    /// Set of entities that are currently active (scheduled to act).
+    /// This is the authoritative source for ZK proofs to verify all active actors were considered.
+    pub active_actors: HashSet<EntityId>,
 }
 
 impl TurnState {
-    pub fn new(index: u64, phase: TurnPhase) -> Self {
-        Self { index, phase }
+    /// Creates a new turn state.
+    pub fn new() -> Self {
+        Self {
+            clock: Tick::ZERO,
+            active_actors: HashSet::new(),
+        }
     }
 }
 
-/// Phases within a single turn.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub enum TurnPhase {
-    /// Player is selecting/executing their action.
-    #[default]
-    Player,
-    /// NPCs are resolving in a stable order; `cursor` tracks which index is next.
-    Npc { cursor: usize },
-    /// End-of-turn cleanup (statuses, hazards, cooldown ticks).
-    EndOfTurn,
+impl Default for TurnState {
+    fn default() -> Self {
+        Self::new()
+    }
 }

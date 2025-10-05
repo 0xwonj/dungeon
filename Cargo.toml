@@ -1,10 +1,8 @@
 [workspace]
 members = [
     "crates/game-core",
-    "crates/types",
     "crates/proofs",
-    "crates/server",
-    "crates/client/runtime",
+    "crates/runtime",
     "crates/client/cli",
     "crates/client/ui",
 ]

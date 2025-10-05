@@ -66,10 +66,11 @@ fn queue_move(actor: EntityId, cmd: MoveAction, state: &GameState, env: GameEnv<
 // let env = Env::new(None, Some(items_oracle), None).into_game_env();
 ```
 
-## 4) Explicit state machine reducer
+## 4) Game Engine and state transitions
 
-* `game-core` is modelled as a **finite state machine**: the core API is `step(prev_state, env, action) -> Result<next_state, Error>` (re-exported from `reducer::step`). All state evolution flows through this reducer so determinism, logging, and zk wiring stay aligned.
-* Each action variant implements `ActionTransition` which exposes `pre_validate`, `apply`, and `post_validate`. The reducer always calls these hooks **in order**, mirroring the constraint checks the proof system enforces around the mutation.
+* `game-core` is modelled as a **finite state machine**: the core API is `GameEngine` which manages action execution and turn scheduling. State evolution flows through `engine.execute(env, action)` so determinism, logging, and zk wiring stay aligned.
+* Each action variant implements `ActionTransition` which exposes `pre_validate`, `apply`, and `post_validate`. The engine always calls these hooks **in order**, mirroring the constraint checks the proof system enforces around the mutation.
 * `pre_validate` inspects the incoming snapshot and oracle data before any mutation; `apply` performs the actual writes; `post_validate` reasserts global invariants (HP ≥ 0, inventory capacity, etc.) on the updated state.
-* Reducer helpers record which state/env fields were read or written so witness builders and zk circuits consume the same access pattern. Every mutation therefore has an audit trail (`actor` id + action + witness delta) suitable for replay or proofs.
+* Engine helpers record which state/env fields were read or written so witness builders and zk circuits consume the same access pattern. Every mutation therefore has an audit trail (`actor` id + action + witness delta) suitable for replay or proofs.
 * System-driven effects (ticks, scripted events) are just actions authored by reserved actors (e.g., `EntityId::SYSTEM`), keeping the machine closed under the same transition interface.
+* `GameEngine` also provides turn management methods (`pop_next_turn`, `reschedule`, `activate`, `maintain_active_set`) that wrap the underlying `TurnSystem`, providing a unified API for game logic.

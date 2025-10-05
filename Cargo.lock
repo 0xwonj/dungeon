@@ -3,49 +3,34 @@
 version = 4
 
 [[package]]
-name = "client-cli"
-version = "0.1.0"
+name = "arrayvec"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+
+[[package]]
+name = "bounded-vector"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a4ae68aba933dbbfc135300c665cffe57d59f61bf0428c14d88a73848280776"
 dependencies = [
- "client-runtime",
- "types",
+ "thiserror",
 ]
 
 [[package]]
-name = "client-runtime"
+name = "cli-client"
 version = "0.1.0"
 dependencies = [
- "game-core",
- "proofs",
- "types",
-]
-
-[[package]]
-name = "client-ui"
-version = "0.1.0"
-dependencies = [
- "client-runtime",
- "types",
+ "runtime",
 ]
 
 [[package]]
 name = "game-core"
 version = "0.1.0"
 dependencies = [
- "types",
+ "arrayvec",
+ "bounded-vector",
 ]
-
-[[package]]
-name = "game-server"
-version = "0.1.0"
-dependencies = [
- "types",
-]
-
-[[package]]
-name = "hex"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "proc-macro2"
@@ -59,9 +44,6 @@ dependencies = [
 [[package]]
 name = "proofs"
 version = "0.1.0"
-dependencies = [
- "types",
-]
 
 [[package]]
 name = "quote"
@@ -73,33 +55,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde"
-version = "1.0.228"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
+name = "runtime"
+version = "0.1.0"
 dependencies = [
- "serde_core",
- "serde_derive",
-]
-
-[[package]]
-name = "serde_core"
-version = "1.0.228"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41d385c7d4ca58e59fc732af25c3983b67ac852c1a25000afe1175de458b67ad"
-dependencies = [
- "serde_derive",
-]
-
-[[package]]
-name = "serde_derive"
-version = "1.0.228"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
+ "game-core",
+ "proofs",
 ]
 
 [[package]]
@@ -114,11 +74,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "types"
+name = "thiserror"
+version = "2.0.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f63587ca0f12b72a0600bcba1d40081f830876000bb46dd2337a3051618f4fc8"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ff15c8ecd7de3849db632e14d18d2571fa09dfc5ed93479bc4485c7a517c913"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "ui-client"
 version = "0.1.0"
 dependencies = [
- "hex",
- "serde",
+ "runtime",
 ]
 
 [[package]]

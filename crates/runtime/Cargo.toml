@@ -1,0 +1,8 @@
+[package]
+name = "runtime"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+game-core = { path = "../game-core" }
+proofs = { path = "../proofs" }
