@@ -84,6 +84,10 @@ impl CardinalDirection {
 impl ActionTransition for MoveAction {
     type Error = MoveError;
 
+    fn cost(&self) -> crate::state::Tick {
+        crate::state::Tick(10)
+    }
+
     fn pre_validate(&self, state: &GameState, env: &GameEnv<'_>) -> Result<(), Self::Error> {
         let actor_state = state
             .entities
@@ -223,11 +227,21 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct StubNpcs;
+
+    impl crate::env::NpcOracle for StubNpcs {
+        fn template(&self, _template_id: u16) -> Option<crate::env::NpcTemplate> {
+            Some(crate::env::NpcTemplate::simple(100, 50))
+        }
+    }
+
     fn test_env() -> GameEnv<'static> {
         static MAP: StubMap = StubMap;
         static ITEMS: StubItems = StubItems;
         static TABLES: StubTables = StubTables;
-        Env::with_all(&MAP, &ITEMS, &TABLES).into_game_env()
+        static NPCS: StubNpcs = StubNpcs;
+        Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS).into_game_env()
     }
 
     fn occupant_slots(

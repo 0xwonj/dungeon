@@ -1,5 +1,5 @@
 use crate::env::GameEnv;
-use crate::state::GameState;
+use crate::state::{GameState, Tick};
 
 /// Defines how a concrete action variant mutates game state while mirroring
 /// the constraint checks enforced inside zk circuits.
@@ -10,6 +10,10 @@ use crate::state::GameState;
 /// side-effect free.
 pub trait ActionTransition {
     type Error;
+
+    /// Returns the time cost of this action in ticks.
+    /// This cost is used to advance the actor's ready_at value.
+    fn cost(&self) -> Tick;
 
     /// Validates pre-conditions using the state **before** mutation.
     fn pre_validate(&self, _state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
@@ -35,12 +39,16 @@ mod tests {
         AttackProfile, Env, GameEnv, ItemCategory, ItemDefinition, ItemOracle, MapDimensions,
         MapOracle, MovementRules, StaticTile, TablesOracle, TerrainKind,
     };
-    use crate::state::GameState;
+    use crate::state::{GameState, Tick};
 
     struct NoopAction;
 
     impl ActionTransition for NoopAction {
         type Error = core::convert::Infallible;
+
+        fn cost(&self) -> Tick {
+            Tick(1)
+        }
 
         fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
             Ok(())
@@ -65,6 +73,10 @@ mod tests {
 
     impl<'a> ActionTransition for CountingAction<'a> {
         type Error = core::convert::Infallible;
+
+        fn cost(&self) -> Tick {
+            Tick(1)
+        }
 
         fn pre_validate(&self, _state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
             self.pre_count.set(self.pre_count.get() + 1);
@@ -105,12 +117,6 @@ mod tests {
         assert_eq!(post.get(), 1);
     }
 
-    fn test_env() -> GameEnv<'static> {
-        static MAP: StubMap = StubMap;
-        static ITEMS: StubItems = StubItems;
-        static TABLES: StubTables = StubTables;
-        Env::with_all(&MAP, &ITEMS, &TABLES).into_game_env()
-    }
 
     #[derive(Debug)]
     struct StubMap;
@@ -150,5 +156,22 @@ mod tests {
         fn attack_profile(&self, _style: crate::action::AttackStyle) -> Option<AttackProfile> {
             Some(AttackProfile::new(1, 0))
         }
+    }
+
+    #[derive(Debug)]
+    struct StubNpcs;
+
+    impl crate::env::NpcOracle for StubNpcs {
+        fn template(&self, _template_id: u16) -> Option<crate::env::NpcTemplate> {
+            Some(crate::env::NpcTemplate::simple(100, 50))
+        }
+    }
+
+    fn test_env() -> GameEnv<'static> {
+        static MAP: StubMap = StubMap;
+        static ITEMS: StubItems = StubItems;
+        static TABLES: StubTables = StubTables;
+        static NPCS: StubNpcs = StubNpcs;
+        Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS).into_game_env()
     }
 }

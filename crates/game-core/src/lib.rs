@@ -12,11 +12,11 @@ pub use config::GameConfig;
 pub use engine::{ExecuteError, GameEngine, ScheduledTurn, TransitionPhase, TransitionPhaseError};
 pub use env::{
     AttackProfile, Env, GameEnv, InitialEntityKind, InitialEntitySpec, ItemCategory,
-    ItemDefinition, ItemOracle, MapDimensions, MapOracle, MovementRules, StaticTile, TablesOracle,
-    TerrainKind,
+    ItemDefinition, ItemOracle, MapDimensions, MapOracle, MovementRules, NpcOracle, NpcTemplate,
+    StaticTile, TablesOracle, TerrainKind,
 };
 pub use state::{
     ActorState, ActorStats, EntitiesState, EntityId, EventId, GameState, HazardOverlay,
-    InventoryState, ItemHandle, ItemState, Overlay, OverlaySet, Position, PropKind, PropState,
-    ResourceMeter, Tick, TileMap, TileView, TurnState, WorldState,
+    InitializationError, InventoryState, ItemHandle, ItemState, Overlay, OverlaySet, Position,
+    PropKind, PropState, ResourceMeter, Tick, TileMap, TileView, TurnState, WorldState,
 };

@@ -1,5 +1,10 @@
 use crate::action::AttackStyle;
 
+/// Oracle providing game rules and balance tables.
+///
+/// This oracle defines core gameplay mechanics like movement constraints,
+/// attack formulas, and status effect durations. It does NOT define entity data
+/// (use NpcOracle, ItemOracle, etc. for that).
 pub trait TablesOracle {
     fn movement_rules(&self) -> MovementRules;
     fn attack_profile(&self, style: AttackStyle) -> Option<AttackProfile>;
@@ -34,3 +39,4 @@ impl AttackProfile {
         }
     }
 }
+

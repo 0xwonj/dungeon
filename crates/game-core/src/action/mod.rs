@@ -2,7 +2,7 @@ pub mod command;
 pub mod kinds;
 pub mod transition;
 
-use crate::state::EntityId;
+use crate::state::{EntityId, Tick};
 
 pub use command::{ActionCommand, CommandContext};
 pub use kinds::{
@@ -39,6 +39,19 @@ impl Action {
         C: ActionCommand,
     {
         command.into_action(actor, ctx)
+    }
+
+    /// Returns the time cost (in ticks) for this action.
+    /// This determines how much the entity's ready_at advances after execution.
+    pub fn cost(&self) -> Tick {
+        use crate::action::ActionTransition;
+        match &self.kind {
+            ActionKind::Move(action) => action.cost(),
+            ActionKind::Attack(action) => action.cost(),
+            ActionKind::UseItem(action) => action.cost(),
+            ActionKind::Interact(action) => action.cost(),
+            ActionKind::Wait => Tick(5),
+        }
     }
 }
 
@@ -80,8 +93,8 @@ mod tests {
     use super::*;
     use crate::env::{
         AttackProfile, Env, GameEnv, InitialEntityKind, InitialEntitySpec, ItemCategory,
-        ItemDefinition, ItemOracle, MapDimensions, MapOracle, MovementRules, StaticTile,
-        TablesOracle, TerrainKind,
+        ItemDefinition, ItemOracle, MapDimensions, MapOracle, MovementRules, NpcOracle,
+        NpcTemplate, StaticTile, TablesOracle, TerrainKind,
     };
     use crate::state::{EntityId, GameState, ItemHandle, Position};
 
@@ -151,12 +164,22 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Default)]
+    struct StubNpcs;
+
+    impl NpcOracle for StubNpcs {
+        fn template(&self, _template_id: u16) -> Option<NpcTemplate> {
+            Some(NpcTemplate::simple(100, 50))
+        }
+    }
+
     fn build_env<'a>(
         map: &'a StubMap,
         items: &'a StubItems,
         tables: &'a StubTables,
+        npcs: &'a StubNpcs,
     ) -> GameEnv<'a> {
-        Env::with_all(map, items, tables).into_game_env()
+        Env::with_all(map, items, tables, npcs).into_game_env()
     }
 
     #[test]
@@ -166,7 +189,8 @@ mod tests {
         let map = StubMap::default();
         let items = StubItems::default();
         let tables = StubTables::default();
-        let env = build_env(&map, &items, &tables);
+        let npcs = StubNpcs;
+        let env = build_env(&map, &items, &tables, &npcs);
         let ctx = CommandContext::new(&state, env);
         let command = MoveCommand::new(CardinalDirection::North, 1);
 
@@ -216,7 +240,8 @@ mod tests {
         let map = StubMap::default();
         let items = StubItems::default();
         let tables = StubTables::new(1);
-        let env = build_env(&map, &items, &tables);
+        let npcs = StubNpcs;
+        let env = build_env(&map, &items, &tables, &npcs);
         let ctx = CommandContext::new(&state, env);
 
         let action = Action::from_command(actor, WaitIfAllowed, ctx)
@@ -224,7 +249,8 @@ mod tests {
         assert!(matches!(action.kind, ActionKind::Wait));
 
         let tables = StubTables::new(0);
-        let env = build_env(&map, &items, &tables);
+        let npcs = StubNpcs;
+        let env = build_env(&map, &items, &tables, &npcs);
         let ctx = CommandContext::new(&state, env);
         let result = Action::from_command(actor, WaitIfAllowed, ctx);
         assert!(result.is_err());

@@ -3,7 +3,7 @@ pub mod entities;
 pub mod turn;
 pub mod world;
 
-use crate::env::MapOracle;
+use crate::env::{GameEnv, InitialEntityKind, MapOracle};
 pub use bounded_vector::BoundedVec;
 pub use common::{EntityId, Position, ResourceMeter, Tick};
 pub use entities::{
@@ -51,4 +51,118 @@ impl GameState {
             .map(|view| view.is_passable() && !view.is_occupied())
             .unwrap_or(false)
     }
+
+    /// Creates a new GameState from initial entity specifications provided by the map oracle.
+    ///
+    /// This is the canonical way to initialize game state at the start of a session.
+    /// The function:
+    /// - Reads initial entity specs from the map oracle
+    /// - Resolves NPC templates from the tables oracle
+    /// - Creates all entities (player, NPCs, props, items)
+    /// - Sets up tile occupancy
+    ///
+    /// Returns an error if required oracles are missing or entity limits are exceeded.
+    pub fn from_initial_entities(env: &GameEnv<'_>) -> Result<Self, InitializationError> {
+        let map = env.map().ok_or(InitializationError::MissingMapOracle)?;
+        let npcs = env.npcs().ok_or(InitializationError::MissingNpcOracle)?;
+
+        let mut state = GameState::default();
+        let initial_entities = map.initial_entities();
+
+        // Process each initial entity spec
+        for spec in initial_entities {
+            match spec.kind {
+                InitialEntityKind::Player => {
+                    // Player uses default stats for now
+                    state.entities.player = ActorState::new(
+                        spec.id,
+                        spec.position,
+                        ActorStats::default(),
+                        InventoryState::default(),
+                    );
+
+                    // Activate player in turn system at tick 0
+                    state.entities.player.ready_at = Some(Tick(0));
+                    state.turn.active_actors.insert(spec.id);
+
+                    // Add player to tile occupancy
+                    state
+                        .world
+                        .tile_map
+                        .add_occupant(spec.position, spec.id);
+                }
+
+                InitialEntityKind::Npc { template } => {
+                    // Resolve template to get stats and inventory
+                    let npc_template = npcs
+                        .template(template)
+                        .ok_or(InitializationError::UnknownNpcTemplate(template))?;
+
+                    let mut actor = ActorState::new(
+                        spec.id,
+                        spec.position,
+                        npc_template.stats,
+                        npc_template.inventory,
+                    );
+
+                    // Activate NPC in turn system at tick 0
+                    actor.ready_at = Some(Tick(0));
+                    state.turn.active_actors.insert(spec.id);
+
+                    state
+                        .entities
+                        .npcs
+                        .push(actor)
+                        .map_err(|_| InitializationError::TooManyNpcs)?;
+
+                    // Add NPC to tile occupancy
+                    state
+                        .world
+                        .tile_map
+                        .add_occupant(spec.position, spec.id);
+                }
+
+                InitialEntityKind::Prop { kind, is_active } => {
+                    let prop = PropState::new(spec.id, spec.position, kind, is_active);
+
+                    state
+                        .entities
+                        .props
+                        .push(prop)
+                        .map_err(|_| InitializationError::TooManyProps)?;
+
+                    // Props also occupy tiles
+                    state
+                        .world
+                        .tile_map
+                        .add_occupant(spec.position, spec.id);
+                }
+
+                InitialEntityKind::Item { handle } => {
+                    let item = ItemState::new(spec.id, spec.position, handle);
+
+                    state
+                        .entities
+                        .items
+                        .push(item)
+                        .map_err(|_| InitializationError::TooManyItems)?;
+
+                    // Items don't block movement, so we don't add to occupancy
+                }
+            }
+        }
+
+        Ok(state)
+    }
+}
+
+/// Errors that can occur during initial state creation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InitializationError {
+    MissingMapOracle,
+    MissingNpcOracle,
+    UnknownNpcTemplate(u16),
+    TooManyNpcs,
+    TooManyProps,
+    TooManyItems,
 }

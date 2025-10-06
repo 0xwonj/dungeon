@@ -43,6 +43,10 @@ pub enum AttackStyle {
 impl ActionTransition for AttackAction {
     type Error = Infallible;
 
+    fn cost(&self) -> crate::state::Tick {
+        crate::state::Tick(15)
+    }
+
     fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
         Ok(())
     }

@@ -55,6 +55,10 @@ pub enum ItemTarget {
 impl ActionTransition for UseItemAction {
     type Error = Infallible;
 
+    fn cost(&self) -> crate::state::Tick {
+        crate::state::Tick(8)
+    }
+
     fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
         Ok(())
     }

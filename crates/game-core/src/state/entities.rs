@@ -161,5 +161,5 @@ impl ItemState {
 }
 
 /// Reference to an item definition stored outside the core (lookup via Env).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ItemHandle(pub u32);

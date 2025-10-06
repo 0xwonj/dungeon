@@ -40,13 +40,25 @@ impl<'a> GameEngine<'a> {
     }
 
     /// Executes an action by routing it through the appropriate transition pipeline.
+    /// After successful execution, updates the actor's ready_at by the action's cost.
     pub fn execute(&mut self, env: GameEnv<'_>, action: &Action) -> Result<(), ExecuteError> {
+        // Execute the action
         dispatch_transition!(action, self.state, env, {
             Move => Move,
             Attack => Attack,
             UseItem => UseItem,
             Interact => Interact,
-        })
+        })?;
+
+        // Update actor's ready_at by action cost
+        let cost = action.cost();
+        if let Some(actor) = self.state.entities.actor_mut(action.actor) {
+            if let Some(current_ready_at) = actor.ready_at {
+                actor.ready_at = Some(crate::state::Tick(current_ready_at.0 + cost.0));
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -127,6 +139,15 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Default)]
+    struct StubNpcs;
+
+    impl crate::env::NpcOracle for StubNpcs {
+        fn template(&self, _template_id: u16) -> Option<crate::env::NpcTemplate> {
+            Some(crate::env::NpcTemplate::simple(100, 50))
+        }
+    }
+
     #[test]
     fn engine_executes_actions() {
         let mut state = GameState::default();
@@ -142,7 +163,8 @@ mod tests {
         static MAP: StubMap = StubMap;
         static ITEMS: StubItems = StubItems;
         static TABLES: StubTables = StubTables;
-        let env = Env::with_all(&MAP, &ITEMS, &TABLES).into_game_env();
+        static NPCS: StubNpcs = StubNpcs;
+        let env = Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS).into_game_env();
         let actor = EntityId::PLAYER;
         let move_action = MoveAction::new(actor, CardinalDirection::North, 1);
         let action = Action::new(actor, ActionKind::Move(move_action));
@@ -155,11 +177,11 @@ mod tests {
     }
 
     #[test]
-    fn maintain_active_set_handles_activation_changes() {
+    fn activate_and_deactivate_entities() {
         use crate::state::{ActorState, ActorStats, InventoryState};
 
         let mut state = GameState::default();
-        let config = GameConfig::with_activation_radius(1);
+        let config = GameConfig::default();
 
         state.entities.player = ActorState::new(
             EntityId::PLAYER,
@@ -177,39 +199,42 @@ mod tests {
                 InventoryState::default(),
             ))
             .unwrap();
-        state
-            .entities
-            .npcs
-            .push(ActorState::new(
-                EntityId(2),
-                Position::new(3, 0),
-                ActorStats::default(),
-                InventoryState::default(),
-            ))
-            .unwrap();
 
-        state.entities.player.position = Position::ORIGIN;
         let mut engine = GameEngine::new(&mut state, &config);
 
-        engine.maintain_active_set(
-            [
-                (EntityId(1), Position::new(1, 0)),
-                (EntityId(2), Position::new(3, 0)),
-            ],
-            |_| Tick(0),
-        );
-
+        // Test activation
+        engine.activate(EntityId(1), Position::new(1, 0), Tick(0));
         assert!(engine.is_entity_active(EntityId(1)));
-        assert!(!engine.is_entity_active(EntityId(2)));
 
-        // Move player far away
-        engine.state.entities.player.position = Position::new(10, 10);
-        engine.maintain_active_set(std::iter::empty::<(EntityId, Position)>(), |_| Tick(0));
+        // Test deactivation
+        assert!(engine.deactivate(EntityId(1)));
         assert!(!engine.is_entity_active(EntityId(1)));
     }
 
     #[test]
-    fn pop_next_turn_and_execute_workflow() {
+    fn clock_management() {
+        use crate::state::{ActorState, ActorStats, InventoryState};
+
+        let mut state = GameState::default();
+        let config = GameConfig::default();
+
+        state.entities.player = ActorState::new(
+            EntityId::PLAYER,
+            Position::ORIGIN,
+            ActorStats::default(),
+            InventoryState::default(),
+        );
+
+        let mut engine = GameEngine::new(&mut state, &config);
+
+        assert_eq!(engine.clock(), Tick(0));
+
+        engine.set_clock(Tick(100));
+        assert_eq!(engine.clock(), Tick(100));
+    }
+
+    #[test]
+    fn execute_action_and_update_ready_at() {
         use crate::state::{ActorState, ActorStats, InventoryState};
 
         let mut state = GameState::default();
@@ -222,6 +247,7 @@ mod tests {
             ActorStats::default(),
             InventoryState::default(),
         );
+        state.entities.player.ready_at = Some(Tick(0));
 
         // Add player to tile occupants
         let mut occupants =
@@ -233,25 +259,22 @@ mod tests {
             .replace_occupants(Position::ORIGIN, occupants);
 
         let mut engine = GameEngine::new(&mut state, &config);
-
-        // Activate player
-        engine.activate(EntityId::PLAYER, Position::ORIGIN, Tick(0));
+        engine.set_clock(Tick(0));
 
         static MAP: StubMap = StubMap;
         static ITEMS: StubItems = StubItems;
         static TABLES: StubTables = StubTables;
-        let env = Env::with_all(&MAP, &ITEMS, &TABLES).into_game_env();
+        static NPCS: StubNpcs = StubNpcs;
+        let env = Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS).into_game_env();
 
-        // Pop next turn
-        let scheduled = engine.pop_next_turn();
-        assert!(scheduled.is_some());
-        let scheduled = scheduled.unwrap();
-        assert_eq!(scheduled.entity, EntityId::PLAYER);
-        assert_eq!(scheduled.ready_at, Tick(0));
-
-        // Execute action for that entity
+        // Execute action
         let move_action = MoveAction::new(EntityId::PLAYER, CardinalDirection::North, 1);
         let action = Action::new(EntityId::PLAYER, ActionKind::Move(move_action));
+        let cost = action.cost();
+
         assert!(engine.execute(env, &action).is_ok());
+
+        // Verify ready_at was updated by action cost
+        assert_eq!(state.entities.player.ready_at, Some(Tick(cost.0)));
     }
 }

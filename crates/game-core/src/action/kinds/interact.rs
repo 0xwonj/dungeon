@@ -32,6 +32,10 @@ impl InteractCommand {
 impl ActionTransition for InteractAction {
     type Error = Infallible;
 
+    fn cost(&self) -> crate::state::Tick {
+        crate::state::Tick(5)
+    }
+
     fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
         Ok(())
     }

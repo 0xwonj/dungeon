@@ -1,40 +1,61 @@
 mod items;
 mod map;
+mod npc;
 mod tables;
 
 pub use items::{ItemCategory, ItemDefinition, ItemOracle};
 pub use map::{
     InitialEntityKind, InitialEntitySpec, MapDimensions, MapOracle, StaticTile, TerrainKind,
 };
+pub use npc::{NpcOracle, NpcTemplate};
 pub use tables::{AttackProfile, MovementRules, TablesOracle};
 
 /// Aggregates read-only oracles required by the reducer and action pipeline.
 #[derive(Clone, Copy, Debug)]
-pub struct Env<'a, M, I, T>
+pub struct Env<'a, M, I, T, N>
 where
     M: MapOracle + ?Sized,
     I: ItemOracle + ?Sized,
     T: TablesOracle + ?Sized,
+    N: NpcOracle + ?Sized,
 {
     map: Option<&'a M>,
     items: Option<&'a I>,
     tables: Option<&'a T>,
+    npcs: Option<&'a N>,
 }
 
-pub type GameEnv<'a> = Env<'a, dyn MapOracle + 'a, dyn ItemOracle + 'a, dyn TablesOracle + 'a>;
+pub type GameEnv<'a> = Env<
+    'a,
+    dyn MapOracle + 'a,
+    dyn ItemOracle + 'a,
+    dyn TablesOracle + 'a,
+    dyn NpcOracle + 'a,
+>;
 
-impl<'a, M, I, T> Env<'a, M, I, T>
+impl<'a, M, I, T, N> Env<'a, M, I, T, N>
 where
     M: MapOracle + ?Sized,
     I: ItemOracle + ?Sized,
     T: TablesOracle + ?Sized,
+    N: NpcOracle + ?Sized,
 {
-    pub fn new(map: Option<&'a M>, items: Option<&'a I>, tables: Option<&'a T>) -> Self {
-        Self { map, items, tables }
+    pub fn new(
+        map: Option<&'a M>,
+        items: Option<&'a I>,
+        tables: Option<&'a T>,
+        npcs: Option<&'a N>,
+    ) -> Self {
+        Self {
+            map,
+            items,
+            tables,
+            npcs,
+        }
     }
 
-    pub fn with_all(map: &'a M, items: &'a I, tables: &'a T) -> Self {
-        Self::new(Some(map), Some(items), Some(tables))
+    pub fn with_all(map: &'a M, items: &'a I, tables: &'a T, npcs: &'a N) -> Self {
+        Self::new(Some(map), Some(items), Some(tables), Some(npcs))
     }
 
     pub fn empty() -> Self {
@@ -42,6 +63,7 @@ where
             map: None,
             items: None,
             tables: None,
+            npcs: None,
         }
     }
 
@@ -56,19 +78,25 @@ where
     pub fn tables(&self) -> Option<&'a T> {
         self.tables
     }
+
+    pub fn npcs(&self) -> Option<&'a N> {
+        self.npcs
+    }
 }
 
-impl<'a, M, I, T> Env<'a, M, I, T>
+impl<'a, M, I, T, N> Env<'a, M, I, T, N>
 where
     M: MapOracle + 'a,
     I: ItemOracle + 'a,
     T: TablesOracle + 'a,
+    N: NpcOracle + 'a,
 {
     pub fn into_game_env(self) -> GameEnv<'a> {
         let map: Option<&'a dyn MapOracle> = self.map.map(|map| map as _);
         let items: Option<&'a dyn ItemOracle> = self.items.map(|items| items as _);
         let tables: Option<&'a dyn TablesOracle> = self.tables.map(|tables| tables as _);
-        Env::new(map, items, tables)
+        let npcs: Option<&'a dyn NpcOracle> = self.npcs.map(|npcs| npcs as _);
+        Env::new(map, items, tables, npcs)
     }
 }
 
@@ -131,6 +159,14 @@ mod tests {
         }
     }
 
+    struct StubNpcOracle;
+
+    impl NpcOracle for StubNpcOracle {
+        fn template(&self, _template_id: u16) -> Option<NpcTemplate> {
+            Some(NpcTemplate::simple(100, 50))
+        }
+    }
+
     #[test]
     fn env_exposes_backing_oracles() {
         let map = StubMapOracle::new(vec![InitialEntitySpec {
@@ -140,7 +176,8 @@ mod tests {
         }]);
         let items = StubItemOracle;
         let tables = StubTablesOracle;
-        let env = Env::with_all(&map, &items, &tables);
+        let npcs = StubNpcOracle;
+        let env = Env::with_all(&map, &items, &tables, &npcs);
 
         let position = Position::new(0, 0);
         let map = env.map().expect("map oracle should be available");
