@@ -6,7 +6,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, List, ListDirection, ListItem, Paragraph},
 };
 
 use crate::presentation::terminal::Tui;
@@ -197,23 +197,20 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect) {
 }
 
 fn render_messages(frame: &mut Frame, area: ratatui::layout::Rect, messages: &[MessageEntry]) {
-    let mut lines: Vec<Line> = messages
+    let mut items: Vec<ListItem> = messages
         .iter()
-        .map(|entry| {
-            let text = format_message(entry);
-            let style = style_for_level(entry.level);
-            Line::from(Span::styled(text, style))
-        })
+        .map(|entry| ListItem::new(format_message(entry)).style(style_for_level(entry.level)))
         .collect();
 
-    while lines.len() < MESSAGE_PANEL_HEIGHT as usize {
-        lines.push(Line::from(Span::raw("")));
+    while items.len() < MESSAGE_PANEL_HEIGHT as usize {
+        items.push(ListItem::new(""));
     }
 
-    let paragraph =
-        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title("Messages"));
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title("Messages"))
+        .direction(ListDirection::BottomToTop);
 
-    frame.render_widget(paragraph, area);
+    frame.render_widget(list, area);
 }
 
 fn render_resource(resource: &ResourceSnapshot, color: Color) -> Span<'static> {
