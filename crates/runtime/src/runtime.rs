@@ -1,24 +1,22 @@
+//! High-level runtime orchestrator.
+//!
+//! The runtime owns background workers, wires up command/event channels, and
+//! exposes a builder-based API for clients to drive the simulation.
+
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 
-use game_core::{GameConfig, GameState, MapDimensions};
-use std::sync::Arc;
+use game_core::{EntityId, GameConfig, GameState};
 
-use crate::error::Result;
-use crate::event::GameEvent;
-use crate::handle::RuntimeHandle;
-use crate::oracle::{ItemOracleImpl, MapOracleImpl, NpcOracleImpl, OracleManager, TablesOracleImpl};
-use crate::repository::{InMemoryMapRepo, MapRepository};
-use crate::worker::{Command, SimWorker};
+use crate::api::{ActionProvider, GameEvent, ProviderKind, Result, RuntimeError, RuntimeHandle};
+use crate::oracle::OracleManager;
+use crate::workers::{Command, SimulationWorker};
 
-/// Runtime configuration
+/// Runtime configuration shared across the orchestrator and workers.
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
-    /// Game configuration
     pub game_config: GameConfig,
-    /// Event bus buffer size
     pub event_buffer_size: usize,
-    /// Command queue buffer size
     pub command_buffer_size: usize,
 }
 
@@ -32,43 +30,169 @@ impl Default for RuntimeConfig {
     }
 }
 
-/// Main runtime that manages workers and provides handle to clients
+/// Main runtime that orchestrates game simulation
+///
+/// Design: Runtime owns workers and coordinates execution.
+/// [`RuntimeHandle`] provides a cloneable façade for clients.
 pub struct Runtime {
+    // Shared handle (can be cloned for clients)
+    handle: RuntimeHandle,
+
+    // Action providers (injected by user)
+    player_provider: Option<Box<dyn ActionProvider>>,
+    npc_provider: Option<Box<dyn ActionProvider>>,
+
+    // Background workers
     sim_worker_handle: JoinHandle<()>,
-    event_tx: broadcast::Sender<GameEvent>,
+    // Future: proof_worker_handle, submit_worker_handle
 }
 
 impl Runtime {
-    /// Start the runtime with given configuration
-    /// Creates initial state from oracles using GameState::from_initial_entities()
-    pub async fn start(config: RuntimeConfig) -> Result<RuntimeHandle> {
-        // Create channels
-        let (command_tx, command_rx) = mpsc::channel::<Command>(config.command_buffer_size);
-        let (event_tx, _event_rx) = broadcast::channel::<GameEvent>(config.event_buffer_size);
+    /// Create a new runtime builder
+    pub fn builder() -> RuntimeBuilder {
+        RuntimeBuilder::new()
+    }
 
-        // Create repositories (for MVP, use test data)
-        let map_repo = Arc::new(InMemoryMapRepo::test_map(10, 10)) as Arc<dyn MapRepository>;
+    /// Get a cloneable handle to this runtime
+    ///
+    /// The handle can be shared across clients and async tasks.
+    pub fn handle(&self) -> RuntimeHandle {
+        self.handle.clone()
+    }
 
-        // Create oracles with initial entities
-        let map_oracle = Arc::new(MapOracleImpl::test_map_with_entities(
-            map_repo,
-            MapDimensions::new(10, 10),
-        ));
-        let items_oracle = Arc::new(ItemOracleImpl::test_items());
-        let tables_oracle = Arc::new(TablesOracleImpl::test_tables());
-        let npcs_oracle = Arc::new(NpcOracleImpl::test_npcs());
+    /// Subscribe to game events
+    pub fn subscribe_events(&self) -> broadcast::Receiver<GameEvent> {
+        self.handle.subscribe_events()
+    }
 
-        let oracles = OracleManager::new(map_oracle, items_oracle, tables_oracle, npcs_oracle);
+    /// Execute a single turn step
+    ///
+    /// Requires both player and NPC providers to be configured.
+    pub async fn step(&mut self) -> Result<()> {
+        let player_provider =
+            self.player_provider
+                .as_ref()
+                .ok_or_else(|| RuntimeError::ProviderNotSet {
+                    kind: ProviderKind::Player,
+                })?;
+        let npc_provider =
+            self.npc_provider
+                .as_ref()
+                .ok_or_else(|| RuntimeError::ProviderNotSet {
+                    kind: ProviderKind::Npc,
+                })?;
 
-        // Create initial state from oracles
-        let env = oracles.as_game_env();
-        let initial_state = GameState::from_initial_entities(&env)
-            .map_err(|e| crate::error::RuntimeError::ExecuteFailed(format!("Failed to create initial state: {:?}", e)))?;
+        let (entity, snapshot) = self.handle.prepare_next_turn().await?;
 
-        // Spawn simulation worker
-        let worker = SimWorker::new(
+        let action = if entity == EntityId::PLAYER {
+            player_provider.provide_action(entity, &snapshot).await?
+        } else {
+            npc_provider.provide_action(entity, &snapshot).await?
+        };
+
+        self.handle.execute_action(action).await?;
+
+        Ok(())
+    }
+
+    /// Run the game loop continuously
+    pub async fn run(&mut self) -> Result<()> {
+        loop {
+            self.step().await?;
+        }
+    }
+
+    /// Set the player action provider
+    pub fn set_player_provider(&mut self, provider: impl ActionProvider + 'static) {
+        self.player_provider = Some(Box::new(provider));
+    }
+
+    /// Set the NPC action provider
+    pub fn set_npc_provider(&mut self, provider: impl ActionProvider + 'static) {
+        self.npc_provider = Some(Box::new(provider));
+    }
+
+    /// Shutdown the runtime gracefully
+    pub async fn shutdown(self) -> Result<()> {
+        drop(self.handle);
+
+        self.sim_worker_handle
+            .await
+            .map_err(RuntimeError::WorkerJoin)?;
+
+        Ok(())
+    }
+}
+
+/// Builder for [`Runtime`] with flexible configuration.
+pub struct RuntimeBuilder {
+    config: RuntimeConfig,
+    state: Option<GameState>,
+    oracles: Option<OracleManager>,
+    player_provider: Option<Box<dyn ActionProvider>>,
+    npc_provider: Option<Box<dyn ActionProvider>>,
+}
+
+impl RuntimeBuilder {
+    fn new() -> Self {
+        Self {
+            config: RuntimeConfig::default(),
+            state: None,
+            oracles: None,
+            player_provider: None,
+            npc_provider: None,
+        }
+    }
+
+    /// Override runtime configuration
+    pub fn config(mut self, config: RuntimeConfig) -> Self {
+        self.config = config;
+        self
+    }
+
+    /// Provide initial game state
+    pub fn initial_state(mut self, state: GameState) -> Self {
+        self.state = Some(state);
+        self
+    }
+
+    /// Set required oracle manager
+    pub fn oracles(mut self, oracles: OracleManager) -> Self {
+        self.oracles = Some(oracles);
+        self
+    }
+
+    /// Set player action provider (optional)
+    pub fn player_provider(mut self, provider: impl ActionProvider + 'static) -> Self {
+        self.player_provider = Some(Box::new(provider));
+        self
+    }
+
+    /// Set NPC action provider (optional)
+    pub fn npc_provider(mut self, provider: impl ActionProvider + 'static) -> Self {
+        self.npc_provider = Some(Box::new(provider));
+        self
+    }
+
+    /// Build the runtime
+    pub async fn build(self) -> Result<Runtime> {
+        let oracles = self.oracles.ok_or_else(|| RuntimeError::MissingOracles)?;
+
+        let initial_state = if let Some(state) = self.state {
+            state
+        } else {
+            let env = oracles.as_game_env();
+            GameState::from_initial_entities(&env).map_err(RuntimeError::InitialState)?
+        };
+
+        let (command_tx, command_rx) = mpsc::channel::<Command>(self.config.command_buffer_size);
+        let (event_tx, _event_rx) = broadcast::channel::<GameEvent>(self.config.event_buffer_size);
+
+        let handle = RuntimeHandle::new(command_tx, event_tx.clone());
+
+        let worker = SimulationWorker::new(
             initial_state,
-            config.game_config,
+            self.config.game_config,
             oracles,
             command_rx,
             event_tx.clone(),
@@ -78,25 +202,11 @@ impl Runtime {
             worker.run().await;
         });
 
-        let _runtime = Runtime {
+        Ok(Runtime {
+            handle,
+            player_provider: self.player_provider,
+            npc_provider: self.npc_provider,
             sim_worker_handle,
-            event_tx: event_tx.clone(),
-        };
-
-        // Create and return handle
-        Ok(RuntimeHandle::new(command_tx, event_tx))
-    }
-
-    /// Shutdown the runtime gracefully
-    pub async fn shutdown(self) -> Result<()> {
-        // Drop command_tx to signal worker to stop
-        drop(self.event_tx);
-
-        // Wait for worker to finish
-        self.sim_worker_handle
-            .await
-            .map_err(|e| crate::error::RuntimeError::ExecuteFailed(format!("Join error: {}", e)))?;
-
-        Ok(())
+        })
     }
 }

@@ -1,3 +1,4 @@
+//! Balance tables exposed via [`game_core::TablesOracle`].
 use game_core::{AttackProfile, AttackStyle, MovementRules, TablesOracle};
 
 /// TablesOracle implementation with static game rules

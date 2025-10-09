@@ -1,8 +1,15 @@
-use game_core::{EntityId, GameState, Position, StaticTile};
+//! Repository contracts for saving and loading mutable runtime state.
+use game_core::GameState;
 
-use crate::error::Result;
+use crate::api::Result;
 
 /// Repository for game state persistence and loading
+///
+/// This is for DYNAMIC data that changes during gameplay:
+/// - Save/Load game
+/// - Checkpoints for replay
+/// - State snapshots for rollback
+///
 /// Note: Sync for MVP (in-memory). Can be made async later for DB.
 pub trait StateRepository: Send + Sync {
     /// Load the current game state
@@ -10,22 +17,14 @@ pub trait StateRepository: Send + Sync {
 
     /// Save the game state
     fn save(&self, state: &GameState) -> Result<()>;
-}
 
-/// Repository for map data
-/// Note: Sync for MVP (in-memory). Can be made async later for DB.
-pub trait MapRepository: Send + Sync {
-    /// Get tile at position
-    fn get_tile(&self, pos: Position) -> Result<Option<StaticTile>>;
+    /// Save a checkpoint (optional)
+    fn save_checkpoint(&self, _turn: u64, _state: &GameState) -> Result<()> {
+        Ok(())
+    }
 
-    /// Get entities near a position within radius
-    fn get_nearby_entities(&self, center: Position, radius: u32)
-        -> Result<Vec<(EntityId, Position)>>;
-}
-
-/// Repository for NPC data and AI configuration
-/// Note: Sync for MVP (in-memory). Can be made async later.
-pub trait NpcRepository: Send + Sync {
-    /// List all NPC entity IDs
-    fn list_npcs(&self) -> Result<Vec<EntityId>>;
+    /// Load a checkpoint (optional)
+    fn load_checkpoint(&self, _turn: u64) -> Result<Option<GameState>> {
+        Ok(None)
+    }
 }

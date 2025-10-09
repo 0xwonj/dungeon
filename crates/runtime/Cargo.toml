@@ -1,12 +1,11 @@
 [package]
 name = "runtime"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-game-core = { path = "../game-core" }
+game-core = { path = "../game/core" }
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
-
-[dev-dependencies]
-arrayvec = "0.7"
+tracing = "0.1"
+thiserror = "1"

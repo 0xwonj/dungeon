@@ -1,3 +1,9 @@
+//! Runtime wrappers around static game content oracles.
+//!
+//! These implementations expose `game-core` oracle traits and bundle them into
+//! an [`OracleManager`] so the runtime can build [`game_core::Env`] snapshots
+//! on demand. The data is immutable at runtime; dynamic state lives in
+//! repositories or [`game_core::state::GameState`].
 mod items;
 mod map;
 mod npc;

@@ -1,3 +1,4 @@
+//! NPC templates implementing [`game_core::NpcOracle`].
 use game_core::{NpcOracle, NpcTemplate};
 use std::collections::HashMap;
 

@@ -1,8 +1,9 @@
+//! In-memory [`StateRepository`] used for tests and local runs.
 use game_core::GameState;
 use std::sync::RwLock;
 
-use super::StateRepository;
-use crate::error::Result;
+use super::{RepositoryError, StateRepository};
+use crate::api::Result;
 
 /// In-memory implementation of StateRepository
 pub struct InMemoryStateRepo {
@@ -22,14 +23,15 @@ impl StateRepository for InMemoryStateRepo {
         let state = self
             .state
             .read()
-            .map_err(|e| crate::error::RuntimeError::RepositoryError(format!("Lock error: {}", e)))?;
+            .map_err(|_| RepositoryError::LockPoisoned)?;
         Ok(state.clone())
     }
 
     fn save(&self, state: &GameState) -> Result<()> {
-        let mut current = self.state.write().map_err(|e| {
-            crate::error::RuntimeError::RepositoryError(format!("Lock error: {}", e))
-        })?;
+        let mut current = self
+            .state
+            .write()
+            .map_err(|_| RepositoryError::LockPoisoned)?;
         *current = state.clone();
         Ok(())
     }

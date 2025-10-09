@@ -1,3 +1,4 @@
+//! Minimal [`game_core::ItemOracle`] backed by an in-memory map.
 use game_core::{ItemCategory, ItemDefinition, ItemHandle, ItemOracle};
 use std::collections::HashMap;
 
