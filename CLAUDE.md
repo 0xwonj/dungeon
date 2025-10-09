@@ -9,13 +9,12 @@ A deterministic, ZK-provable, turn-based 2D dungeon RPG built with Rust. The gam
 ## Build & Test Commands
 
 - Full workspace build: `cargo build --workspace`
-- Run CLI client: `cargo run -p client-cli`
-- Run UI client: `cargo run -p client-ui`
+- Run CLI client: `cargo run -p client-frontend-cli`
 - All tests: `cargo test --workspace`
 - Single test: `cargo test --workspace <test_name>`
-- Specific crate tests: `cargo test -p game-core`
+- Specific crate tests: `cargo test -p runtime`
 - Format code: `cargo fmt`
-- Lint: `cargo clippy --workspace --all-targets`
+- Lint: `cargo clippy --workspace --all-targets --all-features`
 - API documentation: `cargo doc --no-deps --open`
 
 ## Architecture
@@ -24,43 +23,49 @@ A deterministic, ZK-provable, turn-based 2D dungeon RPG built with Rust. The gam
 
 ```
 crates/
-├── game-core/       # Pure deterministic state machine (no I/O, crypto, or randomness)
-├── types/           # Shared data structures and commitments (minimal dependencies)
-├── proofs/          # Proof system facade (zkVM or Plonkish backends)
-├── server/          # NPC authority services
+├── game/
+│   ├── core/        # Pure deterministic state machine (no I/O, crypto, or randomness)
+│   └── content/     # Static content and fixtures exposed through oracle adapters
+├── runtime/         # Public API (RuntimeHandle), orchestrator, workers, oracles, repositories
+├── zk/              # Proving utilities reused by prover worker and off-chain services
 └── client/
-    ├── runtime/     # Authoritative runtime (lib): oracles, witnesses, proofs, EVM submission
-    ├── cli/         # Headless client (bin)
-    └── ui/          # Bevy visualization (bin)
+    ├── core/        # Shared UX glue: config, messages, view models, oracle factories
+    └── frontend/
+        └── cli/     # Async terminal application, event loop, action provider
 ```
 
-**Dependency flow**: `client`, `server`, `proofs` → depend on `game-core` only. Never the reverse.
+**Dependency flow**: `client`, `runtime`, `zk` → depend on `game/core` only. Never the reverse.
 
-### game-core: Pure State Machine
+### game/core: Pure State Machine
 
-- **Responsibility**: Given `State`, `Env` (read-only oracles), and `Action`, compute next `State`
-- **Entry point**: `reducer::step(env, state, action) -> Result<State, StepError>`
-- **Action system**: All actions implement `ActionTransition` trait with `pre_validate`, `apply`, `post_validate` hooks
-- **Command layer**: High-level `ActionCommand` trait converts ergonomic commands to canonical `Action` variants
-- **Environment**: Oracles for map data (`MapOracle`), item definitions (`ItemOracle`), and game tables (`TablesOracle`) - core reads these but never implements them
+- **Responsibility**: Deterministic rules engine, domain models, and validation schema
+- **Entry point**: `GameEngine::execute(action) -> Result<State, Error>` and `GameEngine::prepare_next_turn()`
+- **Action system**: All actions implement validation and application logic with deterministic state transitions
+- **Environment**: Oracles for map data, item definitions, and game tables - core reads these but never implements them
 - **Constraints**: No I/O, no randomness, no floating point, no time/clocks, no crypto operations
 - **Exports**: All public types re-exported through `lib.rs`
 
 ### runtime: Imperative Shell
 
-- **Responsibility**: Implements oracles, collects witnesses, generates proofs, submits to EVM, manages persistence and secrets
-- **API**: Transport-agnostic ports (`RuntimeControl`, `RuntimeQuery`, `RuntimeEvents`)
-- **Queues**: `sim_queue` → `proof_queue` → `submit_queue` with bounded backpressure
-- **Workers**: Simulation worker (uses `GameEngine`), proof workers, submit worker (EVM transactions)
-- **Repositories**: All storage behind traits (`StateRepo`, `MapRepo`, `NpcRepo`, `ProofRepo`, etc.)
-- **Security boundary**: Secrets (wallet keys, proving keys, RPC tokens) never leave runtime
+- **Responsibility**: Orchestrates game loop, implements oracles, manages persistence, coordinates workers, and emits game events
+- **API**: Public surface consumed by clients (`RuntimeHandle`, `GameEvent`, `ActionProvider`)
+- **Workers**: `SimulationWorker` (owns canonical `GameState`, processes turns and actions), `ProverWorker` (planned), `SubmitWorker` (planned)
+- **Oracles**: Adapters exposing static game content (maps, NPC templates, loot tables) compatible with `game/core`
+- **Repositories**: All storage behind traits (`StateRepository`, etc.) with in-memory implementations for testing
+- **Message-driven**: Workers communicate via `tokio` channels, enabling concurrent pipelines
 
-### Turn System
+### client/core: UX Glue
 
-- Discrete shared turns with fixed phases: Player Action → NPC Actions → End-of-Turn (EoT) ticks
-- Actions are atomic (all-or-nothing)
-- System uses deterministic entity scheduling with tie-breaking rules
-- See `docs/turn_system.md` and `docs/game_design.md` for detailed mechanics
+- **Responsibility**: Shared client logic for configuration, message passing, view models, and oracle factories
+- **Bootstrap**: Provides `RuntimeConfig` and `OracleBundle` construction for runtime initialization
+- **Providers**: Implements `ActionProvider` for human input, AI/NPC scripts, or deterministic replay
+- **Message-driven**: Translates front-end messages into runtime-facing actions
+
+### client/frontend/cli: Terminal Interface
+
+- **Responsibility**: Async terminal application with event loops and action providers
+- **Architecture**: Consumes `client/core` abstractions, subscribes to runtime events, renders state
+- **Interaction**: Collects player commands, validates entity/turn alignment, forwards actions to runtime
 
 ## Code Organization Patterns
 
@@ -80,19 +85,19 @@ crates/
 
 ### State & Actions
 
-- All state mutations flow through `GameEngine::execute`
-- Each `ActionKind` has a corresponding implementation of `ActionTransition`
-- Commands provide ergonomic builder interface but always materialize to canonical `Action` for determinism
-- Witness deltas track which state/env fields were accessed for proof generation
-- `GameEngine` also manages turn scheduling through integrated `TurnSystem` access
+- All state mutations flow through the runtime's `SimulationWorker`, which delegates to `game/core`
+- Actions are validated and executed deterministically within `game/core`
+- Runtime emits `GameEvent` broadcasts for all state transitions (turn completion, action execution, failures)
+- Clients consume events via `RuntimeHandle::subscribe_events()` for UI updates and feedback
+- Turn scheduling is managed by the simulation worker via `prepare_next_turn()` calls
 
 ## Testing
 
 - Unit tests: Fast, isolated, in `#[cfg(test)]` modules
-- Name tests after observable behavior: `handles_empty_party()`, `rejects_invalid_move()`
+- Name tests after observable behavior: `handles_turn_preparation()`, `validates_action_execution()`
 - Integration tests: Cross-crate behavior in `tests/` subdirectories
 - Always run `cargo test --workspace` before pushing
-- Property-based tests for randomized action sequences ensure determinism
+- Test runtime event flows and worker coordination with in-memory repositories
 - Capture regression scenarios from bugs as new test cases
 
 ## Commits
@@ -108,43 +113,50 @@ Keep commits scoped to single concerns. Include doc updates when behavior change
 
 ## Important Design Boundaries
 
-### What belongs in game-core
+### What belongs in game/core
 
-- State data structures
-- Action validation and application logic
-- Turn/phase mechanics
-- Combat, movement, status, inventory rules
-- Deterministic entity behavior
-- Field order for commitments (but not hashing)
+- State data structures and domain models
+- Action validation and execution logic
+- Deterministic state transitions
+- Game rules (combat, movement, inventory, etc.)
+- Pure functional operations (no I/O, no side effects)
+
+### What belongs in game/content
+
+- Static content: maps, NPC templates, loot tables
+- Fixtures and test data
+- Content exposed through oracle adapters
 
 ### What belongs in runtime
 
-- Oracle implementations (backed by repos/caches)
-- Witness transcript assembly
-- Commitment hashing (using core's field order)
-- Proof generation and verification
-- NPC order fetching and signature validation
-- EVM transaction submission
-- State persistence and journaling
-- Configuration and secrets management
+- Runtime orchestration and worker coordination
+- Oracle implementations (backed by repositories)
+- State persistence and checkpoint management
+- Event broadcasting and subscription
+- `RuntimeHandle` API for client interaction
+- Proof generation coordination (ProverWorker - planned)
+- Blockchain submission coordination (SubmitWorker - planned)
 
-### What belongs in client/ui
+### What belongs in client/core
 
-- Bevy rendering and ECS systems
-- User input handling
-- HUD and visual feedback
-- Snapshot consumption and display
+- Runtime configuration and bootstrap logic
+- Oracle factory implementations
+- `ActionProvider` implementations
+- Message types and view models
+- Client-side coordination logic
 
-### What belongs in client/cli
+### What belongs in client/frontend/cli
 
-- Headless subcommands: `play`, `prove`, `submit`, `inspect`, `bench`
-- Automation and scripting interface
-- JSON logging for CI/CD
+- Async terminal application and event loop
+- User input collection and validation
+- Event consumption and display
+- Player action provider implementation
 
-## Security Notes
+## Security & Determinism Notes
 
-- Validate all inputs at oracle ingestion (Merkle proofs, signatures) before data enters repos
-- Never include floating point or nondeterministic operations in game-core
-- Replay protection via monotonic turn index + nullifier registry
-- All cross-component data exchange uses commitments; plaintext is untrusted
-- Record/replay capability for determinism verification
+- All randomness and side-effects are injected at the edges (providers, repositories)
+- `game/core` must remain pure and deterministic (no I/O, no floating point, no time/clocks)
+- Runtime workers communicate via message passing to maintain isolation
+- State transitions are reproducible given the same action sequence
+- Future: Proof generation will validate action sequences without re-running full engine in-circuit
+- Future: Blockchain integration will verify proofs on-chain with minimal gas costs
