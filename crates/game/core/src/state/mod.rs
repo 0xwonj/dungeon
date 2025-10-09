@@ -1,3 +1,8 @@
+//! Authoritative game state representation.
+//!
+//! This module owns the data structures that describe entities, turn
+//! bookkeeping, overlays, and initialization helpers. Runtime layers clone or
+//! query this state but mutate it exclusively through the engine.
 pub mod common;
 pub mod entities;
 pub mod turn;
@@ -86,10 +91,7 @@ impl GameState {
                     state.turn.active_actors.insert(spec.id);
 
                     // Add player to tile occupancy
-                    state
-                        .world
-                        .tile_map
-                        .add_occupant(spec.position, spec.id);
+                    state.world.tile_map.add_occupant(spec.position, spec.id);
                 }
 
                 InitialEntityKind::Npc { template } => {
@@ -116,10 +118,7 @@ impl GameState {
                         .map_err(|_| InitializationError::TooManyNpcs)?;
 
                     // Add NPC to tile occupancy
-                    state
-                        .world
-                        .tile_map
-                        .add_occupant(spec.position, spec.id);
+                    state.world.tile_map.add_occupant(spec.position, spec.id);
                 }
 
                 InitialEntityKind::Prop { kind, is_active } => {
@@ -132,10 +131,7 @@ impl GameState {
                         .map_err(|_| InitializationError::TooManyProps)?;
 
                     // Props also occupy tiles
-                    state
-                        .world
-                        .tile_map
-                        .add_occupant(spec.position, spec.id);
+                    state.world.tile_map.add_occupant(spec.position, spec.id);
                 }
 
                 InitialEntityKind::Item { handle } => {
@@ -157,12 +153,23 @@ impl GameState {
 }
 
 /// Errors that can occur during initial state creation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum InitializationError {
+    #[error("map oracle not available")]
     MissingMapOracle,
+
+    #[error("npc oracle not available")]
     MissingNpcOracle,
+
+    #[error("unknown npc template id: {0}")]
     UnknownNpcTemplate(u16),
+
+    #[error("too many npcs")]
     TooManyNpcs,
+
+    #[error("too many props")]
     TooManyProps,
+
+    #[error("too many items")]
     TooManyItems,
 }

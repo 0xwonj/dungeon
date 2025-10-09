@@ -9,6 +9,16 @@ pub enum TransitionPhase {
     PostValidate,
 }
 
+impl TransitionPhase {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TransitionPhase::PreValidate => "pre_validate",
+            TransitionPhase::Apply => "apply",
+            TransitionPhase::PostValidate => "post_validate",
+        }
+    }
+}
+
 /// Associates a transition phase with the underlying error.
 #[derive(Clone, Debug)]
 pub struct TransitionPhaseError<E> {
@@ -22,11 +32,26 @@ impl<E> TransitionPhaseError<E> {
     }
 }
 
+impl<E: std::fmt::Display> std::fmt::Display for TransitionPhaseError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} failed: {}", self.phase.as_str(), self.error)
+    }
+}
+
+impl<E: std::fmt::Display + std::fmt::Debug> std::error::Error for TransitionPhaseError<E> {}
+
 /// Errors surfaced while executing an action through the game engine.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum ExecuteError {
+    #[error("move action failed: {0}")]
     Move(TransitionPhaseError<<MoveAction as ActionTransition>::Error>),
+
+    #[error("attack action failed: {0}")]
     Attack(TransitionPhaseError<<AttackAction as ActionTransition>::Error>),
+
+    #[error("use item action failed: {0}")]
     UseItem(TransitionPhaseError<<UseItemAction as ActionTransition>::Error>),
+
+    #[error("interact action failed: {0}")]
     Interact(TransitionPhaseError<<InteractAction as ActionTransition>::Error>),
 }

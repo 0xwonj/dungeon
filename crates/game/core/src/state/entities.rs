@@ -89,15 +89,31 @@ impl ActorState {
 }
 
 /// Simple combat/resource stats for an actor.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActorStats {
     pub health: ResourceMeter,
     pub energy: ResourceMeter,
+    /// Speed stat affecting turn scheduling. 100 = baseline, higher = faster.
+    pub speed: u16,
 }
 
 impl ActorStats {
-    pub fn new(health: ResourceMeter, energy: ResourceMeter) -> Self {
-        Self { health, energy }
+    pub fn new(health: ResourceMeter, energy: ResourceMeter, speed: u16) -> Self {
+        Self {
+            health,
+            energy,
+            speed,
+        }
+    }
+}
+
+impl Default for ActorStats {
+    fn default() -> Self {
+        Self {
+            health: ResourceMeter::default(),
+            energy: ResourceMeter::default(),
+            speed: 100, // baseline speed
+        }
     }
 }
 

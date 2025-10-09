@@ -12,6 +12,10 @@ pub struct TurnState {
     /// Set of entities that are currently active (scheduled to act).
     /// This is the authoritative source for ZK proofs to verify all active actors were considered.
     pub active_actors: HashSet<EntityId>,
+
+    /// The entity currently taking their turn.
+    /// Updated by prepare_next_turn() before each action.
+    pub current_actor: EntityId,
 }
 
 impl TurnState {
@@ -20,6 +24,7 @@ impl TurnState {
         Self {
             clock: Tick::ZERO,
             active_actors: HashSet::new(),
+            current_actor: EntityId::PLAYER, // Default to player
         }
     }
 }

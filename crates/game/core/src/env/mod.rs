@@ -1,3 +1,8 @@
+//! Traits describing read-only world data.
+//!
+//! Oracles expose static map geometry, item definitions, rule tables, and NPC
+//! templates. The [`Env`] aggregate bundles them so the engine can access
+//! everything it needs without hard coupling to concrete implementations.
 mod items;
 mod map;
 mod npc;
@@ -25,13 +30,8 @@ where
     npcs: Option<&'a N>,
 }
 
-pub type GameEnv<'a> = Env<
-    'a,
-    dyn MapOracle + 'a,
-    dyn ItemOracle + 'a,
-    dyn TablesOracle + 'a,
-    dyn NpcOracle + 'a,
->;
+pub type GameEnv<'a> =
+    Env<'a, dyn MapOracle + 'a, dyn ItemOracle + 'a, dyn TablesOracle + 'a, dyn NpcOracle + 'a>;
 
 impl<'a, M, I, T, N> Env<'a, M, I, T, N>
 where

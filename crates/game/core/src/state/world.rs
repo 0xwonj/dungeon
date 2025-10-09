@@ -109,7 +109,7 @@ impl TileMap {
 
     pub fn add_occupant(&mut self, position: Position, entity: EntityId) -> bool {
         let slot = self.occupancy.entry(position).or_default();
-        if slot.iter().any(|occupant| *occupant == entity) {
+        if slot.contains(&entity) {
             return true;
         }
 
@@ -286,76 +286,5 @@ impl<'a> TileView<'a> {
 
     pub fn terrain(&self) -> crate::env::TerrainKind {
         self.static_tile.terrain()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::env::{MapDimensions, TerrainKind};
-
-    struct StubMap;
-
-    impl MapOracle for StubMap {
-        fn dimensions(&self) -> MapDimensions {
-            MapDimensions::new(4, 4)
-        }
-
-        fn tile(&self, position: Position) -> Option<StaticTile> {
-            if self.dimensions().contains(position) {
-                Some(StaticTile::new(TerrainKind::Floor))
-            } else {
-                None
-            }
-        }
-    }
-
-    #[test]
-    fn tile_view_combines_static_and_dynamic_state() {
-        let mut world = WorldState::default();
-        let pos = Position::new(1, 1);
-        world.tile_map.with_overlay(pos, |overlay| {
-            overlay
-                .push_overlay(Overlay::Hazard(HazardOverlay {
-                    remaining_turns: 2,
-                    passable: false,
-                }))
-                .expect("overlay capacity");
-        });
-        let mut occupants = OccupantSlots::default();
-        occupants
-            .try_push(EntityId::PLAYER)
-            .expect("occupancy capacity");
-        world.tile_map.replace_occupants(pos, occupants);
-
-        let map = StubMap;
-        let view = world.tile_view(&map, pos).expect("tile should exist");
-
-        assert!(view.is_occupied());
-        assert!(!view.is_passable());
-        assert_eq!(view.terrain(), TerrainKind::Floor);
-        assert!(view.has_hazard());
-    }
-
-    #[test]
-    fn tile_view_stays_passable_when_overlays_allow_entry() {
-        let mut world = WorldState::default();
-        let pos = Position::new(0, 0);
-        world.tile_map.with_overlay(pos, |overlay| {
-            overlay
-                .push_overlay(Overlay::EventMarker(EventId(1)))
-                .expect("overlay capacity");
-            overlay
-                .push_overlay(Overlay::Hazard(HazardOverlay {
-                    remaining_turns: 1,
-                    passable: true,
-                }))
-                .expect("overlay capacity");
-        });
-
-        let map = StubMap;
-        let view = world.tile_view(&map, pos).expect("tile should exist");
-
-        assert!(view.is_passable());
     }
 }

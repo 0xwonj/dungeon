@@ -117,7 +117,6 @@ mod tests {
         assert_eq!(post.get(), 1);
     }
 
-
     #[derive(Debug)]
     struct StubMap;
 

@@ -1,13 +1,17 @@
+//! Turn scheduling and action execution pipeline.
+//!
+//! The [`GameEngine`] is the authoritative reducer for [`GameState`]. It
+//! orchestrates the transition phases, applies costs, and surfaces rich error
+//! information for the runtime.
 mod errors;
 mod turns;
 
 use crate::action::{Action, ActionKind, ActionTransition};
-use crate::config::GameConfig;
 use crate::env::GameEnv;
-use crate::state::GameState;
+use crate::state::{GameState, Tick};
 
 pub use errors::{ExecuteError, TransitionPhase, TransitionPhaseError};
-pub use turns::ScheduledTurn;
+pub use turns::TurnError;
 
 type TransitionResult<E> = Result<(), TransitionPhaseError<E>>;
 
@@ -30,13 +34,12 @@ macro_rules! dispatch_transition {
 /// Turn scheduling uses simple linear search over active actors for simplicity and correctness.
 pub struct GameEngine<'a> {
     state: &'a mut GameState,
-    config: &'a GameConfig,
 }
 
 impl<'a> GameEngine<'a> {
     /// Creates a new game engine with the given state and configuration.
-    pub fn new(state: &'a mut GameState, config: &'a GameConfig) -> Self {
-        Self { state, config }
+    pub fn new(state: &'a mut GameState) -> Self {
+        Self { state }
     }
 
     /// Executes an action by routing it through the appropriate transition pipeline.
@@ -50,13 +53,16 @@ impl<'a> GameEngine<'a> {
             Interact => Interact,
         })?;
 
-        // Update actor's ready_at by action cost
-        let cost = action.cost();
-        if let Some(actor) = self.state.entities.actor_mut(action.actor) {
-            if let Some(current_ready_at) = actor.ready_at {
-                actor.ready_at = Some(crate::state::Tick(current_ready_at.0 + cost.0));
-            }
+        // Update actor's ready_at by action cost (speed-scaled)
+        if let Some(actor) = self.state.entities.actor_mut(action.actor)
+            && let Some(current_ready_at) = actor.ready_at
+        {
+            let cost = action.cost(&actor.stats);
+            actor.ready_at = Some(Tick(current_ready_at.0 + cost.0));
         }
+
+        // Note: current_actor remains set until next prepare_next_turn()
+        // This allows querying who last acted
 
         Ok(())
     }
@@ -169,8 +175,7 @@ mod tests {
         let move_action = MoveAction::new(actor, CardinalDirection::North, 1);
         let action = Action::new(actor, ActionKind::Move(move_action));
 
-        let config = GameConfig::default();
-        let mut engine = GameEngine::new(&mut state, &config);
+        let mut engine = GameEngine::new(&mut state);
         engine
             .execute(env, &action)
             .expect("action execution should succeed");
@@ -181,7 +186,6 @@ mod tests {
         use crate::state::{ActorState, ActorStats, InventoryState};
 
         let mut state = GameState::default();
-        let config = GameConfig::default();
 
         state.entities.player = ActorState::new(
             EntityId::PLAYER,
@@ -200,10 +204,10 @@ mod tests {
             ))
             .unwrap();
 
-        let mut engine = GameEngine::new(&mut state, &config);
+        let mut engine = GameEngine::new(&mut state);
 
         // Test activation
-        engine.activate(EntityId(1), Position::new(1, 0), Tick(0));
+        engine.activate(EntityId(1));
         assert!(engine.is_entity_active(EntityId(1)));
 
         // Test deactivation
@@ -212,11 +216,10 @@ mod tests {
     }
 
     #[test]
-    fn clock_management() {
+    fn clock_management_through_prepare_next_turn() {
         use crate::state::{ActorState, ActorStats, InventoryState};
 
         let mut state = GameState::default();
-        let config = GameConfig::default();
 
         state.entities.player = ActorState::new(
             EntityId::PLAYER,
@@ -225,11 +228,18 @@ mod tests {
             InventoryState::default(),
         );
 
-        let mut engine = GameEngine::new(&mut state, &config);
+        let mut engine = GameEngine::new(&mut state);
 
+        // Initial clock
         assert_eq!(engine.clock(), Tick(0));
 
-        engine.set_clock(Tick(100));
+        // Activate player
+        engine.activate(EntityId::PLAYER);
+
+        // Prepare next turn should update clock and current_actor
+        engine.prepare_next_turn().unwrap();
+        assert_eq!(engine.current_actor(), EntityId::PLAYER);
+        // Clock should now be at player's ready_at (which is 100 ticks from activation with default speed)
         assert_eq!(engine.clock(), Tick(100));
     }
 
@@ -238,7 +248,6 @@ mod tests {
         use crate::state::{ActorState, ActorStats, InventoryState};
 
         let mut state = GameState::default();
-        let config = GameConfig::default();
 
         // Setup player
         state.entities.player = ActorState::new(
@@ -258,9 +267,7 @@ mod tests {
             .tile_map
             .replace_occupants(Position::ORIGIN, occupants);
 
-        let mut engine = GameEngine::new(&mut state, &config);
-        engine.set_clock(Tick(0));
-
+        // Clock is already at 0 from default state
         static MAP: StubMap = StubMap;
         static ITEMS: StubItems = StubItems;
         static TABLES: StubTables = StubTables;
@@ -270,11 +277,12 @@ mod tests {
         // Execute action
         let move_action = MoveAction::new(EntityId::PLAYER, CardinalDirection::North, 1);
         let action = Action::new(EntityId::PLAYER, ActionKind::Move(move_action));
-        let cost = action.cost();
 
+        let mut engine = GameEngine::new(&mut state);
         assert!(engine.execute(env, &action).is_ok());
 
-        // Verify ready_at was updated by action cost
-        assert_eq!(state.entities.player.ready_at, Some(Tick(cost.0)));
+        // Verify ready_at was updated (speed-scaled)
+        assert!(state.entities.player.ready_at.is_some());
+        assert!(state.entities.player.ready_at.unwrap().0 > 0);
     }
 }

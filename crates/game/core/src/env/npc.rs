@@ -14,11 +14,13 @@ impl NpcTemplate {
     }
 
     /// Creates a simple template with given HP/energy and empty inventory.
+    /// Uses default speed of 100.
     pub fn simple(max_health: u16, max_energy: u16) -> Self {
         Self {
             stats: ActorStats::new(
                 ResourceMeter::new(max_health as u32, max_health as u32),
                 ResourceMeter::new(max_energy as u32, max_energy as u32),
+                100, // default speed
             ),
             inventory: InventoryState::default(),
         }
