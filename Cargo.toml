@@ -3,7 +3,7 @@ members = [
     "crates/game/core",
     "crates/game/content",
     "crates/runtime",
-    "crates/proofs",
+    "crates/zk",
     "crates/client/core",
     "crates/client/frontend/core",
     "crates/client/frontend/cli",
