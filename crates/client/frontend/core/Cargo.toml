@@ -1,0 +1,10 @@
+[package]
+name = "frontend-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+game-core = { path = "../../../game/core" }
+runtime = { path = "../../../runtime" }

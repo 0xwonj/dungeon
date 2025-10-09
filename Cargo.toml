@@ -4,7 +4,8 @@ members = [
     "crates/game/content",
     "crates/runtime",
     "crates/proofs",
-    "crates/client/cli",
-    "crates/client/ui",
+    "crates/client/core",
+    "crates/client/frontend/core",
+    "crates/client/frontend/cli",
 ]
 resolver = "2"
