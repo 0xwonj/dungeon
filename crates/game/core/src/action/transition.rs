@@ -68,9 +68,10 @@ mod tests {
         let action = NoopAction;
 
         action.pre_validate(&state, &env).unwrap();
-        let mut reducer = StateReducer::new(&mut state);
-        action.apply(&mut reducer, &env).unwrap();
-        drop(reducer);
+        {
+            let mut reducer = StateReducer::new(&mut state);
+            action.apply(&mut reducer, &env).unwrap();
+        }
         action.post_validate(&state, &env).unwrap();
     }
 
@@ -120,9 +121,10 @@ mod tests {
         assert_eq!(pre.get(), 1);
         assert_eq!(post.get(), 0);
 
-        let mut reducer = StateReducer::new(&mut state);
-        action.apply(&mut reducer, &env).unwrap();
-        drop(reducer);
+        {
+            let mut reducer = StateReducer::new(&mut state);
+            action.apply(&mut reducer, &env).unwrap();
+        }
         assert_eq!(pre.get(), 1);
         assert_eq!(post.get(), 0);
 
