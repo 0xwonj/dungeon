@@ -133,7 +133,7 @@ impl SimulationWorker {
                 // Publish ActionExecuted event with delta
                 let _ = self.event_tx.send(GameEvent::ActionExecuted {
                     action: action.clone(),
-                    delta,
+                    delta: Box::new(delta),
                     clock,
                 });
                 Ok(())

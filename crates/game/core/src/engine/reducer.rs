@@ -127,6 +127,8 @@ impl<'a> WorldReducer<'a> {
     }
 
     pub fn clear_overlays(&mut self, position: Position) {
-        self.world.tile_map.with_overlay(position, |set| set.clear());
+        self.world
+            .tile_map
+            .with_overlay(position, |set| set.clear());
     }
 }

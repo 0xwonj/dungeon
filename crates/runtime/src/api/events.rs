@@ -12,7 +12,7 @@ pub enum GameEvent {
     /// An action was executed with resulting state changes
     ActionExecuted {
         action: Action,
-        delta: StateDelta,
+        delta: Box<StateDelta>,
         clock: Tick,
     },
     /// An action failed during execution pipeline
