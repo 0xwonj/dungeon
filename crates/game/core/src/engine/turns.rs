@@ -16,41 +16,6 @@ impl<'a> GameEngine<'a> {
         self.state.turn.clock
     }
 
-    /// Checks if an entity is currently scheduled.
-    pub fn is_entity_active(&self, entity: EntityId) -> bool {
-        self.state.turn.active_actors.contains(&entity)
-    }
-
-    /// Activates an entity for scheduling, adding it to the active set.
-    /// The initial ready_at is calculated based on the actor's speed stat using Wait action cost.
-    pub fn activate(&mut self, entity: EntityId) {
-        let current_clock = self.state.turn.clock;
-
-        if let Some(actor) = self.state.entities.actor_mut(entity) {
-            // Use the same calculation as Wait action for consistency
-            let delay = crate::action::Action::calculate_delay(
-                &crate::action::ActionKind::Wait,
-                &actor.stats,
-            );
-
-            actor.ready_at = Some(Tick(current_clock.0 + delay.0));
-        }
-
-        self.state.turn.active_actors.insert(entity);
-    }
-
-    /// Deactivates an entity, removing it from scheduling and the active set.
-    /// Returns true if the entity was active.
-    pub fn deactivate(&mut self, entity: EntityId) -> bool {
-        let was_active = self.state.turn.active_actors.remove(&entity);
-
-        if let Some(actor) = self.state.entities.actor_mut(entity) {
-            actor.ready_at = None;
-        }
-
-        was_active
-    }
-
     /// Prepares for the next turn by selecting the next entity and updating the clock.
     /// After calling this, use current_actor() to get which entity should act.
     /// The caller must then provide an action via execute().

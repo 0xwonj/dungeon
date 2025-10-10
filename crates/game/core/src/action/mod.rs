@@ -64,18 +64,6 @@ impl Action {
         let speed = stats.speed.max(1) as u64;
         Tick(base_cost * 100 / speed)
     }
-
-    /// Calculates the delay for a given action kind and stats.
-    /// Used by activate() to initialize ready_at.
-    pub fn calculate_delay(kind: &ActionKind, stats: &crate::state::ActorStats) -> Tick {
-        let base_cost = match kind {
-            ActionKind::Wait => 100,
-            _ => 100, // Default for other actions
-        };
-
-        let speed = stats.speed.max(1) as u64;
-        Tick(base_cost * 100 / speed)
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

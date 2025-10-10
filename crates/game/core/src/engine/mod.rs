@@ -262,68 +262,6 @@ mod tests {
     }
 
     #[test]
-    fn activate_and_deactivate_entities() {
-        use crate::state::{ActorState, ActorStats, InventoryState};
-
-        let mut state = GameState::default();
-
-        state.entities.player = ActorState::new(
-            EntityId::PLAYER,
-            Position::ORIGIN,
-            ActorStats::default(),
-            InventoryState::default(),
-        );
-        state
-            .entities
-            .npcs
-            .push(ActorState::new(
-                EntityId(1),
-                Position::new(1, 0),
-                ActorStats::default(),
-                InventoryState::default(),
-            ))
-            .unwrap();
-
-        let mut engine = GameEngine::new(&mut state);
-
-        // Test activation
-        engine.activate(EntityId(1));
-        assert!(engine.is_entity_active(EntityId(1)));
-
-        // Test deactivation
-        assert!(engine.deactivate(EntityId(1)));
-        assert!(!engine.is_entity_active(EntityId(1)));
-    }
-
-    #[test]
-    fn clock_management_through_prepare_next_turn() {
-        use crate::state::{ActorState, ActorStats, InventoryState};
-
-        let mut state = GameState::default();
-
-        state.entities.player = ActorState::new(
-            EntityId::PLAYER,
-            Position::ORIGIN,
-            ActorStats::default(),
-            InventoryState::default(),
-        );
-
-        let mut engine = GameEngine::new(&mut state);
-
-        // Initial clock
-        assert_eq!(engine.clock(), Tick(0));
-
-        // Activate player
-        engine.activate(EntityId::PLAYER);
-
-        // Prepare next turn should update clock and current_actor
-        engine.prepare_next_turn().unwrap();
-        assert_eq!(engine.current_actor(), EntityId::PLAYER);
-        // Clock should now be at player's ready_at (which is 100 ticks from activation with default speed)
-        assert_eq!(engine.clock(), Tick(100));
-    }
-
-    #[test]
     fn execute_action_and_update_ready_at() {
         use crate::state::{ActorState, ActorStats, InventoryState};
 

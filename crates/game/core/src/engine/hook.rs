@@ -78,11 +78,9 @@ impl PostExecutionHook for ActivationHook {
                 if !is_active {
                     state.turn.active_actors.insert(entity_id);
 
-                    // Set initial ready_at using Wait action cost
-                    let delay = crate::action::Action::calculate_delay(
-                        &crate::action::ActionKind::Wait,
-                        &stats,
-                    );
+                    // Set initial ready_at using Wait action cost (100 ticks scaled by speed)
+                    let speed = stats.speed.max(1) as u64;
+                    let delay = crate::state::Tick(100 * 100 / speed);
                     if let Some(actor) = state.entities.actor_mut(entity_id) {
                         actor.ready_at = Some(crate::state::Tick(clock.0 + delay.0));
                     }
@@ -135,10 +133,8 @@ impl PostExecutionHook for ActionCostHook {
 /// Returns the default set of hooks that should be applied after every action execution.
 /// Hooks are returned in an Arc for efficient sharing without cloning.
 pub fn default_hooks() -> Arc<[Arc<dyn PostExecutionHook>]> {
-    let mut hooks: Vec<Arc<dyn PostExecutionHook>> = vec![
-        Arc::new(ActionCostHook),
-        Arc::new(ActivationHook),
-    ];
+    let mut hooks: Vec<Arc<dyn PostExecutionHook>> =
+        vec![Arc::new(ActionCostHook), Arc::new(ActivationHook)];
 
     // Sort by priority (lower values first)
     hooks.sort_by_key(|h| h.priority());
