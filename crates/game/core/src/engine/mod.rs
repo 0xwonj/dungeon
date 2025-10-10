@@ -372,7 +372,9 @@ mod tests {
         let action = Action::new(EntityId::PLAYER, ActionKind::Move(move_action));
 
         let mut engine = GameEngine::new(&mut state);
-        let _ = engine.execute(env, &action).expect("should execute successfully");
+        let _ = engine
+            .execute(env, &action)
+            .expect("should execute successfully");
 
         // Verify ready_at was updated (speed-scaled)
         assert!(state.entities.player.ready_at.is_some());

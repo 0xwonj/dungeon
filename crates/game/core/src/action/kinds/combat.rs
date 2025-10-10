@@ -47,11 +47,7 @@ impl ActionTransition for AttackAction {
         crate::state::Tick(15)
     }
 
-    fn apply(
-        &self,
-        _state: &mut GameState,
-        _env: &GameEnv<'_>,
-    ) -> Result<(), Self::Error> {
+    fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
         Ok(())
     }
 }

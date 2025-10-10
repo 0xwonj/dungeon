@@ -36,11 +36,7 @@ impl ActionTransition for InteractAction {
         crate::state::Tick(5)
     }
 
-    fn apply(
-        &self,
-        _state: &mut GameState,
-        _env: &GameEnv<'_>,
-    ) -> Result<(), Self::Error> {
+    fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
         Ok(())
     }
 }

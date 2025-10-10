@@ -67,14 +67,14 @@ where
         }
     }
 
-    pub fn with_all(
-        map: &'a M,
-        items: &'a I,
-        tables: &'a T,
-        npcs: &'a N,
-        config: &'a C,
-    ) -> Self {
-        Self::new(Some(map), Some(items), Some(tables), Some(npcs), Some(config))
+    pub fn with_all(map: &'a M, items: &'a I, tables: &'a T, npcs: &'a N, config: &'a C) -> Self {
+        Self::new(
+            Some(map),
+            Some(items),
+            Some(tables),
+            Some(npcs),
+            Some(config),
+        )
     }
 
     pub fn empty() -> Self {

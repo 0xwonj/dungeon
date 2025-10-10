@@ -59,11 +59,7 @@ impl ActionTransition for UseItemAction {
         crate::state::Tick(8)
     }
 
-    fn apply(
-        &self,
-        _state: &mut GameState,
-        _env: &GameEnv<'_>,
-    ) -> Result<(), Self::Error> {
+    fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
         Ok(())
     }
 }
