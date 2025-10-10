@@ -15,14 +15,18 @@ pub use action::{
     MoveAction, MoveCommand, MoveError, UseItemAction, UseItemCommand,
 };
 pub use config::GameConfig;
-pub use engine::{ExecuteError, GameEngine, TransitionPhase, TransitionPhaseError, TurnError};
+pub use engine::{
+    ExecuteError, GameEngine, StateReducer, TransitionPhase, TransitionPhaseError, TurnError,
+};
 pub use env::{
     AttackProfile, Env, GameEnv, InitialEntityKind, InitialEntitySpec, ItemCategory,
     ItemDefinition, ItemOracle, MapDimensions, MapOracle, MovementRules, NpcOracle, NpcTemplate,
     StaticTile, TablesOracle, TerrainKind,
 };
 pub use state::{
-    ActorState, ActorStats, EntitiesState, EntityId, EventId, GameState, HazardOverlay,
-    InitializationError, InventoryState, ItemHandle, ItemState, Overlay, OverlaySet, Position,
-    PropKind, PropState, ResourceMeter, Tick, TileMap, TileView, TurnState, WorldState,
+    ActorPatch, ActorState, ActorStats, CollectionDelta, EntitiesDelta, EntitiesState, EntityId,
+    EventId, GameState, HazardOverlay, InitializationError, InventoryState, ItemHandle, ItemPatch,
+    ItemState, OccupancyPatch, Overlay, OverlayPatch, OverlaySet, Position, PropKind, PropPatch,
+    PropState, ResourceMeter, StateDelta, Tick, TileMap, TileView, TurnDelta, TurnState,
+    WorldDelta, WorldState,
 };

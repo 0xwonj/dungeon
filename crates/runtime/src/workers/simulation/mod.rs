@@ -122,17 +122,18 @@ impl SimulationWorker {
 
         let clock = self.state.turn.clock;
 
-        match staging_engine.execute(env, &action) {
-            Ok(()) => {
+        match staging_engine.execute_with_delta(env, &action) {
+            Ok(delta) => {
                 // Commit staged changes
                 self.state = working_state;
 
                 // Update active entity sets after applying the action
                 self.maintain_active_set()?;
 
-                // Publish ActionExecuted event
+                // Publish ActionExecuted event with delta
                 let _ = self.event_tx.send(GameEvent::ActionExecuted {
                     action: action.clone(),
+                    delta,
                     clock,
                 });
                 Ok(())

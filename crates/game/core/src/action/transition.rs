@@ -1,3 +1,4 @@
+use crate::engine::StateReducer;
 use crate::env::GameEnv;
 use crate::state::{GameState, Tick};
 
@@ -20,9 +21,9 @@ pub trait ActionTransition {
         Ok(())
     }
 
-    /// Applies the action to the state. Implementations should assume that
+    /// Applies the action via [`StateReducer`]. Implementations should assume that
     /// `pre_validate` has already run successfully.
-    fn apply(&self, state: &mut GameState, env: &GameEnv<'_>) -> Result<(), Self::Error>;
+    fn apply(&self, reducer: &mut StateReducer<'_>, env: &GameEnv<'_>) -> Result<(), Self::Error>;
 
     /// Validates post-conditions using the state **after** mutation.
     fn post_validate(&self, _state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
@@ -35,6 +36,7 @@ mod tests {
     use core::cell::Cell;
 
     use super::ActionTransition;
+    use crate::engine::StateReducer;
     use crate::env::{
         AttackProfile, Env, GameEnv, ItemCategory, ItemDefinition, ItemOracle, MapDimensions,
         MapOracle, MovementRules, StaticTile, TablesOracle, TerrainKind,
@@ -50,7 +52,11 @@ mod tests {
             Tick(1)
         }
 
-        fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
+        fn apply(
+            &self,
+            _reducer: &mut StateReducer<'_>,
+            _env: &GameEnv<'_>,
+        ) -> Result<(), Self::Error> {
             Ok(())
         }
     }
@@ -62,7 +68,9 @@ mod tests {
         let action = NoopAction;
 
         action.pre_validate(&state, &env).unwrap();
-        action.apply(&mut state, &env).unwrap();
+        let mut reducer = StateReducer::new(&mut state);
+        action.apply(&mut reducer, &env).unwrap();
+        drop(reducer);
         action.post_validate(&state, &env).unwrap();
     }
 
@@ -83,7 +91,11 @@ mod tests {
             Ok(())
         }
 
-        fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
+        fn apply(
+            &self,
+            _reducer: &mut StateReducer<'_>,
+            _env: &GameEnv<'_>,
+        ) -> Result<(), Self::Error> {
             Ok(())
         }
 
@@ -108,7 +120,9 @@ mod tests {
         assert_eq!(pre.get(), 1);
         assert_eq!(post.get(), 0);
 
-        action.apply(&mut state, &env).unwrap();
+        let mut reducer = StateReducer::new(&mut state);
+        action.apply(&mut reducer, &env).unwrap();
+        drop(reducer);
         assert_eq!(pre.get(), 1);
         assert_eq!(post.get(), 0);
 

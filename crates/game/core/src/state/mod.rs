@@ -3,20 +3,20 @@
 //! This module owns the data structures that describe entities, turn
 //! bookkeeping, overlays, and initialization helpers. Runtime layers clone or
 //! query this state but mutate it exclusively through the engine.
-pub mod common;
-pub mod entities;
-pub mod turn;
-pub mod world;
+pub mod delta;
+pub mod types;
 
 use crate::env::{GameEnv, InitialEntityKind, MapOracle};
 pub use bounded_vector::BoundedVec;
-pub use common::{EntityId, Position, ResourceMeter, Tick};
-pub use entities::{
-    ActorState, ActorStats, EntitiesState, InventoryState, ItemHandle, ItemState, PropKind,
-    PropState,
+pub use delta::{
+    ActorPatch, CollectionDelta, EntitiesDelta, ItemPatch, OccupancyPatch, OverlayPatch, PropPatch,
+    StateDelta, TurnDelta, WorldDelta,
 };
-pub use turn::TurnState;
-pub use world::{EventId, HazardOverlay, Overlay, OverlaySet, TileMap, TileView, WorldState};
+pub use types::{
+    ActorState, ActorStats, EntitiesState, EntityId, EventId, HazardOverlay, InventoryState,
+    ItemHandle, ItemState, Overlay, OverlaySet, Position, PropKind, PropState, ResourceMeter, Tick,
+    TileMap, TileView, TurnState, WorldState,
+};
 
 /// Canonical snapshot of the deterministic game state.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]

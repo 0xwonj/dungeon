@@ -1,8 +1,9 @@
 use core::convert::Infallible;
 
 use crate::action::ActionTransition;
+use crate::engine::StateReducer;
 use crate::env::GameEnv;
-use crate::state::{EntityId, GameState};
+use crate::state::EntityId;
 
 /// Offensive action against a target entity.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,7 +48,11 @@ impl ActionTransition for AttackAction {
         crate::state::Tick(15)
     }
 
-    fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
+    fn apply(
+        &self,
+        _reducer: &mut StateReducer<'_>,
+        _env: &GameEnv<'_>,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 }

@@ -43,8 +43,13 @@ impl EventConsumer for CliEventConsumer {
     fn on_event(&mut self, event: &GameEvent) -> EventImpact {
         match event {
             GameEvent::TurnCompleted { .. } => EventImpact::redraw(),
-            GameEvent::ActionExecuted { action, clock } => {
+            GameEvent::ActionExecuted {
+                action,
+                delta: _,
+                clock,
+            } => {
                 self.push_action(action, clock.0);
+                // TODO: Use delta for more detailed feedback (e.g., "HP -5", "Item acquired")
                 EventImpact::redraw()
             }
             GameEvent::ActionFailed {
@@ -56,7 +61,6 @@ impl EventConsumer for CliEventConsumer {
                 self.push_failure(action, phase.as_str(), error, clock.0);
                 EventImpact::redraw()
             }
-            GameEvent::StateChanged => EventImpact::redraw(),
         }
     }
 

@@ -97,12 +97,11 @@ where
     }
 
     fn collect_events(&mut self, initial: GameEvent) -> bool {
-        let mut should_render = self.consumer.on_event(&initial).requires_redraw
-            || matches!(initial, GameEvent::StateChanged);
+        let mut should_render = self.consumer.on_event(&initial).requires_redraw;
 
         while let Ok(event) = self.event_rx.try_recv() {
             let impact = self.consumer.on_event(&event);
-            should_render |= impact.requires_redraw || matches!(event, GameEvent::StateChanged);
+            should_render |= impact.requires_redraw;
         }
 
         should_render

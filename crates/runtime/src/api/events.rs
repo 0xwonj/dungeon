@@ -2,15 +2,19 @@
 //!
 //! Consumers subscribe to [`GameEvent`] to react to state changes without
 //! blocking the worker loop.
-use game_core::{Action, EntityId, Tick, engine::TransitionPhase};
+use game_core::{Action, EntityId, StateDelta, Tick, engine::TransitionPhase};
 
 /// Events emitted by the runtime during game simulation
 #[derive(Debug, Clone)]
 pub enum GameEvent {
     /// A turn was completed by an entity
     TurnCompleted { entity: EntityId },
-    /// An action was executed
-    ActionExecuted { action: Action, clock: Tick },
+    /// An action was executed with resulting state changes
+    ActionExecuted {
+        action: Action,
+        delta: StateDelta,
+        clock: Tick,
+    },
     /// An action failed during execution pipeline
     ActionFailed {
         action: Action,
@@ -18,6 +22,4 @@ pub enum GameEvent {
         error: String,
         clock: Tick,
     },
-    /// Game state changed
-    StateChanged,
 }

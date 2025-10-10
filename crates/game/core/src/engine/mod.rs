@@ -4,23 +4,25 @@
 //! orchestrates the transition phases, applies costs, and surfaces rich error
 //! information for the runtime.
 mod errors;
+mod reducer;
 mod turns;
 
 use crate::action::{Action, ActionKind, ActionTransition};
 use crate::env::GameEnv;
-use crate::state::{GameState, Tick};
+use crate::state::{GameState, StateDelta, Tick};
 
 pub use errors::{ExecuteError, TransitionPhase, TransitionPhaseError};
+pub use reducer::StateReducer;
 pub use turns::TurnError;
 
 type TransitionResult<E> = Result<(), TransitionPhaseError<E>>;
 
 macro_rules! dispatch_transition {
-    ($action:expr, $state:expr, $env:expr, { $($variant:ident => $err:ident),+ $(,)? }) => {{
+    ($action:expr, $reducer:expr, $env:expr, { $($variant:ident => $err:ident),+ $(,)? }) => {{
         match &$action.kind {
             $(
                 ActionKind::$variant(transition) => {
-                    drive_transition(transition, $state, $env).map_err(ExecuteError::$err)
+                    drive_transition(transition, $reducer, $env).map_err(ExecuteError::$err)
                 }
             )+
             ActionKind::Wait => Ok(()),
@@ -43,50 +45,64 @@ impl<'a> GameEngine<'a> {
     }
 
     /// Executes an action by routing it through the appropriate transition pipeline.
-    /// After successful execution, updates the actor's ready_at by the action's cost.
-    pub fn execute(&mut self, env: GameEnv<'_>, action: &Action) -> Result<(), ExecuteError> {
-        // Execute the action
-        dispatch_transition!(action, self.state, env, {
+    /// After successful execution, updates the actor's ready_at by the action's cost and
+    /// returns the resulting [`StateDelta`].
+    pub fn execute_with_delta(
+        &mut self,
+        env: GameEnv<'_>,
+        action: &Action,
+    ) -> Result<StateDelta, ExecuteError> {
+        let before = self.state.clone();
+        let mut reducer = StateReducer::new(self.state);
+
+        dispatch_transition!(action, &mut reducer, env, {
             Move => Move,
             Attack => Attack,
             UseItem => UseItem,
             Interact => Interact,
         })?;
 
-        // Update actor's ready_at by action cost (speed-scaled)
-        if let Some(actor) = self.state.entities.actor_mut(action.actor)
-            && let Some(current_ready_at) = actor.ready_at
+        if let Some((Some(current_ready_at), stats)) = reducer
+            .state()
+            .entities
+            .actor(action.actor)
+            .map(|actor| (actor.ready_at, actor.stats.clone()))
         {
-            let cost = action.cost(&actor.stats);
-            actor.ready_at = Some(Tick(current_ready_at.0 + cost.0));
+            let cost = action.cost(&stats);
+            let mut entities = reducer.entities();
+            let _ =
+                entities.set_actor_ready_at(action.actor, Some(Tick(current_ready_at.0 + cost.0)));
         }
 
-        // Note: current_actor remains set until next prepare_next_turn()
-        // This allows querying who last acted
+        let delta = StateDelta::from_states(action.clone(), &before, reducer.state());
+        Ok(delta)
+    }
 
-        Ok(())
+    /// Executes an action and discards the resulting [`StateDelta`].
+    pub fn execute(&mut self, env: GameEnv<'_>, action: &Action) -> Result<(), ExecuteError> {
+        self.execute_with_delta(env, action).map(|_| ())
     }
 }
 
 #[inline]
 fn drive_transition<T>(
     transition: &T,
-    state: &mut GameState,
+    reducer: &mut StateReducer<'_>,
     env: GameEnv<'_>,
 ) -> TransitionResult<T::Error>
 where
     T: ActionTransition,
 {
     transition
-        .pre_validate(&*state, &env)
+        .pre_validate(reducer.state(), &env)
         .map_err(|error| TransitionPhaseError::new(TransitionPhase::PreValidate, error))?;
 
     transition
-        .apply(state, &env)
+        .apply(reducer, &env)
         .map_err(|error| TransitionPhaseError::new(TransitionPhase::Apply, error))?;
 
     transition
-        .post_validate(&*state, &env)
+        .post_validate(reducer.state(), &env)
         .map_err(|error| TransitionPhaseError::new(TransitionPhase::PostValidate, error))
 }
 
@@ -179,6 +195,61 @@ mod tests {
         engine
             .execute(env, &action)
             .expect("action execution should succeed");
+    }
+
+    #[test]
+    fn execute_with_delta_reports_movement() {
+        let mut state = GameState::default();
+        let mut occupants =
+            arrayvec::ArrayVec::<EntityId, { GameConfig::MAX_OCCUPANTS_PER_TILE }>::new();
+        occupants
+            .try_push(EntityId::PLAYER)
+            .expect("occupancy capacity");
+        state
+            .world
+            .tile_map
+            .replace_occupants(Position::ORIGIN, occupants);
+        static MAP: StubMap = StubMap;
+        static ITEMS: StubItems = StubItems;
+        static TABLES: StubTables = StubTables;
+        static NPCS: StubNpcs = StubNpcs;
+        let env = Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS).into_game_env();
+        let actor = EntityId::PLAYER;
+        let move_action = MoveAction::new(actor, CardinalDirection::North, 1);
+        let action = Action::new(actor, ActionKind::Move(move_action));
+
+        let mut engine = GameEngine::new(&mut state);
+        let delta = engine
+            .execute_with_delta(env, &action)
+            .expect("action execution should succeed");
+
+        assert_eq!(delta.action, action);
+        assert!(delta.turn.clock.is_none());
+        assert!(delta.turn.current_actor.is_none());
+        assert!(delta.turn.activated.is_empty());
+        assert!(delta.turn.deactivated.is_empty());
+
+        let player_patch = delta
+            .entities
+            .player
+            .expect("player delta should be present");
+        assert_eq!(player_patch.position, Some(Position::new(0, 1)));
+
+        let origin_patch = delta
+            .world
+            .occupancy
+            .iter()
+            .find(|patch| patch.position == Position::ORIGIN)
+            .expect("origin occupancy patch");
+        assert!(origin_patch.occupants.is_empty());
+
+        let new_tile_patch = delta
+            .world
+            .occupancy
+            .iter()
+            .find(|patch| patch.position == Position::new(0, 1))
+            .expect("destination occupancy patch");
+        assert_eq!(new_tile_patch.occupants, vec![EntityId::PLAYER]);
     }
 
     #[test]
