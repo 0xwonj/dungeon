@@ -6,14 +6,13 @@
 
 use std::sync::Arc;
 
-use crate::engine::StateReducer;
 use crate::env::GameEnv;
-use crate::state::StateDelta;
+use crate::state::{GameState, StateDelta};
 
 /// A hook that is applied after an action has been executed.
 ///
 /// Hooks can inspect the state delta and conditionally apply additional
-/// state changes through a [`StateReducer`].
+/// state changes directly to the game state.
 ///
 /// Hooks are executed in priority order (lower priority values execute first).
 pub trait PostExecutionHook: Send + Sync {
@@ -26,8 +25,8 @@ pub trait PostExecutionHook: Send + Sync {
     /// Determines whether this hook should be triggered based on the state delta.
     fn should_trigger(&self, delta: &StateDelta) -> bool;
 
-    /// Applies the hook's effects to the game state via a reducer.
-    fn apply(&self, reducer: &mut StateReducer<'_>, delta: &StateDelta, env: &GameEnv<'_>);
+    /// Applies the hook's effects to the game state directly.
+    fn apply(&self, state: &mut GameState, delta: &StateDelta, env: &GameEnv<'_>);
 }
 
 /// Hook that maintains the active entity set based on player proximity.
@@ -53,9 +52,8 @@ impl PostExecutionHook for ActivationHook {
             .is_some()
     }
 
-    fn apply(&self, reducer: &mut StateReducer<'_>, _delta: &StateDelta, env: &GameEnv<'_>) {
+    fn apply(&self, state: &mut GameState, _delta: &StateDelta, env: &GameEnv<'_>) {
         let activation_radius = env.activation_radius();
-        let state = reducer.state();
         let player_position = state.entities.player.position;
         let clock = state.turn.clock;
 
@@ -70,45 +68,31 @@ impl PostExecutionHook for ActivationHook {
             })
             .collect();
 
-        // Calculate which entities should be activated/deactivated
-        let mut to_activate = Vec::new();
-        let mut to_deactivate = Vec::new();
-
+        // Update activation status based on proximity
         for (entity_id, npc_position, is_active, stats) in npc_data {
             let dx = (npc_position.x - player_position.x).unsigned_abs();
             let dy = (npc_position.y - player_position.y).unsigned_abs();
 
             if dx <= activation_radius && dy <= activation_radius {
+                // Within activation radius - activate if not already active
                 if !is_active {
+                    state.turn.active_actors.insert(entity_id);
+
+                    // Set initial ready_at using Wait action cost
                     let delay = crate::action::Action::calculate_delay(
                         &crate::action::ActionKind::Wait,
                         &stats,
                     );
-                    to_activate.push((entity_id, delay));
+                    if let Some(actor) = state.entities.actor_mut(entity_id) {
+                        actor.ready_at = Some(crate::state::Tick(clock.0 + delay.0));
+                    }
                 }
             } else if is_active {
-                to_deactivate.push(entity_id);
-            }
-        }
-
-        // Apply changes via reducer
-        {
-            let mut turn = reducer.turn();
-            for (entity_id, _) in &to_activate {
-                turn.activate(*entity_id);
-            }
-            for entity_id in &to_deactivate {
-                turn.deactivate(*entity_id);
-            }
-        }
-
-        {
-            let mut entities = reducer.entities();
-            for (entity_id, delay) in to_activate {
-                entities.set_actor_ready_at(entity_id, Some(crate::state::Tick(clock.0 + delay.0)));
-            }
-            for entity_id in to_deactivate {
-                entities.set_actor_ready_at(entity_id, None);
+                // Outside activation radius - deactivate if currently active
+                state.turn.active_actors.remove(&entity_id);
+                if let Some(actor) = state.entities.actor_mut(entity_id) {
+                    actor.ready_at = None;
+                }
             }
         }
     }

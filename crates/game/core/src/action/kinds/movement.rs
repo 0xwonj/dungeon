@@ -1,5 +1,4 @@
 use crate::action::ActionTransition;
-use crate::engine::StateReducer;
 use crate::env::GameEnv;
 use crate::state::{EntityId, GameState, Position};
 
@@ -145,43 +144,36 @@ impl ActionTransition for MoveAction {
         Ok(())
     }
 
-    fn apply(&self, reducer: &mut StateReducer<'_>, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
-        let origin = {
-            let entities = reducer.entities();
-            let actor_state = entities
-                .actor(self.actor)
-                .ok_or(MoveError::ActorNotFound(self.actor))?;
-            actor_state.position
-        };
-
+    fn apply(&self, state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
+        let actor_state = state
+            .entities
+            .actor(self.actor)
+            .ok_or(MoveError::ActorNotFound(self.actor))?;
+        let origin = actor_state.position;
         let destination = self.destination_from(origin);
 
-        {
-            let mut world = reducer.world();
-            if !world.remove_occupant(&origin, self.actor) {
-                return Err(MoveError::OccupancyDesync {
-                    actor: self.actor,
-                    position: origin,
-                });
-            }
-            if !world.add_occupant(destination, self.actor) {
-                let _ = world.add_occupant(origin, self.actor);
-                return Err(MoveError::OccupancyDesync {
-                    actor: self.actor,
-                    position: destination,
-                });
-            }
+        // Update occupancy map
+        if !state.world.tile_map.remove_occupant(&origin, self.actor) {
+            return Err(MoveError::OccupancyDesync {
+                actor: self.actor,
+                position: origin,
+            });
+        }
+        if !state.world.tile_map.add_occupant(destination, self.actor) {
+            // Rollback on failure
+            let _ = state.world.tile_map.add_occupant(origin, self.actor);
+            return Err(MoveError::OccupancyDesync {
+                actor: self.actor,
+                position: destination,
+            });
         }
 
-        {
-            let mut entities = reducer.entities();
-            if entities
-                .set_actor_position(self.actor, destination)
-                .is_none()
-            {
-                return Err(MoveError::ActorNotFound(self.actor));
-            }
-        }
+        // Update actor position
+        let actor_state = state
+            .entities
+            .actor_mut(self.actor)
+            .ok_or(MoveError::ActorNotFound(self.actor))?;
+        actor_state.position = destination;
 
         Ok(())
     }

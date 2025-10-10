@@ -16,7 +16,7 @@ pub use action::{
 };
 pub use config::GameConfig;
 pub use engine::{
-    ExecuteError, GameEngine, StateReducer, TransitionPhase, TransitionPhaseError, TurnError,
+    ExecuteError, GameEngine, TransitionPhase, TransitionPhaseError, TurnError,
 };
 pub use env::{
     AttackProfile, Env, GameEnv, InitialEntityKind, InitialEntitySpec, ItemCategory,

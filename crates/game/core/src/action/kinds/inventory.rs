@@ -1,9 +1,8 @@
 use core::convert::Infallible;
 
 use crate::action::ActionTransition;
-use crate::engine::StateReducer;
 use crate::env::GameEnv;
-use crate::state::{EntityId, Position};
+use crate::state::{EntityId, GameState, Position};
 
 /// Consumes or activates an item from the actor's inventory.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,7 +61,7 @@ impl ActionTransition for UseItemAction {
 
     fn apply(
         &self,
-        _reducer: &mut StateReducer<'_>,
+        _state: &mut GameState,
         _env: &GameEnv<'_>,
     ) -> Result<(), Self::Error> {
         Ok(())

@@ -5,7 +5,6 @@
 //! information for the runtime.
 mod errors;
 mod hook;
-mod reducer;
 mod turns;
 
 use std::sync::Arc;
@@ -16,7 +15,6 @@ use crate::state::{GameState, StateDelta, Tick};
 
 pub use errors::{ExecuteError, TransitionPhase, TransitionPhaseError};
 pub use hook::{ActivationHook, PostExecutionHook};
-pub use reducer::StateReducer;
 pub use turns::TurnError;
 
 type TransitionResult<E> = Result<(), TransitionPhaseError<E>>;
@@ -61,39 +59,37 @@ impl<'a> GameEngine<'a> {
         action: &Action,
     ) -> Result<StateDelta, ExecuteError> {
         let before = self.state.clone();
-        let mut reducer = StateReducer::new(self.state);
 
-        dispatch_transition!(action, &mut reducer, &env, {
+        dispatch_transition!(action, self.state, &env, {
             Move => Move,
             Attack => Attack,
             UseItem => UseItem,
             Interact => Interact,
         })?;
 
-        if let Some((Some(current_ready_at), stats)) = reducer
-            .state()
-            .entities
-            .actor(action.actor)
-            .map(|actor| (actor.ready_at, actor.stats.clone()))
+        // Update actor's ready_at based on action cost
+        if let Some(actor) = self.state.entities.actor(action.actor)
+            && let Some(current_ready_at) = actor.ready_at
         {
+            let stats = actor.stats.clone();
             let cost = action.cost(&stats);
-            let mut entities = reducer.entities();
-            let _ =
-                entities.set_actor_ready_at(action.actor, Some(Tick(current_ready_at.0 + cost.0)));
+            if let Some(actor) = self.state.entities.actor_mut(action.actor) {
+                actor.ready_at = Some(Tick(current_ready_at.0 + cost.0));
+            }
         }
 
         // Generate initial delta to check what changed
-        let initial_delta = StateDelta::from_states(action.clone(), &before, reducer.state());
+        let initial_delta = StateDelta::from_states(action.clone(), &before, self.state);
 
         // Apply post-execution hooks (already sorted by priority)
         for hook in self.hooks.iter() {
             if hook.should_trigger(&initial_delta) {
-                hook.apply(&mut reducer, &initial_delta, &env);
+                hook.apply(self.state, &initial_delta, &env);
             }
         }
 
         // Generate final delta that includes hook effects
-        let final_delta = StateDelta::from_states(action.clone(), &before, reducer.state());
+        let final_delta = StateDelta::from_states(action.clone(), &before, self.state);
         Ok(final_delta)
     }
 }
@@ -101,22 +97,22 @@ impl<'a> GameEngine<'a> {
 #[inline]
 fn drive_transition<T>(
     transition: &T,
-    reducer: &mut StateReducer<'_>,
+    state: &mut GameState,
     env: &GameEnv<'_>,
 ) -> TransitionResult<T::Error>
 where
     T: ActionTransition,
 {
     transition
-        .pre_validate(reducer.state(), env)
+        .pre_validate(state, env)
         .map_err(|error| TransitionPhaseError::new(TransitionPhase::PreValidate, error))?;
 
     transition
-        .apply(reducer, env)
+        .apply(state, env)
         .map_err(|error| TransitionPhaseError::new(TransitionPhase::Apply, error))?;
 
     transition
-        .post_validate(reducer.state(), env)
+        .post_validate(state, env)
         .map_err(|error| TransitionPhaseError::new(TransitionPhase::PostValidate, error))
 }
 
