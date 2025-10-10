@@ -11,10 +11,10 @@ use std::sync::Arc;
 
 use crate::action::{Action, ActionKind, ActionTransition};
 use crate::env::GameEnv;
-use crate::state::{GameState, StateDelta, Tick};
+use crate::state::{GameState, StateDelta};
 
 pub use errors::{ExecuteError, TransitionPhase, TransitionPhaseError};
-pub use hook::{ActivationHook, PostExecutionHook};
+pub use hook::{ActionCostHook, ActivationHook, PostExecutionHook};
 pub use turns::TurnError;
 
 type TransitionResult<E> = Result<(), TransitionPhaseError<E>>;
@@ -51,8 +51,7 @@ impl<'a> GameEngine<'a> {
     }
 
     /// Executes an action by routing it through the appropriate transition pipeline.
-    /// After successful execution, updates the actor's ready_at by the action's cost,
-    /// applies post-execution hooks, and returns the resulting [`StateDelta`].
+    /// After successful execution, applies post-execution hooks and returns the resulting [`StateDelta`].
     pub fn execute(
         &mut self,
         env: GameEnv<'_>,
@@ -66,17 +65,6 @@ impl<'a> GameEngine<'a> {
             UseItem => UseItem,
             Interact => Interact,
         })?;
-
-        // Update actor's ready_at based on action cost
-        if let Some(actor) = self.state.entities.actor(action.actor)
-            && let Some(current_ready_at) = actor.ready_at
-        {
-            let stats = actor.stats.clone();
-            let cost = action.cost(&stats);
-            if let Some(actor) = self.state.entities.actor_mut(action.actor) {
-                actor.ready_at = Some(Tick(current_ready_at.0 + cost.0));
-            }
-        }
 
         // Generate initial delta to check what changed
         let initial_delta = StateDelta::from_states(action.clone(), &before, self.state);

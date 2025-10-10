@@ -98,10 +98,47 @@ impl PostExecutionHook for ActivationHook {
     }
 }
 
+/// Hook that updates the actor's ready_at timestamp based on action cost.
+///
+/// This hook applies after an action completes successfully, advancing the actor's
+/// ready_at by the action's speed-scaled cost.
+#[derive(Debug)]
+pub struct ActionCostHook;
+
+impl PostExecutionHook for ActionCostHook {
+    fn priority(&self) -> i32 {
+        // Run very early, before other hooks that might depend on timing
+        -100
+    }
+
+    fn should_trigger(&self, _delta: &StateDelta) -> bool {
+        // Always trigger - every action has a cost
+        true
+    }
+
+    fn apply(&self, state: &mut GameState, delta: &StateDelta, _env: &GameEnv<'_>) {
+        let actor_id = delta.action.actor;
+
+        if let Some(actor) = state.entities.actor(actor_id)
+            && let Some(current_ready_at) = actor.ready_at
+        {
+            let stats = actor.stats.clone();
+            let cost = delta.action.cost(&stats);
+
+            if let Some(actor) = state.entities.actor_mut(actor_id) {
+                actor.ready_at = Some(crate::state::Tick(current_ready_at.0 + cost.0));
+            }
+        }
+    }
+}
+
 /// Returns the default set of hooks that should be applied after every action execution.
 /// Hooks are returned in an Arc for efficient sharing without cloning.
 pub fn default_hooks() -> Arc<[Arc<dyn PostExecutionHook>]> {
-    let mut hooks: Vec<Arc<dyn PostExecutionHook>> = vec![Arc::new(ActivationHook)];
+    let mut hooks: Vec<Arc<dyn PostExecutionHook>> = vec![
+        Arc::new(ActionCostHook),
+        Arc::new(ActivationHook),
+    ];
 
     // Sort by priority (lower values first)
     hooks.sort_by_key(|h| h.priority());

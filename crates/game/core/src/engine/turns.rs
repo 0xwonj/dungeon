@@ -9,13 +9,6 @@ pub enum TurnError {
     NoActiveEntities,
 }
 
-/// Internal representation of a scheduled turn
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct ScheduledTurn {
-    entity: EntityId,
-    ready_at: Tick,
-}
-
 /// Turn scheduling methods for GameEngine.
 impl<'a> GameEngine<'a> {
     /// Returns the current timeline clock value.
@@ -58,32 +51,28 @@ impl<'a> GameEngine<'a> {
         was_active
     }
 
-    /// Selects the next entity to act by finding the one with the smallest ready_at tick.
-    /// Returns None if no entities are active.
-    fn select_next_turn(&self) -> Option<ScheduledTurn> {
-        self.state
+    /// Prepares for the next turn by selecting the next entity and updating the clock.
+    /// After calling this, use current_actor() to get which entity should act.
+    /// The caller must then provide an action via execute().
+    pub fn prepare_next_turn(&mut self) -> Result<(), TurnError> {
+        // Find the entity with the smallest ready_at tick
+        let (entity, ready_at) = self
+            .state
             .turn
             .active_actors
             .iter()
             .filter_map(|&id| {
                 let actor = self.state.entities.actor(id)?;
-                actor.ready_at.map(|tick| (tick, id))
+                actor.ready_at.map(|tick| (id, tick))
             })
-            .min_by_key(|(tick, entity)| (*tick, *entity))
-            .map(|(ready_at, entity)| ScheduledTurn { entity, ready_at })
-    }
-
-    /// Prepares for the next turn by selecting the next entity and updating the clock.
-    /// After calling this, use current_actor() to get which entity should act.
-    /// The caller must then provide an action via execute().
-    pub fn prepare_next_turn(&mut self) -> Result<(), TurnError> {
-        let scheduled = self.select_next_turn().ok_or(TurnError::NoActiveEntities)?;
+            .min_by_key(|(entity, tick)| (*tick, *entity))
+            .ok_or(TurnError::NoActiveEntities)?;
 
         // Update clock to the scheduled time
-        self.state.turn.clock = scheduled.ready_at;
+        self.state.turn.clock = ready_at;
 
         // Set current actor
-        self.state.turn.current_actor = scheduled.entity;
+        self.state.turn.current_actor = entity;
 
         Ok(())
     }
