@@ -6,7 +6,7 @@
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use game_core::engine::{ExecuteError, TransitionPhase};
-use game_core::{Action, EntityId, GameConfig, GameEngine, GameState, Position, Tick};
+use game_core::{Action, EntityId, GameEngine, GameState, Tick};
 use tracing::{debug, error};
 
 use crate::api::{GameEvent, Result, RuntimeError};
@@ -31,7 +31,6 @@ pub enum Command {
 /// Background task that processes gameplay commands.
 pub struct SimulationWorker {
     state: GameState,
-    config: GameConfig,
     oracles: OracleManager,
     command_rx: mpsc::Receiver<Command>,
     event_tx: broadcast::Sender<GameEvent>,
@@ -41,14 +40,12 @@ impl SimulationWorker {
     /// Creates a new simulation worker.
     pub fn new(
         state: GameState,
-        config: GameConfig,
         oracles: OracleManager,
         command_rx: mpsc::Receiver<Command>,
         event_tx: broadcast::Sender<GameEvent>,
     ) -> Self {
         Self {
             state,
-            config,
             oracles,
             command_rx,
             event_tx,
@@ -122,13 +119,11 @@ impl SimulationWorker {
 
         let clock = self.state.turn.clock;
 
-        match staging_engine.execute_with_delta(env, &action) {
+        match staging_engine.execute(env, &action) {
             Ok(delta) => {
                 // Commit staged changes
+                // Note: execute now handles activation updates via hooks
                 self.state = working_state;
-
-                // Update active entity sets after applying the action
-                self.maintain_active_set()?;
 
                 // Publish ActionExecuted event with delta
                 let _ = self.event_tx.send(GameEvent::ActionExecuted {
@@ -143,36 +138,6 @@ impl SimulationWorker {
                 Ok(())
             }
         }
-    }
-
-    /// Maintains the active entity set based on proximity to the player.
-    /// Entities within the activation radius are activated (if not already active).
-    /// Entities outside the radius are deactivated.
-    ///
-    /// TODO: Implement proper entity activation based on proximity
-    pub fn maintain_active_set(&mut self) -> Result<()> {
-        let activation_radius = self.config.activation_radius;
-        let player_position = self.state.entities.player.position;
-        let npc_positions: Vec<_> = self
-            .state
-            .entities
-            .npcs
-            .iter()
-            .map(|npc| (npc.id, npc.position))
-            .collect();
-
-        let mut engine = GameEngine::new(&mut self.state);
-        for (entity, npc_position) in npc_positions {
-            if is_within_activation_region(player_position, npc_position, activation_radius) {
-                if !engine.is_entity_active(entity) {
-                    engine.activate(entity);
-                }
-            } else if engine.is_entity_active(entity) {
-                engine.deactivate(entity);
-            }
-        }
-
-        Ok(())
     }
 
     fn handle_execute_error(&self, action: &Action, error: ExecuteError, clock: Tick) {
@@ -212,14 +177,4 @@ impl SimulationWorker {
             clock,
         });
     }
-}
-
-fn is_within_activation_region(
-    player_position: Position,
-    entity_position: Position,
-    activation_radius: u32,
-) -> bool {
-    let dx = (entity_position.x - player_position.x).unsigned_abs();
-    let dy = (entity_position.y - player_position.y).unsigned_abs();
-    dx <= activation_radius && dy <= activation_radius
 }

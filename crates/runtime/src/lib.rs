@@ -21,6 +21,9 @@ pub use api::{
     ActionProvider, GameEvent, ProviderKind, Result, RuntimeError, RuntimeHandle,
     WaitActionProvider,
 };
-pub use oracle::{ItemOracleImpl, MapOracleImpl, NpcOracleImpl, OracleManager, TablesOracleImpl};
+pub use oracle::{
+    ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, NpcOracleImpl, OracleManager,
+    TablesOracleImpl,
+};
 pub use repository::{InMemoryStateRepo, RepositoryError, StateRepository};
 pub use runtime::{Runtime, RuntimeBuilder, RuntimeConfig};

@@ -1,7 +1,10 @@
 //! Helpers for constructing oracle bundles consumed by the runtime.
 use std::sync::Arc;
 
-use runtime::{ItemOracleImpl, MapOracleImpl, NpcOracleImpl, OracleManager, TablesOracleImpl};
+use runtime::{
+    ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, NpcOracleImpl, OracleManager,
+    TablesOracleImpl,
+};
 
 use crate::config::MapSize;
 
@@ -12,6 +15,7 @@ pub struct OracleBundle {
     pub items: Arc<ItemOracleImpl>,
     pub tables: Arc<TablesOracleImpl>,
     pub npcs: Arc<NpcOracleImpl>,
+    pub config: Arc<ConfigOracleImpl>,
 }
 
 impl OracleBundle {
@@ -21,6 +25,7 @@ impl OracleBundle {
             Arc::clone(&self.items),
             Arc::clone(&self.tables),
             Arc::clone(&self.npcs),
+            Arc::clone(&self.config),
         )
     }
 }
@@ -49,12 +54,14 @@ impl OracleFactory for TestOracleFactory {
         let items = Arc::new(ItemOracleImpl::test_items());
         let tables = Arc::new(TablesOracleImpl::test_tables());
         let npcs = Arc::new(NpcOracleImpl::test_npcs());
+        let config = Arc::new(ConfigOracleImpl::new(game_core::GameConfig::default()));
 
         OracleBundle {
             map,
             items,
             tables,
             npcs,
+            config,
         }
     }
 }

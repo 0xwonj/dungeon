@@ -192,7 +192,6 @@ impl RuntimeBuilder {
 
         let worker = SimulationWorker::new(
             initial_state,
-            self.config.game_config,
             oracles,
             command_rx,
             event_tx.clone(),

@@ -38,8 +38,8 @@ mod tests {
     use super::ActionTransition;
     use crate::engine::StateReducer;
     use crate::env::{
-        AttackProfile, Env, GameEnv, ItemCategory, ItemDefinition, ItemOracle, MapDimensions,
-        MapOracle, MovementRules, StaticTile, TablesOracle, TerrainKind,
+        AttackProfile, ConfigOracle, Env, GameEnv, ItemCategory, ItemDefinition, ItemOracle,
+        MapDimensions, MapOracle, MovementRules, StaticTile, TablesOracle, TerrainKind,
     };
     use crate::state::{GameState, Tick};
 
@@ -182,11 +182,21 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct StubConfig;
+
+    impl ConfigOracle for StubConfig {
+        fn activation_radius(&self) -> u32 {
+            5
+        }
+    }
+
     fn test_env() -> GameEnv<'static> {
         static MAP: StubMap = StubMap;
         static ITEMS: StubItems = StubItems;
         static TABLES: StubTables = StubTables;
         static NPCS: StubNpcs = StubNpcs;
-        Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS).into_game_env()
+        static CONFIG: StubConfig = StubConfig;
+        Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS, &CONFIG).into_game_env()
     }
 }

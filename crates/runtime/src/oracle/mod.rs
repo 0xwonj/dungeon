@@ -4,6 +4,7 @@
 //! an [`OracleManager`] so the runtime can build [`game_core::Env`] snapshots
 //! on demand. The data is immutable at runtime; dynamic state lives in
 //! repositories or [`game_core::state::GameState`].
+mod config;
 mod items;
 mod map;
 mod npc;
@@ -12,6 +13,7 @@ mod tables;
 use game_core::{Env, GameEnv};
 use std::sync::Arc;
 
+pub use config::ConfigOracleImpl;
 pub use items::ItemOracleImpl;
 pub use map::MapOracleImpl;
 pub use npc::NpcOracleImpl;
@@ -23,6 +25,7 @@ pub struct OracleManager {
     pub(crate) items: Arc<ItemOracleImpl>,
     pub(crate) tables: Arc<TablesOracleImpl>,
     pub(crate) npcs: Arc<NpcOracleImpl>,
+    pub(crate) config: Arc<ConfigOracleImpl>,
 }
 
 impl OracleManager {
@@ -32,12 +35,14 @@ impl OracleManager {
         items: Arc<ItemOracleImpl>,
         tables: Arc<TablesOracleImpl>,
         npcs: Arc<NpcOracleImpl>,
+        config: Arc<ConfigOracleImpl>,
     ) -> Self {
         Self {
             map,
             items,
             tables,
             npcs,
+            config,
         }
     }
 
@@ -48,6 +53,7 @@ impl OracleManager {
             self.items.as_ref(),
             self.tables.as_ref(),
             self.npcs.as_ref(),
+            self.config.as_ref(),
         )
         .into_game_env()
     }

@@ -4,14 +4,18 @@
 //! orchestrates the transition phases, applies costs, and surfaces rich error
 //! information for the runtime.
 mod errors;
+mod hook;
 mod reducer;
 mod turns;
+
+use std::sync::Arc;
 
 use crate::action::{Action, ActionKind, ActionTransition};
 use crate::env::GameEnv;
 use crate::state::{GameState, StateDelta, Tick};
 
 pub use errors::{ExecuteError, TransitionPhase, TransitionPhaseError};
+pub use hook::{ActivationHook, PostExecutionHook};
 pub use reducer::StateReducer;
 pub use turns::TurnError;
 
@@ -36,18 +40,22 @@ macro_rules! dispatch_transition {
 /// Turn scheduling uses simple linear search over active actors for simplicity and correctness.
 pub struct GameEngine<'a> {
     state: &'a mut GameState,
+    hooks: Arc<[Arc<dyn PostExecutionHook>]>,
 }
 
 impl<'a> GameEngine<'a> {
     /// Creates a new game engine with the given state and configuration.
     pub fn new(state: &'a mut GameState) -> Self {
-        Self { state }
+        Self {
+            state,
+            hooks: hook::default_hooks(),
+        }
     }
 
     /// Executes an action by routing it through the appropriate transition pipeline.
-    /// After successful execution, updates the actor's ready_at by the action's cost and
-    /// returns the resulting [`StateDelta`].
-    pub fn execute_with_delta(
+    /// After successful execution, updates the actor's ready_at by the action's cost,
+    /// applies post-execution hooks, and returns the resulting [`StateDelta`].
+    pub fn execute(
         &mut self,
         env: GameEnv<'_>,
         action: &Action,
@@ -55,7 +63,7 @@ impl<'a> GameEngine<'a> {
         let before = self.state.clone();
         let mut reducer = StateReducer::new(self.state);
 
-        dispatch_transition!(action, &mut reducer, env, {
+        dispatch_transition!(action, &mut reducer, &env, {
             Move => Move,
             Attack => Attack,
             UseItem => UseItem,
@@ -74,13 +82,19 @@ impl<'a> GameEngine<'a> {
                 entities.set_actor_ready_at(action.actor, Some(Tick(current_ready_at.0 + cost.0)));
         }
 
-        let delta = StateDelta::from_states(action.clone(), &before, reducer.state());
-        Ok(delta)
-    }
+        // Generate initial delta to check what changed
+        let initial_delta = StateDelta::from_states(action.clone(), &before, reducer.state());
 
-    /// Executes an action and discards the resulting [`StateDelta`].
-    pub fn execute(&mut self, env: GameEnv<'_>, action: &Action) -> Result<(), ExecuteError> {
-        self.execute_with_delta(env, action).map(|_| ())
+        // Apply post-execution hooks (already sorted by priority)
+        for hook in self.hooks.iter() {
+            if hook.should_trigger(&initial_delta) {
+                hook.apply(&mut reducer, &initial_delta, &env);
+            }
+        }
+
+        // Generate final delta that includes hook effects
+        let final_delta = StateDelta::from_states(action.clone(), &before, reducer.state());
+        Ok(final_delta)
     }
 }
 
@@ -88,21 +102,21 @@ impl<'a> GameEngine<'a> {
 fn drive_transition<T>(
     transition: &T,
     reducer: &mut StateReducer<'_>,
-    env: GameEnv<'_>,
+    env: &GameEnv<'_>,
 ) -> TransitionResult<T::Error>
 where
     T: ActionTransition,
 {
     transition
-        .pre_validate(reducer.state(), &env)
+        .pre_validate(reducer.state(), env)
         .map_err(|error| TransitionPhaseError::new(TransitionPhase::PreValidate, error))?;
 
     transition
-        .apply(reducer, &env)
+        .apply(reducer, env)
         .map_err(|error| TransitionPhaseError::new(TransitionPhase::Apply, error))?;
 
     transition
-        .post_validate(reducer.state(), &env)
+        .post_validate(reducer.state(), env)
         .map_err(|error| TransitionPhaseError::new(TransitionPhase::PostValidate, error))
 }
 
@@ -112,8 +126,8 @@ mod tests {
     use crate::action::{Action, ActionKind, CardinalDirection, MoveAction};
     use crate::config::GameConfig;
     use crate::env::{
-        AttackProfile, Env, ItemCategory, ItemDefinition, ItemOracle, MapDimensions, MapOracle,
-        MovementRules, StaticTile, TablesOracle, TerrainKind,
+        AttackProfile, ConfigOracle, Env, ItemCategory, ItemDefinition, ItemOracle, MapDimensions,
+        MapOracle, MovementRules, StaticTile, TablesOracle, TerrainKind,
     };
     use crate::state::{EntityId, GameState, ItemHandle, Position, Tick};
 
@@ -170,6 +184,15 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Default)]
+    struct StubConfig;
+
+    impl ConfigOracle for StubConfig {
+        fn activation_radius(&self) -> u32 {
+            5
+        }
+    }
+
     #[test]
     fn engine_executes_actions() {
         let mut state = GameState::default();
@@ -186,19 +209,20 @@ mod tests {
         static ITEMS: StubItems = StubItems;
         static TABLES: StubTables = StubTables;
         static NPCS: StubNpcs = StubNpcs;
-        let env = Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS).into_game_env();
+        static CONFIG: StubConfig = StubConfig;
+        let env = Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS, &CONFIG).into_game_env();
         let actor = EntityId::PLAYER;
         let move_action = MoveAction::new(actor, CardinalDirection::North, 1);
         let action = Action::new(actor, ActionKind::Move(move_action));
 
         let mut engine = GameEngine::new(&mut state);
-        engine
+        let _ = engine
             .execute(env, &action)
             .expect("action execution should succeed");
     }
 
     #[test]
-    fn execute_with_delta_reports_movement() {
+    fn execute_reports_movement() {
         let mut state = GameState::default();
         let mut occupants =
             arrayvec::ArrayVec::<EntityId, { GameConfig::MAX_OCCUPANTS_PER_TILE }>::new();
@@ -213,14 +237,15 @@ mod tests {
         static ITEMS: StubItems = StubItems;
         static TABLES: StubTables = StubTables;
         static NPCS: StubNpcs = StubNpcs;
-        let env = Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS).into_game_env();
+        static CONFIG: StubConfig = StubConfig;
+        let env = Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS, &CONFIG).into_game_env();
         let actor = EntityId::PLAYER;
         let move_action = MoveAction::new(actor, CardinalDirection::North, 1);
         let action = Action::new(actor, ActionKind::Move(move_action));
 
         let mut engine = GameEngine::new(&mut state);
         let delta = engine
-            .execute_with_delta(env, &action)
+            .execute(env, &action)
             .expect("action execution should succeed");
 
         assert_eq!(delta.action, action);
@@ -343,14 +368,15 @@ mod tests {
         static ITEMS: StubItems = StubItems;
         static TABLES: StubTables = StubTables;
         static NPCS: StubNpcs = StubNpcs;
-        let env = Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS).into_game_env();
+        static CONFIG: StubConfig = StubConfig;
+        let env = Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS, &CONFIG).into_game_env();
 
         // Execute action
         let move_action = MoveAction::new(EntityId::PLAYER, CardinalDirection::North, 1);
         let action = Action::new(EntityId::PLAYER, ActionKind::Move(move_action));
 
         let mut engine = GameEngine::new(&mut state);
-        assert!(engine.execute(env, &action).is_ok());
+        let _ = engine.execute(env, &action).expect("should execute successfully");
 
         // Verify ready_at was updated (speed-scaled)
         assert!(state.entities.player.ready_at.is_some());
