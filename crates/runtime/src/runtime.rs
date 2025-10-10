@@ -190,12 +190,7 @@ impl RuntimeBuilder {
 
         let handle = RuntimeHandle::new(command_tx, event_tx.clone());
 
-        let worker = SimulationWorker::new(
-            initial_state,
-            oracles,
-            command_rx,
-            event_tx.clone(),
-        );
+        let worker = SimulationWorker::new(initial_state, oracles, command_rx, event_tx.clone());
 
         let sim_worker_handle = tokio::spawn(async move {
             worker.run().await;

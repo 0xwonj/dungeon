@@ -2,8 +2,7 @@
 use std::sync::Arc;
 
 use runtime::{
-    ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, NpcOracleImpl, OracleManager,
-    TablesOracleImpl,
+    ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, NpcOracleImpl, OracleManager, TablesOracleImpl,
 };
 
 use crate::config::MapSize;
