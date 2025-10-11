@@ -22,7 +22,7 @@ impl CliEventConsumer {
                 "{} moves {:?} by {}",
                 action.actor, movement.direction, movement.distance
             ),
-            ActionKind::Wait => format!("{} waits", action.actor),
+            ActionKind::Wait(_) => format!("{} waits", action.actor),
             other => format!("{} performs {:?}", action.actor, other),
         };
         self.log

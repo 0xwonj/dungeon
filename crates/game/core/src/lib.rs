@@ -12,7 +12,7 @@ pub mod state;
 pub use action::{
     Action, ActionCommand, ActionKind, ActionTransition, AttackAction, AttackCommand, AttackStyle,
     CardinalDirection, CommandContext, InteractAction, InteractCommand, InventorySlot, ItemTarget,
-    MoveAction, MoveCommand, MoveError, UseItemAction, UseItemCommand,
+    MoveAction, MoveCommand, MoveError, UseItemAction, UseItemCommand, WaitAction,
 };
 pub use config::GameConfig;
 pub use engine::{ExecuteError, GameEngine, TransitionPhase, TransitionPhaseError, TurnError};

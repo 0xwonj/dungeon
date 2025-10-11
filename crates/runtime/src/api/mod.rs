@@ -11,4 +11,4 @@ pub mod providers;
 pub use errors::{ProviderKind, Result, RuntimeError};
 pub use events::GameEvent;
 pub use handle::RuntimeHandle;
-pub use providers::{ActionProvider, WaitActionProvider};
+pub use providers::{ActionProvider, SimpleNpcProvider, WaitActionProvider};

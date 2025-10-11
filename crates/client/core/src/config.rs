@@ -54,8 +54,8 @@ impl Default for WorldConfig {
     fn default() -> Self {
         Self {
             size: MapSize {
-                width: 10,
-                height: 10,
+                width: 20,
+                height: 20,
             },
         }
     }

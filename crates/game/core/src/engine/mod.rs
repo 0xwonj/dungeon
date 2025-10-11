@@ -27,7 +27,6 @@ macro_rules! dispatch_transition {
                     drive_transition(transition, $reducer, $env).map_err(ExecuteError::$err)
                 }
             )+
-            ActionKind::Wait => Ok(()),
         }
     }};
 }
@@ -64,6 +63,7 @@ impl<'a> GameEngine<'a> {
             Attack => Attack,
             UseItem => UseItem,
             Interact => Interact,
+            Wait => Wait,
         })?;
 
         // Generate initial delta to check what changed
@@ -305,5 +305,142 @@ mod tests {
         // Verify ready_at was updated (speed-scaled)
         assert!(state.entities.player.ready_at.is_some());
         assert!(state.entities.player.ready_at.unwrap().0 > 0);
+    }
+
+    #[test]
+    fn execute_wait_action_updates_ready_at() {
+        use crate::state::{ActorState, ActorStats, InventoryState};
+
+        let mut state = GameState::default();
+
+        // Setup player
+        state.entities.player = ActorState::new(
+            EntityId::PLAYER,
+            Position::ORIGIN,
+            ActorStats::default(),
+            InventoryState::default(),
+        );
+        state.entities.player.ready_at = Some(Tick(0));
+
+        // Add player to tile occupants
+        let mut occupants =
+            arrayvec::ArrayVec::<EntityId, { GameConfig::MAX_OCCUPANTS_PER_TILE }>::new();
+        occupants.push(EntityId::PLAYER);
+        state
+            .world
+            .tile_map
+            .replace_occupants(Position::ORIGIN, occupants);
+
+        static MAP: StubMap = StubMap;
+        static ITEMS: StubItems = StubItems;
+        static TABLES: StubTables = StubTables;
+        static NPCS: StubNpcs = StubNpcs;
+        static CONFIG: StubConfig = StubConfig;
+        let env = Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS, &CONFIG).into_game_env();
+
+        // Execute Wait action
+        let wait_action = crate::action::WaitAction::new(EntityId::PLAYER);
+        let action = Action::new(EntityId::PLAYER, ActionKind::Wait(wait_action));
+
+        let mut engine = GameEngine::new(&mut state);
+        let delta = engine
+            .execute(env, &action)
+            .expect("wait action should execute successfully");
+
+        // Verify ready_at was updated with Wait cost (100 ticks, speed-scaled)
+        assert!(state.entities.player.ready_at.is_some());
+        let new_ready_at = state.entities.player.ready_at.unwrap();
+        assert_eq!(new_ready_at.0, 100); // Default speed is 100, so cost is 100
+
+        // Verify delta reports the action
+        assert!(matches!(delta.action.kind, ActionKind::Wait(_)));
+    }
+
+    #[test]
+    fn npc_wait_doesnt_block_player_turn() {
+        use crate::state::{ActorState, ActorStats, InventoryState};
+
+        let mut state = GameState::default();
+
+        // Setup player at (0, 0)
+        state.entities.player = ActorState::new(
+            EntityId::PLAYER,
+            Position::ORIGIN,
+            ActorStats::default(),
+            InventoryState::default(),
+        );
+        state.entities.player.ready_at = Some(Tick(0));
+        state.turn.active_actors.insert(EntityId::PLAYER);
+
+        // Setup NPC at (1, 0) - adjacent to player
+        let npc_id = EntityId(1);
+        state.entities.npcs.push(ActorState::new(
+            npc_id,
+            Position::new(1, 0),
+            ActorStats::default(),
+            InventoryState::default(),
+        ));
+        state.entities.npcs[0].ready_at = Some(Tick(0));
+        state.turn.active_actors.insert(npc_id);
+
+        // Add occupants
+        let mut player_occupants =
+            arrayvec::ArrayVec::<EntityId, { GameConfig::MAX_OCCUPANTS_PER_TILE }>::new();
+        player_occupants.push(EntityId::PLAYER);
+        state
+            .world
+            .tile_map
+            .replace_occupants(Position::ORIGIN, player_occupants);
+
+        let mut npc_occupants =
+            arrayvec::ArrayVec::<EntityId, { GameConfig::MAX_OCCUPANTS_PER_TILE }>::new();
+        npc_occupants.push(npc_id);
+        state
+            .world
+            .tile_map
+            .replace_occupants(Position::new(1, 0), npc_occupants);
+
+        static MAP: StubMap = StubMap;
+        static ITEMS: StubItems = StubItems;
+        static TABLES: StubTables = StubTables;
+        static NPCS: StubNpcs = StubNpcs;
+        static CONFIG: StubConfig = StubConfig;
+
+        // Turn 1: Player acts (moves or waits)
+        let mut engine = GameEngine::new(&mut state);
+        engine.prepare_next_turn().expect("should prepare turn");
+        let actor1 = engine.current_actor();
+        assert_eq!(actor1, EntityId::PLAYER); // Player should go first (lower ID)
+
+        let wait_action = crate::action::WaitAction::new(EntityId::PLAYER);
+        let action = Action::new(EntityId::PLAYER, ActionKind::Wait(wait_action));
+        let env1 = Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS, &CONFIG).into_game_env();
+        let _ = engine.execute(env1, &action).expect("should execute");
+
+        // Player's ready_at should now be 100
+        assert_eq!(state.entities.player.ready_at, Some(Tick(100)));
+
+        // Turn 2: NPC acts (should wait because adjacent)
+        let mut engine = GameEngine::new(&mut state);
+        engine.prepare_next_turn().expect("should prepare turn");
+        let actor2 = engine.current_actor();
+        assert_eq!(actor2, npc_id); // NPC should go next (ready_at = 0 < 100)
+
+        let npc_wait = crate::action::WaitAction::new(npc_id);
+        let npc_action = Action::new(npc_id, ActionKind::Wait(npc_wait));
+        let env2 = Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS, &CONFIG).into_game_env();
+        let _ = engine.execute(env2, &npc_action).expect("should execute");
+
+        // NPC's ready_at should now be 100
+        assert_eq!(state.entities.npcs[0].ready_at, Some(Tick(100)));
+
+        // Turn 3: Should be player's turn again (both at 100, player has lower ID)
+        let mut engine = GameEngine::new(&mut state);
+        engine.prepare_next_turn().expect("should prepare turn");
+        let actor3 = engine.current_actor();
+        assert_eq!(actor3, EntityId::PLAYER); // Player should go (tie-breaker by ID)
+
+        // Clock should be 100
+        assert_eq!(state.turn.clock, Tick(100));
     }
 }

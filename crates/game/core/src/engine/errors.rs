@@ -1,5 +1,5 @@
 use crate::action::ActionTransition;
-use crate::action::{AttackAction, InteractAction, MoveAction, UseItemAction};
+use crate::action::{AttackAction, InteractAction, MoveAction, UseItemAction, WaitAction};
 
 /// Identifies which stage of the transition pipeline produced an error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,4 +54,7 @@ pub enum ExecuteError {
 
     #[error("interact action failed: {0}")]
     Interact(TransitionPhaseError<<InteractAction as ActionTransition>::Error>),
+
+    #[error("wait action failed: {0}")]
+    Wait(TransitionPhaseError<<WaitAction as ActionTransition>::Error>),
 }

@@ -12,6 +12,7 @@ pub use command::{ActionCommand, CommandContext};
 pub use kinds::{
     AttackAction, AttackCommand, AttackStyle, CardinalDirection, InteractAction, InteractCommand,
     InventorySlot, ItemTarget, MoveAction, MoveCommand, MoveError, UseItemAction, UseItemCommand,
+    WaitAction,
 };
 pub use transition::ActionTransition;
 
@@ -29,7 +30,7 @@ impl Action {
             ActionKind::Attack(attack_action) => attack_action.actor == actor,
             ActionKind::UseItem(use_item_action) => use_item_action.actor == actor,
             ActionKind::Interact(interact_action) => interact_action.actor == actor,
-            _ => true,
+            ActionKind::Wait(wait_action) => wait_action.actor == actor,
         });
         Self { actor, kind }
     }
@@ -57,7 +58,7 @@ impl Action {
             ActionKind::Attack(action) => action.cost().0,
             ActionKind::UseItem(action) => action.cost().0,
             ActionKind::Interact(action) => action.cost().0,
-            ActionKind::Wait => 100,
+            ActionKind::Wait(action) => action.cost().0,
         };
 
         // Scale by speed (100 = baseline)
@@ -72,7 +73,7 @@ pub enum ActionKind {
     Attack(AttackAction),
     UseItem(UseItemAction),
     Interact(InteractAction),
-    Wait,
+    Wait(WaitAction),
 }
 
 impl From<MoveAction> for ActionKind {
@@ -96,5 +97,11 @@ impl From<UseItemAction> for ActionKind {
 impl From<InteractAction> for ActionKind {
     fn from(action: InteractAction) -> Self {
         Self::Interact(action)
+    }
+}
+
+impl From<WaitAction> for ActionKind {
+    fn from(action: WaitAction) -> Self {
+        Self::Wait(action)
     }
 }

@@ -45,6 +45,9 @@ pub enum RuntimeError {
         expected: game_core::EntityId,
         provided: game_core::EntityId,
     },
+
+    #[error("entity {entity:?} not found in game state")]
+    InvalidEntity { entity: game_core::EntityId },
 }
 
 #[derive(Debug, Copy, Clone)]

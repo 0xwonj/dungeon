@@ -68,7 +68,10 @@ impl InputHandler {
     }
 
     fn wait(&self) -> KeyAction {
-        KeyAction::Submit(Action::new(self.player_entity, ActionKind::Wait))
+        KeyAction::Submit(Action::new(
+            self.player_entity,
+            ActionKind::Wait(game_core::WaitAction::new(self.player_entity)),
+        ))
     }
 }
 

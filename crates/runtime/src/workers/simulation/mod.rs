@@ -150,6 +150,7 @@ impl SimulationWorker {
             ExecuteError::Interact(phase_error) => {
                 (phase_error.phase, phase_error.error.to_string())
             }
+            ExecuteError::Wait(phase_error) => (phase_error.phase, phase_error.error.to_string()),
         };
 
         if phase == TransitionPhase::PreValidate {
