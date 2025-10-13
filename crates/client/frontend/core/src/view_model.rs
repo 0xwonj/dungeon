@@ -1,6 +1,6 @@
 //! View-model snapshots derived from [`game_core::GameState`].
 use game_core::{
-    EntityId, GameState, Position, PropKind,
+    EntityId, GameState, ItemHandle, Position, PropKind,
     env::{MapOracle, TerrainKind},
 };
 
@@ -90,6 +90,41 @@ pub struct MapTile {
     pub loose_items: usize,
 }
 
+/// Detailed tile information for Examine mode.
+#[derive(Clone, Debug)]
+pub struct TileInfoSnapshot {
+    pub position: Position,
+    pub terrain: TerrainKind,
+    pub is_passable: bool,
+    pub is_occupied: bool,
+    pub entities: Vec<EntityDetailView>,
+    pub overlay_count: usize,
+}
+
+/// Detailed entity view for inspection.
+#[derive(Clone, Debug)]
+pub enum EntityDetailView {
+    Player {
+        id: EntityId,
+        stats: ActorStatsSnapshot,
+    },
+    Npc {
+        id: EntityId,
+        template_id: u16,
+        stats: ActorStatsSnapshot,
+    },
+    Prop {
+        id: EntityId,
+        kind: PropKind,
+        is_active: bool,
+    },
+    Item {
+        id: EntityId,
+        handle: ItemHandle,
+        // name and category will be resolved by UI layer using ItemOracle
+    },
+}
+
 impl MapTile {
     fn from_state<M: MapOracle + ?Sized>(
         map_oracle: &M,
@@ -130,16 +165,28 @@ pub enum OccupantView {
     Player {
         id: EntityId,
         is_current: bool,
+        stats: ActorStatsSnapshot,
     },
     Npc {
         id: EntityId,
         is_current: bool,
+        template_id: u16,
+        stats: ActorStatsSnapshot,
     },
     Prop {
         id: EntityId,
         kind: PropKind,
         is_active: bool,
     },
+}
+
+/// Stats snapshot for display purposes.
+#[derive(Clone, Debug)]
+pub struct ActorStatsSnapshot {
+    pub health: ResourceSnapshot,
+    pub energy: ResourceSnapshot,
+    pub speed: u16,
+    pub ready_at: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -214,6 +261,91 @@ fn collect_messages(messages: &MessageLog, limit: usize) -> Vec<MessageEntry> {
     messages.recent(limit).cloned().collect()
 }
 
+/// Helper to create ActorStatsSnapshot from ActorState.
+fn actor_stats_snapshot(actor: &game_core::ActorState) -> ActorStatsSnapshot {
+    ActorStatsSnapshot {
+        health: ResourceSnapshot::new(actor.stats.health.current, actor.stats.health.maximum),
+        energy: ResourceSnapshot::new(actor.stats.energy.current, actor.stats.energy.maximum),
+        speed: actor.stats.speed,
+        ready_at: actor.ready_at.map(|tick| tick.0),
+    }
+}
+
+impl TileInfoSnapshot {
+    /// Creates a detailed tile snapshot for Examine mode.
+    pub fn from_state<M: MapOracle + ?Sized>(
+        map_oracle: &M,
+        state: &GameState,
+        position: Position,
+    ) -> Self {
+        let terrain = map_oracle
+            .tile(position)
+            .map(|tile| tile.terrain())
+            .unwrap_or(TerrainKind::Void);
+
+        let tile_view = state.tile_view(map_oracle, position);
+        let is_passable = tile_view.as_ref().is_some_and(|v| v.is_passable());
+        let is_occupied = tile_view.as_ref().is_some_and(|v| v.is_occupied());
+
+        let mut entities = Vec::new();
+
+        // Add occupants (actors and props)
+        if let Some(ids) = state.world.tile_map.occupants(&position) {
+            for id in ids {
+                if *id == state.entities.player.id {
+                    entities.push(EntityDetailView::Player {
+                        id: *id,
+                        stats: actor_stats_snapshot(&state.entities.player),
+                    });
+                    continue;
+                }
+
+                if let Some(npc) = state.entities.npcs.iter().find(|npc| npc.id == *id) {
+                    entities.push(EntityDetailView::Npc {
+                        id: npc.id,
+                        template_id: npc.template_id,
+                        stats: actor_stats_snapshot(npc),
+                    });
+                    continue;
+                }
+
+                if let Some(prop) = state.entities.props.iter().find(|prop| prop.id == *id) {
+                    entities.push(EntityDetailView::Prop {
+                        id: prop.id,
+                        kind: prop.kind.clone(),
+                        is_active: prop.is_active,
+                    });
+                }
+            }
+        }
+
+        // Add loose items on this tile
+        for item in state.entities.items.iter() {
+            if item.position == position {
+                entities.push(EntityDetailView::Item {
+                    id: item.id,
+                    handle: item.handle,
+                });
+            }
+        }
+
+        let overlay_count = state
+            .world
+            .tile_map
+            .overlay(&position)
+            .map_or(0, |overlay| overlay.iter().count());
+
+        Self {
+            position,
+            terrain,
+            is_passable,
+            is_occupied,
+            entities,
+            overlay_count,
+        }
+    }
+}
+
 fn build_occupants(state: &GameState, position: Position) -> Vec<OccupantView> {
     let mut occupants = Vec::new();
 
@@ -223,6 +355,7 @@ fn build_occupants(state: &GameState, position: Position) -> Vec<OccupantView> {
                 occupants.push(OccupantView::Player {
                     id: *id,
                     is_current: state.turn.current_actor == *id,
+                    stats: actor_stats_snapshot(&state.entities.player),
                 });
                 continue;
             }
@@ -231,6 +364,8 @@ fn build_occupants(state: &GameState, position: Position) -> Vec<OccupantView> {
                 occupants.push(OccupantView::Npc {
                     id: npc.id,
                     is_current: state.turn.current_actor == npc.id,
+                    template_id: npc.template_id,
+                    stats: actor_stats_snapshot(npc),
                 });
                 continue;
             }

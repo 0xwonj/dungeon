@@ -1,7 +1,9 @@
 //! Terminal client entry point.
 mod app;
+mod cursor;
 mod input;
 mod presentation;
+mod state;
 
 use anyhow::Result;
 use app::CliApp;

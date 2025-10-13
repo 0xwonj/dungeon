@@ -100,15 +100,16 @@ impl GameState {
                         .template(template)
                         .ok_or(InitializationError::UnknownNpcTemplate(template))?;
 
-                    let mut actor = ActorState::new(
+                    let actor = ActorState::new(
                         spec.id,
                         spec.position,
                         npc_template.stats,
                         npc_template.inventory,
-                    );
+                    )
+                    .with_template_id(template)
+                    .with_ready_at(Tick(0));
 
                     // Activate NPC in turn system at tick 0
-                    actor.ready_at = Some(Tick(0));
                     state.turn.active_actors.insert(spec.id);
 
                     state
