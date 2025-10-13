@@ -2,19 +2,18 @@
 
 > **⚠️ Early-stage prototype:** expect rapid iteration, missing features, and breaking changes. We’re sharing the core architecture early so contributors can help shape the design.
 
-Dungeon is a **classic roguelike** reimagined for the age of cryptographic truth.  
-Every tile, turn, and outcome is governed by deterministic rules and safeguarded by zero-knowledge proofs (ZKPs). The result is a **verifiable game** — one where everything that happens can be proven valid, yet parts of the world can remain secret.
+Dungeon is a **verifiable roguelike RPG** — a deterministic world where every turn can be proven valid, yet not all truths are visible.
 
-At its heart, Dungeon is about **emergent stories born from deep systems**. Each world is procedurally generated, shaped by rules rather than scripts, and every encounter has weight because it follows from logic, not design shortcuts. The game values consequence over spectacle — a place where player choices ripple through deterministic mechanics to create meaning, tension, and sometimes tragedy. The world doesn’t tell a story to you; it **becomes one through your actions**.
+Built on zero-knowledge proofs (ZKPs), Dungeon ensures that every action, roll, and AI move followed the rules **without revealing** hidden information.  
+The result is a game that’s both **honest and mysterious** — fair because it’s provable, alive because it’s systemic.
 
-Zero-knowledge proofs protect both fairness and mystery. They allow anyone to verify that an action, loot roll, or AI move followed the game’s rules, without revealing private information like hidden maps or enemy intentions. In other words, **the game proves its own honesty**, even when not all truths are visible.
+At its core, Dungeon explores how **games can become transparent systems of truth** rather than opaque entertainment products.  
+Each world is procedural, deterministic, and shaped by interacting systems rather than scripts.  
+Your choices — lighting a torch, sparing an enemy, sealing a door — ripple through the rule system to form emergent stories that feel inevitable, not authored.
 
-### Verifiable Game
+> *Fairness without authority. Secrecy without deceit.*
 
-Traditional online games rely on centralized servers and unverifiable logic—players must trust both that the **operator plays fair** and that **other players aren’t cheating**. Dungeon removes that trust assumption entirely.  
-Every state transition is deterministic, verifiable, and ultimately provable, making both server manipulation and client exploits cryptographically impossible. By combining deterministic simulation with zero-knowledge proofs, Dungeon explores how **games can become transparent systems of truth** rather than opaque entertainment products.
-
-This is important — in Web3 games, fairness and trustlessness aren’t just design goals but **security guarantees**. Players own their assets and outcomes, so the rules themselves must be provable. Dungeon treats verifiability as a first-class principle: the game world operates transparently, **bound by math rather than authority**.
+Learn more about the design vision and philosophy in [**philosophy.md**](./docs/philosophy.md)
 
 ## Repository Layout
 
@@ -77,5 +76,3 @@ Please read the full [Contributing Guidelines](.github/CONTRIBUTING.md) before o
 - [`docs/research.md`](docs/research.md) – Exploratory notes and design investigations
 - [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) – Contributing guidelines and code standards
 - [`CLAUDE.md`](CLAUDE.md), [`AGENTS.md`](AGENTS.md) – Development guidance for AI-assisted coding
-
-Happy crawling!
