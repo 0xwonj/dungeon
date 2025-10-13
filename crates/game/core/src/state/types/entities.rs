@@ -64,6 +64,8 @@ pub struct ActorState {
     pub inventory: InventoryState,
     /// When this actor is scheduled to act next. None means not currently scheduled.
     pub ready_at: Option<Tick>,
+    /// NPC template ID (0 for player).
+    pub template_id: u16,
 }
 
 impl ActorState {
@@ -79,11 +81,17 @@ impl ActorState {
             stats,
             inventory,
             ready_at: None,
+            template_id: 0,
         }
     }
 
     pub fn with_ready_at(mut self, ready_at: Tick) -> Self {
         self.ready_at = Some(ready_at);
+        self
+    }
+
+    pub fn with_template_id(mut self, template_id: u16) -> Self {
+        self.template_id = template_id;
         self
     }
 }

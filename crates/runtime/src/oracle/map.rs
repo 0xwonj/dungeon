@@ -53,6 +53,18 @@ impl MapOracleImpl {
                 position: Position::new(5, 5),
                 kind: InitialEntityKind::Npc { template: 0 },
             },
+            // Orc NPC at (8, 3)
+            InitialEntitySpec {
+                id: EntityId(2),
+                position: Position::new(8, 3),
+                kind: InitialEntityKind::Npc { template: 1 },
+            },
+            // Boss NPC at (12, 8)
+            InitialEntitySpec {
+                id: EntityId(3),
+                position: Position::new(12, 8),
+                kind: InitialEntityKind::Npc { template: 2 },
+            },
         ];
 
         Self::new(dimensions, tiles, initial_entities)
