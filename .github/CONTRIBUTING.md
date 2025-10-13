@@ -44,7 +44,7 @@ The valid top-level scopes are:
 - `zk` — Zero-knowledge circuits, proofs, and verifiers  
 - `client` — UI, networking, or frontend components  
 
-> 🧠 The optional **sub-scope** can be added when the module or subsystem is clearly defined.
+> The optional **sub-scope** can be added when the module or subsystem is clearly defined.
 
 ---
 
@@ -59,7 +59,7 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) stand
 
 ```
 
-> 💡 The `scope` should generally be included for clarity, but may be omitted if it’s not applicable.
+> The `scope` should generally be included for clarity, but may be omitted if it’s not applicable.
 
 
 ### ✅ Examples
