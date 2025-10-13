@@ -1,6 +1,10 @@
 # Dungeon Project Architecture
 
-> _Last updated: 2025-10-13_
+> **Status:** Living document
+>
+> **Scope:** Architectural overview of the Dungeon project’s crate structure, runtime flow, and future proving integration.
+
+---
 
 ## 1. System Overview
 
@@ -398,69 +402,6 @@ Keeps `game-core` pure by externalizing:
 - NPC templates and AI behaviors
 - Loot tables and drop rates
 - Game configuration (cooldowns, ranges, damage formulas)
-
-## 10. Future Enhancements
-
-### 10.1 Near-term (Next 3-6 months)
-
-- **Content Pipeline** 🚧: Tooling to author maps, NPCs, and loot tables
-  - Map editor with tile placement and entity spawning
-  - NPC behavior scripting language
-  - Loot table balancing tools
-
-- **Advanced Combat** 🚧: Richer tactical gameplay
-  - Status effects (poison, stun, buffs/debuffs)
-  - Area-of-effect abilities
-  - Combo system and action chaining
-
-- **Persistence Layer**: Database-backed repositories
-  - RocksDB for local saves
-  - PostgreSQL for server-side persistence
-  - Save/load game state with compression
-
-### 10.2 Medium-term (6-12 months)
-
-- **ZK Proof System**: Complete proving pipeline
-  - Action validation circuits in `zk` crate
-  - `ProverWorker` implementation with proof generation
-  - Proof aggregation for batch verification
-
-- **Blockchain Integration**: On-chain verification
-  - Solidity verifier contracts
-  - State commitment anchoring
-  - Proof submission worker with gas optimization
-
-- **AI/NPC Providers**: Intelligent agent behaviors
-  - Heuristic-based decision trees
-  - ML-powered agents (reinforcement learning)
-  - Emergent cooperative/competitive behaviors
-
-### 10.3 Long-term (12+ months)
-
-- **Multiplayer Support**: Networked gameplay
-  - Remote `ActionProvider` over gRPC/WebSocket
-  - Peer-to-peer or client-server architectures
-  - Replay protection and anti-cheat via ZK proofs
-
-- **Additional Frontends**:
-  - Bevy-based 2D/3D graphical client
-  - WebAssembly browser client
-  - Mobile clients (iOS/Android)
-
-- **Modding Support**: Community content
-  - Plugin API for custom actions and rules
-  - Content packs with versioning
-  - Mod marketplace with ZK verification
-
-- **Editor Mode**: Designer tools
-  - Visual map editor
-  - Entity placement and scripting
-  - Real-time playtesting via runtime handle
-
-- **Analytics & Telemetry**: Observability
-  - Structured metrics and dashboards
-  - Performance profiling
-  - Gameplay balance analysis
 
 ---
 

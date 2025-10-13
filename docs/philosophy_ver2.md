@@ -1,5 +1,11 @@
 # Game Philosophy
 
+> **Status:** Stable draft
+>
+> **Scope:** Outlines Dungeon’s core principles — how verifiability, fairness, and emergence shape the game’s design vision.
+
+---
+
 > *“When rules are honest, stories write themselves.”*
 
 Dungeon is not only a technical experiment in verifiable computation — it’s a statement about what games could become when **truth and imagination share the same language**.
@@ -30,8 +36,6 @@ Instead of executing every move on a blockchain, the game generates a cryptograp
 The blockchain only needs to verify the proof, not the full computation.  
 That’s how Dungeon keeps gameplay smooth, but still **trustless**.
 
----
-
 ## 2. Proof Against Cheating
 
 In single-player games, cheating is inescapable.  
@@ -47,8 +51,6 @@ This model restores something games have long lost: *trust between players and s
 The game doesn’t rely on surveillance or anti-cheat; it relies on math.  
 It’s not about punishment — it’s about **provable integrity**.
 
----
-
 ## 3. Worlds That Prove Themselves
 
 Most games ask players to *believe* in their worlds: that the dice rolled fairly, that the AI didn’t cheat, that the system didn’t favor one outcome over another.  
@@ -58,8 +60,6 @@ Zero-knowledge proofs make the world mathematically honest.
 Each state transition, random roll, and interaction between entities can be validated without revealing the underlying secrets of the world. You can trust that your victory wasn’t scripted and your defeat wasn’t rigged — because both are cryptographically inevitable results of the same deterministic laws.
 
 But verifiability isn’t the end goal — it’s the foundation. Once rules are provably fair, we can finally focus on what truly matters: **worlds worth proving.**
-
----                                                                          
 
 ## 4. Systems Over Scripts
 
@@ -72,8 +72,6 @@ Procedural generation isn’t a gimmick; it’s a philosophy of *possibility*. E
 The role of the player is not to consume a story, but to **discover and shape** one through interaction with a living rule system.  
 A simple decision — lighting a torch, opening a door, sparing an enemy — can ripple outward, spawning consequences that feel personal precisely because they were never authored.
 
----
-
 ## 5. Fairness and Mystery
 
 Fairness and mystery seem like opposites — yet they’re the twin pillars of a meaningful game.  
@@ -84,8 +82,6 @@ Developers can design puzzles, hidden rooms, or deceptive NPCs without sacrifici
 The game stays honest not by revealing everything, but by **proving that nothing was faked**.
 
 This idea — that secrecy and fairness can coexist — defines Dungeon’s design frontier. It opens doors to new genres of interaction: competitive roguelikes, shared persistent worlds, or player-versus-AI encounters where both sides are accountable under the same cryptographic law.
-
----
 
 ## 6. The Long View
 

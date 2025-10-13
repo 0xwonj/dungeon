@@ -1,6 +1,9 @@
 # Project Status
 
-> _Last updated: 2025-10-13_
+> **Status:** Living document  
+> **Scope:** Tracks Dungeon’s implementation progress, feature roadmap, and current technical priorities across engine, runtime, client, and proving layers.
+
+---
 
 This document tracks the current implementation status and roadmap for the Dungeon project. Unlike the architecture documentation, this file is updated frequently as features are completed.
 

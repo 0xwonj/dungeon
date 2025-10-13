@@ -16,32 +16,6 @@ Every state transition is deterministic, verifiable, and ultimately provable, ma
 
 This is important — in Web3 games, fairness and trustlessness aren’t just design goals but **security guarantees**. Players own their assets and outcomes, so the rules themselves must be provable. Dungeon treats verifiability as a first-class principle: the game world operates transparently, **bound by math rather than authority**.
 
-## Philosophy
-
-### Determinism first
-The runtime, repositories, and workers are structured so the same sequence of actions always yields the same state. Determinism makes the game debuggable, unlocks reproducible tests, and is the foundation for producing consistent zero-knowledge witnesses. We avoid hidden side effects or implicit randomness; all entropy comes from injectable providers.
-
-### Prove validity, not everything
-We view the game as a finite state machine: actions are the only way to transition state, and each action passes through `pre-validate`, `execute`, and `post-validate` phases. Instead of re-running the whole engine inside a zkVM, we plan to prove that each action satisfied the validation phases for the prior state. This keeps proofs succinct and affordable while still preventing cheating.
-
-### Modular by default
-Every boundary—input providers, oracle adapters, persistence, workers—speaks through traits or clear module contracts. Developers can slot in a custom AI policy, swap in new content packs, or back the runtime with different storage without rewriting the core. This modularity is what lets the project scale from a terminal prototype to richer clients and community mods.
-
-### Players, then proofs
-We are building a fun, expressive 2D dungeon crawl first. The system should encourage tactical depth, emergent NPC behaviors, and designer creativity. Zero-knowledge enforcement lives alongside the gameplay loop instead of dictating it; the proving story supports the RPG, not the other way around.
-
-### Minimal blockchain footprint
-Proof artifacts and occasional state commitments are the only data meant for chains. We push heavy computation off-chain and keep gameplay loops snappy. The design lets players cooperate or compete without burdening them with constant transactions, while still enabling on-chain verification when needed.
-
-## Zero-Knowledge Strategy
-
-There are multiple ways to bring ZK proofs into games. One approach is to prove the entire runtime (AI, physics, rules) inside a zkVM—easy to reason about but prohibitively expensive and slow for richly interactive games. Dungeon instead proves **action validity**:
-
-1. **Finite State Machine** – the game is treated as an FSM where only actions transition state. `game-core` remains deterministic and stateless, accepting state snapshots and action descriptions.
-2. **Validation Phases** – each action consists of `pre-validate`, `execute`, and `post-validate` steps. The plan is to encode the validation phases into ZK circuits so we can prove “this action was legal for the prior state” without running the full engine in-circuit.
-3. **Witness Production** – during execution the runtime emits checkpoints and witnesses for the prover worker. Proofs will assert action validity and can be posted on-chain or stored off-chain for audits.
-4. **Minimal Blockchain Interaction** – by proving validity off-chain, only proof artifacts and occasional state commitments need to be persisted to a chain, keeping costs low and throughput high while still preventing cheating.
-
 ## Repository Layout
 
 ```
@@ -102,6 +76,6 @@ Please read the full [Contributing Guidelines](.github/CONTRIBUTING.md) before o
 - [`docs/status.md`](docs/status.md) – Current implementation status and roadmap (updated frequently)
 - [`docs/research.md`](docs/research.md) – Exploratory notes and design investigations
 - [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) – Contributing guidelines and code standards
-- [`CLAUDE.md`](CLAUDE.md) – Development guidance for AI-assisted coding
+- [`CLAUDE.md`](CLAUDE.md), [`AGENTS.md`](AGENTS.md) – Development guidance for AI-assisted coding
 
 Happy crawling!
