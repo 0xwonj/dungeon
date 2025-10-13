@@ -195,7 +195,7 @@ mod tests {
 
     impl NpcOracle for StubNpcOracle {
         fn template(&self, _template_id: u16) -> Option<NpcTemplate> {
-            Some(NpcTemplate::simple(100, 50))
+            Some(NpcTemplate::test_npc())
         }
     }
 

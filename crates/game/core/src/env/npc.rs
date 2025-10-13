@@ -1,7 +1,5 @@
 use crate::state::{ActorStats, InventoryState, ResourceMeter};
 
-/// Template describing the initial state of an NPC type.
-/// Used by GameState initialization to create NPCs from map oracle specs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NpcTemplate {
     pub stats: ActorStats,
@@ -9,20 +7,64 @@ pub struct NpcTemplate {
 }
 
 impl NpcTemplate {
-    pub fn new(stats: ActorStats, inventory: InventoryState) -> Self {
-        Self { stats, inventory }
+    pub fn builder() -> NpcTemplateBuilder {
+        NpcTemplateBuilder::default()
     }
 
-    /// Creates a simple template with given HP/energy and empty inventory.
-    /// Uses default speed of 100.
-    pub fn simple(max_health: u16, max_energy: u16) -> Self {
-        Self {
-            stats: ActorStats::new(
-                ResourceMeter::new(max_health as u32, max_health as u32),
-                ResourceMeter::new(max_energy as u32, max_energy as u32),
-                100, // default speed
-            ),
+    pub fn test_npc() -> Self {
+        NpcTemplate {
+            stats: ActorStats {
+                health: ResourceMeter::new(30, 30),
+                energy: ResourceMeter::new(20, 20),
+                speed: 100,
+            },
             inventory: InventoryState::default(),
+        }
+    }
+}
+
+/// Builder for constructing `NpcTemplate` step-by-step.
+#[derive(Default)]
+pub struct NpcTemplateBuilder {
+    max_health: Option<u32>,
+    max_energy: Option<u32>,
+    speed: Option<u16>,
+    inventory: Option<InventoryState>,
+}
+
+impl NpcTemplateBuilder {
+    pub fn health(mut self, value: u32) -> Self {
+        self.max_health = Some(value);
+        self
+    }
+
+    pub fn energy(mut self, value: u32) -> Self {
+        self.max_energy = Some(value);
+        self
+    }
+
+    pub fn speed(mut self, value: u16) -> Self {
+        self.speed = Some(value);
+        self
+    }
+
+    pub fn inventory(mut self, inv: InventoryState) -> Self {
+        self.inventory = Some(inv);
+        self
+    }
+
+    pub fn build(self) -> NpcTemplate {
+        let max_health = self.max_health.unwrap_or(10);
+        let max_energy = self.max_energy.unwrap_or(5);
+        let speed = self.speed.unwrap_or(100);
+
+        NpcTemplate {
+            stats: ActorStats::new(
+                ResourceMeter::new(max_health, max_health),
+                ResourceMeter::new(max_energy, max_energy),
+                speed,
+            ),
+            inventory: self.inventory.unwrap_or_default(),
         }
     }
 }

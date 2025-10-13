@@ -164,7 +164,7 @@ mod tests {
 
     impl crate::env::NpcOracle for StubNpcs {
         fn template(&self, _template_id: u16) -> Option<crate::env::NpcTemplate> {
-            Some(crate::env::NpcTemplate::simple(100, 50))
+            Some(crate::env::NpcTemplate::test_npc())
         }
     }
 
