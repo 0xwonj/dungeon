@@ -6,7 +6,10 @@
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use game_core::engine::{ExecuteError, TransitionPhase};
-use game_core::{Action, EntityId, GameEngine, GameState, Tick};
+use game_core::{
+    Action, ActionCostAction, ActionKind, ActivationAction, EntityId, GameEngine, GameState,
+    PrepareTurnAction, Tick,
+};
 use tracing::{debug, error};
 
 use crate::api::{GameEvent, Result, RuntimeError};
@@ -81,14 +84,21 @@ impl SimulationWorker {
     }
 
     fn prepare_next_turn(&mut self) -> Result<(EntityId, GameState)> {
+        // Create system action for turn preparation
+        let prepare_action = Action::new(EntityId::SYSTEM, ActionKind::PrepareTurn(PrepareTurnAction));
+
+        let env = self.oracles.as_game_env();
         let mut engine = GameEngine::new(&mut self.state);
 
-        // Prepare next turn (selects entity and updates clock in game-core)
-        engine.prepare_next_turn().map_err(|e| match e {
-            game_core::TurnError::NoActiveEntities => RuntimeError::NoActiveEntities,
+        // Execute turn preparation as a system action
+        let _delta = engine.execute(env, &prepare_action).map_err(|e| match e {
+            ExecuteError::PrepareTurn(phase_error) => match phase_error.error {
+                game_core::TurnError::NoActiveEntities => RuntimeError::NoActiveEntities,
+            },
+            _ => unreachable!("PrepareTurnAction should only return PrepareTurn error"),
         })?;
 
-        // Get the current actor
+        // Get the current actor (now set by the system action)
         let entity = engine.current_actor();
 
         // Clone the current state for action decision-making
@@ -119,13 +129,73 @@ impl SimulationWorker {
 
         let clock = self.state.turn.clock;
 
-        match staging_engine.execute(env, &action) {
+        // Execute the player/NPC action
+        let result = staging_engine.execute(env, &action);
+        drop(staging_engine); // Release borrow on working_state
+
+        match result {
             Ok(delta) => {
-                // Commit staged changes
-                // Note: execute now handles activation updates via hooks
+                // Calculate action cost for the cost system action
+                let actor_stats = working_state
+                    .entities
+                    .actor(action.actor)
+                    .expect("actor must exist after successful action")
+                    .stats
+                    .clone();
+                let action_cost = action.cost(&actor_stats);
+
+                // Apply action cost via system action
+                let cost_action = Action::new(
+                    EntityId::SYSTEM,
+                    ActionKind::ActionCost(ActionCostAction::new(action.actor, action_cost)),
+                );
+
+                let env = self.oracles.as_game_env();
+                let mut staging_engine = GameEngine::new(&mut working_state);
+                if let Err(error) = staging_engine.execute(env, &cost_action) {
+                    error!(
+                        target: "runtime::worker",
+                        action = ?action,
+                        error = ?error,
+                        "ActionCost system action failed (should never happen)"
+                    );
+                    // Continue anyway as this is a system invariant violation
+                }
+                drop(staging_engine);
+
+                // If player moved, update entity activation
+                let player_moved = action.actor == EntityId::PLAYER
+                    && delta
+                        .entities
+                        .player
+                        .as_ref()
+                        .and_then(|p| p.position)
+                        .is_some();
+
+                if player_moved {
+                    let player_position = working_state.entities.player.position;
+                    let activation_action = Action::new(
+                        EntityId::SYSTEM,
+                        ActionKind::Activation(ActivationAction::new(player_position)),
+                    );
+
+                    let env = self.oracles.as_game_env();
+                    let mut staging_engine = GameEngine::new(&mut working_state);
+                    if let Err(error) = staging_engine.execute(env, &activation_action) {
+                        error!(
+                            target: "runtime::worker",
+                            action = ?action,
+                            error = ?error,
+                            "Activation system action failed (should never happen)"
+                        );
+                        // Continue anyway
+                    }
+                }
+
+                // Commit all staged changes (player action + system actions)
                 self.state = working_state;
 
-                // Publish ActionExecuted event with delta
+                // Publish ActionExecuted event with the player/NPC action delta
                 let _ = self.event_tx.send(GameEvent::ActionExecuted {
                     action: action.clone(),
                     delta: Box::new(delta),

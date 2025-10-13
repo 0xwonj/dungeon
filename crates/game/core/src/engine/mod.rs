@@ -1,13 +1,12 @@
 //! Turn scheduling and action execution pipeline.
 //!
 //! The [`GameEngine`] is the authoritative reducer for [`GameState`]. It
-//! orchestrates the transition phases, applies costs, and surfaces rich error
-//! information for the runtime.
+//! orchestrates the transition phases and surfaces rich error information
+//! for the runtime. All state mutations, including system actions for turn
+//! scheduling and cost application, flow through the same execute() pipeline.
 mod errors;
 mod hook;
 mod turns;
-
-use std::sync::Arc;
 
 use crate::action::{Action, ActionKind, ActionTransition};
 use crate::env::GameEnv;
@@ -34,24 +33,26 @@ macro_rules! dispatch_transition {
 
 /// Game engine that manages action execution, turn scheduling, and game logic.
 ///
-/// Combines action execution with turn scheduling in a unified API.
-/// Turn scheduling uses simple linear search over active actors for simplicity and correctness.
+/// All state mutations flow through the three-phase action pipeline:
+/// pre_validate → apply → post_validate
+///
+/// Both player/NPC actions and system actions (turn scheduling, cost application,
+/// entity activation) use the same execution path, ensuring complete auditability
+/// and proof generation for all state changes.
 pub struct GameEngine<'a> {
     state: &'a mut GameState,
-    hooks: Arc<[Arc<dyn PostExecutionHook>]>,
 }
 
 impl<'a> GameEngine<'a> {
-    /// Creates a new game engine with the given state and configuration.
+    /// Creates a new game engine with the given state.
     pub fn new(state: &'a mut GameState) -> Self {
-        Self {
-            state,
-            hooks: hook::default_hooks(),
-        }
+        Self { state }
     }
 
     /// Executes an action by routing it through the appropriate transition pipeline.
-    /// After successful execution, applies post-execution hooks and returns the resulting [`StateDelta`].
+    ///
+    /// Returns a [`StateDelta`] capturing all state changes made by the action.
+    /// Both player/NPC actions and system actions go through the same pipeline.
     pub fn execute(
         &mut self,
         env: GameEnv<'_>,
@@ -69,19 +70,9 @@ impl<'a> GameEngine<'a> {
             Activation => Activation,
         })?;
 
-        // Generate initial delta to check what changed
-        let initial_delta = StateDelta::from_states(action.clone(), &before, self.state);
-
-        // Apply post-execution hooks (already sorted by priority)
-        for hook in self.hooks.iter() {
-            if hook.should_trigger(&initial_delta) {
-                hook.apply(self.state, &initial_delta, &env);
-            }
-        }
-
-        // Generate final delta that includes hook effects
-        let final_delta = StateDelta::from_states(action.clone(), &before, self.state);
-        Ok(final_delta)
+        // Generate delta capturing all state changes
+        let delta = StateDelta::from_states(action.clone(), &before, self.state);
+        Ok(delta)
     }
 }
 
@@ -264,49 +255,7 @@ mod tests {
         assert_eq!(new_tile_patch.occupants, vec![EntityId::PLAYER]);
     }
 
-    #[test]
-    fn execute_action_and_update_ready_at() {
-        use crate::state::{ActorState, ActorStats, InventoryState};
-
-        let mut state = GameState::default();
-
-        // Setup player
-        state.entities.player = ActorState::new(
-            EntityId::PLAYER,
-            Position::ORIGIN,
-            ActorStats::default(),
-            InventoryState::default(),
-        );
-        state.entities.player.ready_at = Some(Tick(0));
-
-        // Add player to tile occupants
-        let mut occupants =
-            arrayvec::ArrayVec::<EntityId, { GameConfig::MAX_OCCUPANTS_PER_TILE }>::new();
-        occupants.push(EntityId::PLAYER);
-        state
-            .world
-            .tile_map
-            .replace_occupants(Position::ORIGIN, occupants);
-
-        // Clock is already at 0 from default state
-        static MAP: StubMap = StubMap;
-        static ITEMS: StubItems = StubItems;
-        static TABLES: StubTables = StubTables;
-        static NPCS: StubNpcs = StubNpcs;
-        static CONFIG: StubConfig = StubConfig;
-        let env = Env::with_all(&MAP, &ITEMS, &TABLES, &NPCS, &CONFIG).into_game_env();
-
-        // Execute action
-        let move_action = MoveAction::new(EntityId::PLAYER, CardinalDirection::North, 1);
-        let action = Action::new(EntityId::PLAYER, ActionKind::Move(move_action));
-
-        let mut engine = GameEngine::new(&mut state);
-        let _ = engine
-            .execute(env, &action)
-            .expect("should execute successfully");
-
-        // Verify ready_at was updated (speed-scaled)
-        assert!(state.entities.player.ready_at.is_some());
-        assert!(state.entities.player.ready_at.unwrap().0 > 0);
-    }
+    // Note: ready_at updates are now handled via ActionCostAction system action
+    // at the SimulationWorker level, not within GameEngine::execute().
+    // See SimulationWorker tests for integration testing of cost application.
 }
