@@ -66,4 +66,7 @@ pub enum ExecuteError {
 
     #[error("activation action failed: {0}")]
     Activation(TransitionPhaseError<<ActivationAction as ActionTransition>::Error>),
+
+    #[error("hook chain too deep: hook '{hook_name}' reached depth {depth}")]
+    HookChainTooDeep { hook_name: String, depth: usize },
 }

@@ -9,8 +9,10 @@
 //! - [`runtime`] hosts the orchestrator and builder
 //! - [`api`] exposes the types downstream clients interact with
 //! - [`workers`] keeps background tasks internal to the crate
+//! - [`hooks`] provides post-execution hook system for runtime orchestration
 //! - [`oracle`] and [`repository`] provide data adapters reused by other crates
 pub mod api;
+pub mod hooks;
 pub mod oracle;
 pub mod repository;
 pub mod runtime;
@@ -20,6 +22,9 @@ mod workers;
 pub use api::{
     ActionProvider, GameEvent, ProviderKind, Result, RuntimeError, RuntimeHandle,
     WaitActionProvider,
+};
+pub use hooks::{
+    ActionCostHook, ActivationHook, HookContext, HookCriticality, HookRegistry, PostExecutionHook,
 };
 pub use oracle::{
     ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, NpcOracleImpl, OracleManager, TablesOracleImpl,

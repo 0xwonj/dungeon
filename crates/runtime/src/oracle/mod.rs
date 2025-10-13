@@ -57,4 +57,16 @@ impl OracleManager {
         )
         .into_game_env()
     }
+
+    /// Creates a test oracle manager with default test data
+    #[cfg(test)]
+    pub fn test_manager() -> Self {
+        Self::new(
+            Arc::new(MapOracleImpl::test_map(20, 20)),
+            Arc::new(ItemOracleImpl::test_items()),
+            Arc::new(TablesOracleImpl::test_tables()),
+            Arc::new(NpcOracleImpl::test_npcs()),
+            Arc::new(ConfigOracleImpl::new(game_core::GameConfig::default())),
+        )
+    }
 }

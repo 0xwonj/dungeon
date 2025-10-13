@@ -107,7 +107,7 @@ mod tests {
         AttackProfile, ConfigOracle, Env, ItemCategory, ItemDefinition, ItemOracle, MapDimensions,
         MapOracle, MovementRules, StaticTile, TablesOracle, TerrainKind,
     };
-    use crate::state::{EntityId, GameState, ItemHandle, Position, Tick};
+    use crate::state::{EntityId, GameState, ItemHandle, Position};
 
     #[derive(Debug, Default)]
     struct StubMap;

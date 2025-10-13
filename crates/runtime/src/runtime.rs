@@ -9,6 +9,7 @@ use tokio::task::JoinHandle;
 use game_core::{EntityId, GameConfig, GameState};
 
 use crate::api::{ActionProvider, GameEvent, ProviderKind, Result, RuntimeError, RuntimeHandle};
+use crate::hooks::{HookRegistry, PostExecutionHook};
 use crate::oracle::OracleManager;
 use crate::workers::{Command, SimulationWorker};
 
@@ -131,6 +132,7 @@ pub struct RuntimeBuilder {
     oracles: Option<OracleManager>,
     player_provider: Option<Box<dyn ActionProvider>>,
     npc_provider: Option<Box<dyn ActionProvider>>,
+    hooks: Option<HookRegistry>,
 }
 
 impl RuntimeBuilder {
@@ -141,6 +143,7 @@ impl RuntimeBuilder {
             oracles: None,
             player_provider: None,
             npc_provider: None,
+            hooks: None,
         }
     }
 
@@ -174,6 +177,88 @@ impl RuntimeBuilder {
         self
     }
 
+    /// Set custom post-execution hooks.
+    ///
+    /// If not provided, the default hooks (ActionCost, Activation) are used.
+    /// Use this to add custom hooks or replace the default set entirely.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use std::sync::Arc;
+    ///
+    /// let root_hooks = vec![
+    ///     Arc::new(ActionCostHook) as Arc<dyn PostExecutionHook>,
+    ///     Arc::new(ActivationHook) as Arc<dyn PostExecutionHook>,
+    ///     Arc::new(DamageHook) as Arc<dyn PostExecutionHook>,
+    /// ];
+    ///
+    /// let all_hooks = vec![
+    ///     Arc::new(ActionCostHook) as Arc<dyn PostExecutionHook>,
+    ///     Arc::new(ActivationHook) as Arc<dyn PostExecutionHook>,
+    ///     Arc::new(DamageHook) as Arc<dyn PostExecutionHook>,
+    ///     Arc::new(DeathCheckHook) as Arc<dyn PostExecutionHook>, // Lookup only
+    /// ];
+    ///
+    /// let runtime = Runtime::builder()
+    ///     .with_hooks(HookRegistry::new(root_hooks, all_hooks))
+    ///     .build()
+    ///     .await?;
+    /// ```
+    pub fn with_hooks(mut self, hooks: HookRegistry) -> Self {
+        self.hooks = Some(hooks);
+        self
+    }
+
+    /// Adds hooks to the default hook set.
+    ///
+    /// This is a convenience method for adding custom hooks without replacing
+    /// the entire default set.
+    ///
+    /// # Arguments
+    ///
+    /// * `root_hooks` - Additional hooks to execute on every action
+    /// * `lookup_hooks` - Additional hooks that are only chained (not executed as root)
+    ///
+    /// Note: If you've already called `with_hooks()`, calling this will discard
+    /// those hooks and rebuild from the default set plus your new hooks.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use std::sync::Arc;
+    ///
+    /// let runtime = Runtime::builder()
+    ///     .add_hooks(
+    ///         vec![Arc::new(DamageHook)],  // Root: execute every action
+    ///         vec![Arc::new(DeathCheckHook)],  // Lookup: only when chained
+    ///     )
+    ///     .build()
+    ///     .await?;
+    /// ```
+    pub fn add_hooks(
+        mut self,
+        additional_root_hooks: Vec<std::sync::Arc<dyn PostExecutionHook>>,
+        additional_lookup_hooks: Vec<std::sync::Arc<dyn PostExecutionHook>>,
+    ) -> Self {
+        use crate::hooks::{ActionCostHook, ActivationHook};
+        use std::sync::Arc;
+
+        // Start with default hooks
+        let mut root_hooks: Vec<Arc<dyn PostExecutionHook>> = vec![
+            Arc::new(ActionCostHook) as Arc<dyn PostExecutionHook>,
+            Arc::new(ActivationHook) as Arc<dyn PostExecutionHook>,
+        ];
+        root_hooks.extend(additional_root_hooks);
+
+        // All hooks = root + lookup-only
+        let mut all_hooks = root_hooks.clone();
+        all_hooks.extend(additional_lookup_hooks);
+
+        self.hooks = Some(HookRegistry::new(root_hooks, all_hooks));
+        self
+    }
+
     /// Build the runtime
     pub async fn build(self) -> Result<Runtime> {
         let oracles = self.oracles.ok_or_else(|| RuntimeError::MissingOracles)?;
@@ -190,7 +275,11 @@ impl RuntimeBuilder {
 
         let handle = RuntimeHandle::new(command_tx, event_tx.clone());
 
-        let worker = SimulationWorker::new(initial_state, oracles, command_rx, event_tx.clone());
+        // Use provided hooks or default registry
+        let hooks = self.hooks.unwrap_or_default();
+
+        let worker =
+            SimulationWorker::new(initial_state, oracles, command_rx, event_tx.clone(), hooks);
 
         let sim_worker_handle = tokio::spawn(async move {
             worker.run().await;

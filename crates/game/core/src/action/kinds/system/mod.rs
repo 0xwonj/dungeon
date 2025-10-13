@@ -11,10 +11,10 @@
 //! validation pipeline as player/NPC actions, ensuring they are fully auditable and
 //! provable in zero-knowledge proof systems.
 
+mod action_cost;
 mod activation;
 mod prepare_turn;
-mod action_cost;
 
+pub use action_cost::ActionCostAction;
 pub use activation::ActivationAction;
 pub use prepare_turn::PrepareTurnAction;
-pub use action_cost::ActionCostAction;

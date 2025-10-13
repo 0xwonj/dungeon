@@ -99,11 +99,16 @@ impl ActionTransition for PrepareTurnAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{ActorState, ActorStats, EntitiesState, EntityId, InventoryState, Position};
+    use crate::state::{ActorState, ActorStats, EntityId, InventoryState, Position};
 
     fn create_test_actor(id: EntityId, ready_at: Tick) -> ActorState {
-        ActorState::new(id, Position::ORIGIN, ActorStats::default(), InventoryState::default())
-            .with_ready_at(ready_at)
+        ActorState::new(
+            id,
+            Position::ORIGIN,
+            ActorStats::default(),
+            InventoryState::default(),
+        )
+        .with_ready_at(ready_at)
     }
 
     #[test]

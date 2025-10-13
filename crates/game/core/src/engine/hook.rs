@@ -4,8 +4,6 @@
 //! automatic side-effects like entity activation/deactivation, regeneration, environmental
 //! effects, etc.
 
-use std::sync::Arc;
-
 use crate::env::GameEnv;
 use crate::state::{GameState, StateDelta};
 
@@ -128,16 +126,4 @@ impl PostExecutionHook for ActionCostHook {
             }
         }
     }
-}
-
-/// Returns the default set of hooks that should be applied after every action execution.
-/// Hooks are returned in an Arc for efficient sharing without cloning.
-pub fn default_hooks() -> Arc<[Arc<dyn PostExecutionHook>]> {
-    let mut hooks: Vec<Arc<dyn PostExecutionHook>> =
-        vec![Arc::new(ActionCostHook), Arc::new(ActivationHook)];
-
-    // Sort by priority (lower values first)
-    hooks.sort_by_key(|h| h.priority());
-
-    hooks.into()
 }

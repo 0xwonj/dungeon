@@ -134,7 +134,12 @@ mod tests {
     use crate::state::{ActorState, ActorStats, InventoryState, ResourceMeter};
 
     fn create_test_actor(id: EntityId, position: Position) -> ActorState {
-        ActorState::new(id, position, ActorStats::default(), InventoryState::default())
+        ActorState::new(
+            id,
+            position,
+            ActorStats::default(),
+            InventoryState::default(),
+        )
     }
 
     struct TestConfig;
@@ -160,7 +165,13 @@ mod tests {
 
         let action = ActivationAction::new(Position::ORIGIN);
         static CONFIG: TestConfig = TestConfig;
-        let env: GameEnv = Env::new(None, None, None, None, Some(&CONFIG as &dyn crate::env::ConfigOracle));
+        let env: GameEnv = Env::new(
+            None,
+            None,
+            None,
+            None,
+            Some(&CONFIG as &dyn crate::env::ConfigOracle),
+        );
 
         action.apply(&mut state, &env).unwrap();
 
@@ -184,7 +195,13 @@ mod tests {
 
         let action = ActivationAction::new(Position::ORIGIN);
         static CONFIG: TestConfig = TestConfig;
-        let env: GameEnv = Env::new(None, None, None, None, Some(&CONFIG as &dyn crate::env::ConfigOracle));
+        let env: GameEnv = Env::new(
+            None,
+            None,
+            None,
+            None,
+            Some(&CONFIG as &dyn crate::env::ConfigOracle),
+        );
 
         action.apply(&mut state, &env).unwrap();
 
@@ -207,7 +224,13 @@ mod tests {
 
         let action = ActivationAction::new(Position::ORIGIN);
         static CONFIG: TestConfig = TestConfig;
-        let env: GameEnv = Env::new(None, None, None, None, Some(&CONFIG as &dyn crate::env::ConfigOracle));
+        let env: GameEnv = Env::new(
+            None,
+            None,
+            None,
+            None,
+            Some(&CONFIG as &dyn crate::env::ConfigOracle),
+        );
 
         action.apply(&mut state, &env).unwrap();
 
@@ -231,7 +254,13 @@ mod tests {
 
         let action = ActivationAction::new(Position::ORIGIN);
         static CONFIG: TestConfig = TestConfig;
-        let env: GameEnv = Env::new(None, None, None, None, Some(&CONFIG as &dyn crate::env::ConfigOracle));
+        let env: GameEnv = Env::new(
+            None,
+            None,
+            None,
+            None,
+            Some(&CONFIG as &dyn crate::env::ConfigOracle),
+        );
 
         action.apply(&mut state, &env).unwrap();
 
@@ -252,12 +281,23 @@ mod tests {
             ResourceMeter::new(100, 100),
             200,
         );
-        let npc = ActorState::new(EntityId(1), Position::new(3, 3), stats, InventoryState::default());
+        let npc = ActorState::new(
+            EntityId(1),
+            Position::new(3, 3),
+            stats,
+            InventoryState::default(),
+        );
         state.entities.npcs.push(npc).unwrap();
 
         let action = ActivationAction::new(Position::ORIGIN);
         static CONFIG: TestConfig = TestConfig;
-        let env: GameEnv = Env::new(None, None, None, None, Some(&CONFIG as &dyn crate::env::ConfigOracle));
+        let env: GameEnv = Env::new(
+            None,
+            None,
+            None,
+            None,
+            Some(&CONFIG as &dyn crate::env::ConfigOracle),
+        );
 
         action.apply(&mut state, &env).unwrap();
 

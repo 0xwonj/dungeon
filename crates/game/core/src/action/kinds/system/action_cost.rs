@@ -29,10 +29,7 @@ pub struct ActionCostAction {
 impl ActionCostAction {
     /// Creates a new action cost application for the given actor and cost.
     pub fn new(target_actor: EntityId, cost: Tick) -> Self {
-        Self {
-            target_actor,
-            cost,
-        }
+        Self { target_actor, cost }
     }
 }
 
@@ -106,7 +103,6 @@ pub enum ActionCostError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::{ActionKind, CardinalDirection, MoveAction};
     use crate::state::{ActorState, ActorStats, InventoryState, Position, ResourceMeter};
 
     fn create_test_actor(id: EntityId, ready_at: Tick, speed: u16) -> ActorState {
@@ -172,16 +168,17 @@ mod tests {
 
         // Actor exists but has no ready_at
         let stats = ActorStats::default();
-        state.entities.player =
-            ActorState::new(EntityId::PLAYER, Position::ORIGIN, stats, InventoryState::default());
+        state.entities.player = ActorState::new(
+            EntityId::PLAYER,
+            Position::ORIGIN,
+            stats,
+            InventoryState::default(),
+        );
 
         let cost_action = ActionCostAction::new(EntityId::PLAYER, Tick(100));
         let env = GameEnv::empty();
 
         let result = cost_action.pre_validate(&state, &env);
-        assert!(matches!(
-            result,
-            Err(ActionCostError::ActorNotScheduled(_))
-        ));
+        assert!(matches!(result, Err(ActionCostError::ActorNotScheduled(_))));
     }
 }

@@ -10,7 +10,7 @@ use crate::state::{EntityId, Tick};
 
 pub use command::{ActionCommand, CommandContext};
 pub use kinds::{
-    ActivationAction, ActionCostAction, AttackAction, AttackCommand, AttackStyle,
+    ActionCostAction, ActivationAction, AttackAction, AttackCommand, AttackStyle,
     CardinalDirection, InteractAction, InteractCommand, InventorySlot, ItemTarget, MoveAction,
     MoveCommand, MoveError, PrepareTurnAction, UseItemAction, UseItemCommand,
 };
