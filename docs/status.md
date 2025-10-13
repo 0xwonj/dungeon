@@ -1,6 +1,7 @@
 # Project Status
 
 > **Status:** Living document  
+>
 > **Scope:** Tracks Dungeon’s implementation progress, feature roadmap, and current technical priorities across engine, runtime, client, and proving layers.
 
 ---

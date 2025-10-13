@@ -1,5 +1,11 @@
 # Research Notes
 
+> **Status:** Internal notes  
+>
+> **Scope:** Design decisions and reasoning logs for Dungeon’s core architecture — documents technical trade-offs, removed patterns, and rationale behind engine and proof model evolution.
+
+---
+
 ## StateReducer Pattern Removal (2025-10-10)
 
 ### Context

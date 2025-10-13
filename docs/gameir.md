@@ -2,7 +2,7 @@
 
 > **Status:** Draft
 >
-> **Audience:** Engine/Systems engineers, cryptography researchers, gameplay programmers
+> **Scope:** Technical specification of a unified Rust→IR framework for zk-executable games, detailing the GameIR design, compilation pipeline, and proving integration.
 
 ---
 
