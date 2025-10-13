@@ -7,6 +7,25 @@ pub struct EntityId(pub u32);
 impl EntityId {
     /// Reserved identifier for the controllable player character.
     pub const PLAYER: Self = Self(0);
+
+    /// Reserved identifier for system-level actions (turn scheduling, hooks, etc.).
+    ///
+    /// System actions are deterministic state transitions that maintain game invariants
+    /// but are not initiated by any in-game entity. Examples include turn preparation,
+    /// action cost application, and entity activation updates.
+    pub const SYSTEM: Self = Self(u32::MAX);
+
+    /// Returns true if this entity represents a system actor.
+    #[inline]
+    pub const fn is_system(self) -> bool {
+        self.0 == Self::SYSTEM.0
+    }
+
+    /// Returns true if this entity represents the player.
+    #[inline]
+    pub const fn is_player(self) -> bool {
+        self.0 == Self::PLAYER.0
+    }
 }
 
 impl Default for EntityId {

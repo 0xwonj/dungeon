@@ -64,6 +64,9 @@ impl<'a> GameEngine<'a> {
             Attack => Attack,
             UseItem => UseItem,
             Interact => Interact,
+            PrepareTurn => PrepareTurn,
+            ActionCost => ActionCost,
+            Activation => Activation,
         })?;
 
         // Generate initial delta to check what changed

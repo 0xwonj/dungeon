@@ -1,5 +1,8 @@
 use crate::action::ActionTransition;
-use crate::action::{AttackAction, InteractAction, MoveAction, UseItemAction};
+use crate::action::{
+    ActionCostAction, ActivationAction, AttackAction, InteractAction, MoveAction,
+    PrepareTurnAction, UseItemAction,
+};
 
 /// Identifies which stage of the transition pipeline produced an error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,4 +57,13 @@ pub enum ExecuteError {
 
     #[error("interact action failed: {0}")]
     Interact(TransitionPhaseError<<InteractAction as ActionTransition>::Error>),
+
+    #[error("prepare turn action failed: {0}")]
+    PrepareTurn(TransitionPhaseError<<PrepareTurnAction as ActionTransition>::Error>),
+
+    #[error("action cost action failed: {0}")]
+    ActionCost(TransitionPhaseError<<ActionCostAction as ActionTransition>::Error>),
+
+    #[error("activation action failed: {0}")]
+    Activation(TransitionPhaseError<<ActivationAction as ActionTransition>::Error>),
 }

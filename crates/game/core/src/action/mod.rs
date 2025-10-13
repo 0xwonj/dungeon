@@ -10,8 +10,9 @@ use crate::state::{EntityId, Tick};
 
 pub use command::{ActionCommand, CommandContext};
 pub use kinds::{
-    AttackAction, AttackCommand, AttackStyle, CardinalDirection, InteractAction, InteractCommand,
-    InventorySlot, ItemTarget, MoveAction, MoveCommand, MoveError, UseItemAction, UseItemCommand,
+    ActivationAction, ActionCostAction, AttackAction, AttackCommand, AttackStyle,
+    CardinalDirection, InteractAction, InteractCommand, InventorySlot, ItemTarget, MoveAction,
+    MoveCommand, MoveError, PrepareTurnAction, UseItemAction, UseItemCommand,
 };
 pub use transition::ActionTransition;
 
@@ -29,6 +30,10 @@ impl Action {
             ActionKind::Attack(attack_action) => attack_action.actor == actor,
             ActionKind::UseItem(use_item_action) => use_item_action.actor == actor,
             ActionKind::Interact(interact_action) => interact_action.actor == actor,
+            // System actions must be executed by SYSTEM actor
+            ActionKind::PrepareTurn(_) | ActionKind::ActionCost(_) | ActionKind::Activation(_) => {
+                actor.is_system()
+            }
             _ => true,
         });
         Self { actor, kind }
@@ -58,6 +63,10 @@ impl Action {
             ActionKind::UseItem(action) => action.cost().0,
             ActionKind::Interact(action) => action.cost().0,
             ActionKind::Wait => 100,
+            // System actions have no time cost
+            ActionKind::PrepareTurn(action) => action.cost().0,
+            ActionKind::ActionCost(action) => action.cost().0,
+            ActionKind::Activation(action) => action.cost().0,
         };
 
         // Scale by speed (100 = baseline)
@@ -68,11 +77,17 @@ impl Action {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ActionKind {
+    // Player/NPC actions
     Move(MoveAction),
     Attack(AttackAction),
     UseItem(UseItemAction),
     Interact(InteractAction),
     Wait,
+
+    // System actions (executed by EntityId::SYSTEM)
+    PrepareTurn(PrepareTurnAction),
+    ActionCost(ActionCostAction),
+    Activation(ActivationAction),
 }
 
 impl From<MoveAction> for ActionKind {
@@ -96,5 +111,23 @@ impl From<UseItemAction> for ActionKind {
 impl From<InteractAction> for ActionKind {
     fn from(action: InteractAction) -> Self {
         Self::Interact(action)
+    }
+}
+
+impl From<PrepareTurnAction> for ActionKind {
+    fn from(action: PrepareTurnAction) -> Self {
+        Self::PrepareTurn(action)
+    }
+}
+
+impl From<ActionCostAction> for ActionKind {
+    fn from(action: ActionCostAction) -> Self {
+        Self::ActionCost(action)
+    }
+}
+
+impl From<ActivationAction> for ActionKind {
+    fn from(action: ActivationAction) -> Self {
+        Self::Activation(action)
     }
 }

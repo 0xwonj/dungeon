@@ -150,6 +150,15 @@ impl SimulationWorker {
             ExecuteError::Interact(phase_error) => {
                 (phase_error.phase, phase_error.error.to_string())
             }
+            ExecuteError::PrepareTurn(phase_error) => {
+                (phase_error.phase, phase_error.error.to_string())
+            }
+            ExecuteError::ActionCost(phase_error) => {
+                (phase_error.phase, phase_error.error.to_string())
+            }
+            ExecuteError::Activation(phase_error) => {
+                (phase_error.phase, phase_error.error.to_string())
+            }
         };
 
         if phase == TransitionPhase::PreValidate {
