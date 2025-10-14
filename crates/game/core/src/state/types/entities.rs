@@ -1,8 +1,9 @@
 use arrayvec::ArrayVec;
 use bounded_vector::BoundedVec;
 
-use super::{EntityId, Position, ResourceMeter, Tick};
+use super::{EntityId, Position, Tick};
 use crate::config::GameConfig;
+use crate::stats::ActorStats;
 
 /// Aggregate state for every entity in the map.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -93,35 +94,6 @@ impl ActorState {
     pub fn with_template_id(mut self, template_id: u16) -> Self {
         self.template_id = template_id;
         self
-    }
-}
-
-/// Simple combat/resource stats for an actor.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ActorStats {
-    pub health: ResourceMeter,
-    pub energy: ResourceMeter,
-    /// Speed stat affecting turn scheduling. 100 = baseline, higher = faster.
-    pub speed: u16,
-}
-
-impl ActorStats {
-    pub fn new(health: ResourceMeter, energy: ResourceMeter, speed: u16) -> Self {
-        Self {
-            health,
-            energy,
-            speed,
-        }
-    }
-}
-
-impl Default for ActorStats {
-    fn default() -> Self {
-        Self {
-            health: ResourceMeter::default(),
-            energy: ResourceMeter::default(),
-            speed: 100, // baseline speed
-        }
     }
 }
 

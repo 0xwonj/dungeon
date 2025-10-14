@@ -53,7 +53,7 @@ impl Action {
     /// Returns the time cost (in ticks) for this action.
     /// This determines how much the entity's ready_at advances after execution.
     /// Cost is scaled by the actor's speed stat.
-    pub fn cost(&self, stats: &crate::state::ActorStats) -> Tick {
+    pub fn cost(&self, stats: &crate::stats::ActorStats) -> Tick {
         use crate::action::ActionTransition;
 
         // Get base cost
@@ -70,7 +70,8 @@ impl Action {
         };
 
         // Scale by speed (100 = baseline)
-        let speed = stats.speed.max(1) as u64;
+        // Use physical speed for all actions (for now)
+        let speed = stats.speed_physical().max(1) as u64;
         Tick(base_cost * 100 / speed)
     }
 }

@@ -1,5 +1,6 @@
-use crate::state::types::{ActorState, ActorStats, InventoryState, ItemState, PropState};
+use crate::state::types::{ActorState, InventoryState, ItemState, PropState};
 use crate::state::{EntityId, Position, Tick};
+use crate::stats::ActorStats;
 
 /// Minimal actor update.
 #[derive(Clone, Debug, PartialEq, Eq)]

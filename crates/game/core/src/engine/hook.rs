@@ -77,7 +77,7 @@ impl PostExecutionHook for ActivationHook {
                     state.turn.active_actors.insert(entity_id);
 
                     // Set initial ready_at using Wait action cost (100 ticks scaled by speed)
-                    let speed = stats.speed.max(1) as u64;
+                    let speed = stats.speed_physical().max(1) as u64;
                     let delay = crate::state::Tick(100 * 100 / speed);
                     if let Some(actor) = state.entities.actor_mut(entity_id) {
                         actor.ready_at = Some(crate::state::Tick(clock.0 + delay.0));

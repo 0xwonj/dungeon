@@ -7,15 +7,16 @@ pub mod delta;
 pub mod types;
 
 use crate::env::{GameEnv, InitialEntityKind, MapOracle};
+use crate::stats::ActorStats;
 pub use bounded_vector::BoundedVec;
 pub use delta::{
     ActorPatch, CollectionDelta, EntitiesDelta, ItemPatch, OccupancyPatch, OverlayPatch, PropPatch,
     StateDelta, TurnDelta, WorldDelta,
 };
 pub use types::{
-    ActorState, ActorStats, EntitiesState, EntityId, EventId, HazardOverlay, InventoryState,
-    ItemHandle, ItemState, Overlay, OverlaySet, Position, PropKind, PropState, ResourceMeter, Tick,
-    TileMap, TileView, TurnState, WorldState,
+    ActorState, EntitiesState, EntityId, EventId, HazardOverlay, InventoryState, ItemHandle,
+    ItemState, Overlay, OverlaySet, Position, PropKind, PropState, ResourceMeter, Tick, TileMap,
+    TileView, TurnState, WorldState,
 };
 
 /// Canonical snapshot of the deterministic game state.

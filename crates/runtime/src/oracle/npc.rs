@@ -24,34 +24,13 @@ impl NpcOracleImpl {
         let mut oracle = Self::new();
 
         // Template 0: Weak goblin
-        oracle.add_template(
-            0,
-            NpcTemplate::builder()
-                .health(30)
-                .energy(20)
-                .speed(100)
-                .build(),
-        );
+        oracle.add_template(0, NpcTemplate::builder().health(30).mana(20).build());
 
         // Template 1: Strong orc
-        oracle.add_template(
-            1,
-            NpcTemplate::builder()
-                .health(70)
-                .energy(40)
-                .speed(50)
-                .build(),
-        );
+        oracle.add_template(1, NpcTemplate::builder().health(70).mana(40).build());
 
         // Template 2: Boss
-        oracle.add_template(
-            2,
-            NpcTemplate::builder()
-                .health(200)
-                .energy(100)
-                .speed(150)
-                .build(),
-        );
+        oracle.add_template(2, NpcTemplate::builder().health(200).mana(100).build());
 
         oracle
     }

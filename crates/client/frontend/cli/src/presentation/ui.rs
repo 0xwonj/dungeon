@@ -219,7 +219,7 @@ fn render_player_stats(
     ]));
 
     lines.push(Line::from(vec![
-        Span::styled("Speed: ", Style::default().fg(Color::White)),
+        Span::styled("Speed (Phys): ", Style::default().fg(Color::White)),
         Span::raw(player.stats.speed.to_string()),
     ]));
 

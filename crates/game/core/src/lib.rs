@@ -9,6 +9,7 @@ pub mod config;
 pub mod engine;
 pub mod env;
 pub mod state;
+pub mod stats;
 pub use action::{
     Action, ActionCommand, ActionCostAction, ActionKind, ActionTransition, ActivationAction,
     AttackAction, AttackCommand, AttackStyle, CardinalDirection, CommandContext, InteractAction,
@@ -23,9 +24,15 @@ pub use env::{
     StaticTile, TablesOracle, TerrainKind,
 };
 pub use state::{
-    ActorPatch, ActorState, ActorStats, CollectionDelta, EntitiesDelta, EntitiesState, EntityId,
-    EventId, GameState, HazardOverlay, InitializationError, InventoryState, ItemHandle, ItemPatch,
+    ActorPatch, ActorState, CollectionDelta, EntitiesDelta, EntitiesState, EntityId, EventId,
+    GameState, HazardOverlay, InitializationError, InventoryState, ItemHandle, ItemPatch,
     ItemState, OccupancyPatch, Overlay, OverlayPatch, OverlaySet, Position, PropKind, PropPatch,
     PropState, ResourceMeter, StateDelta, Tick, TileMap, TileView, TurnDelta, TurnState,
     WorldDelta, WorldState,
+};
+pub use stats::{
+    ActionSnapshot, ActorStats, Bonus, BonusStack, Condition, ConditionSet, CoreEffective,
+    CoreStatBonuses, CoreStats, DerivedBonuses, DerivedStats, FinalModifiers, ModifierBonuses,
+    ResourceCurrent, ResourceMaximums, ResourceMeters, SnapshotBuilder, SpeedConditions, SpeedKind,
+    SpeedStats, StatModifiers,
 };

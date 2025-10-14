@@ -200,19 +200,14 @@ pub struct PlayerSnapshot {
 impl PlayerSnapshot {
     fn from_state(state: &GameState) -> Self {
         let player = &state.entities.player;
+        let resources = player.stats.resource_meters();
         Self {
             id: player.id,
             position: player.position,
             stats: PlayerStats {
-                health: ResourceSnapshot::new(
-                    player.stats.health.current,
-                    player.stats.health.maximum,
-                ),
-                energy: ResourceSnapshot::new(
-                    player.stats.energy.current,
-                    player.stats.energy.maximum,
-                ),
-                speed: player.stats.speed,
+                health: ResourceSnapshot::new(resources.hp.current, resources.hp.maximum),
+                energy: ResourceSnapshot::new(resources.mp.current, resources.mp.maximum),
+                speed: player.stats.speed_physical() as u16,
                 ready_at: player.ready_at.map(|tick| tick.0),
             },
             inventory_items: player.inventory.items.len(),
@@ -263,10 +258,11 @@ fn collect_messages(messages: &MessageLog, limit: usize) -> Vec<MessageEntry> {
 
 /// Helper to create ActorStatsSnapshot from ActorState.
 fn actor_stats_snapshot(actor: &game_core::ActorState) -> ActorStatsSnapshot {
+    let resources = actor.stats.resource_meters();
     ActorStatsSnapshot {
-        health: ResourceSnapshot::new(actor.stats.health.current, actor.stats.health.maximum),
-        energy: ResourceSnapshot::new(actor.stats.energy.current, actor.stats.energy.maximum),
-        speed: actor.stats.speed,
+        health: ResourceSnapshot::new(resources.hp.current, resources.hp.maximum),
+        energy: ResourceSnapshot::new(resources.mp.current, resources.mp.maximum),
+        speed: actor.stats.speed_physical() as u16,
         ready_at: actor.ready_at.map(|tick| tick.0),
     }
 }

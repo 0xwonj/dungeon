@@ -73,8 +73,8 @@ crates/
 
 - Use `mod.rs` for module re-exports or explicit module boundaries
 - Export public API through crate root `lib.rs`
-- Co-locate tests in `#[cfg(test)]` modules next to implementation
-- Integration tests go in `crates/<name>/tests/` directory
+- NO inline unit tests in `#[cfg(test)]` modules - these slow down iteration and create maintenance overhead
+- Integration tests only: Large-scale tests in `crates/<name>/tests/` directory that verify entire module behaviors
 
 ### Naming
 
@@ -91,14 +91,50 @@ crates/
 - Clients consume events via `RuntimeHandle::subscribe_events()` for UI updates and feedback
 - Turn scheduling is managed by the simulation worker via `prepare_next_turn()` calls
 
-## Testing
+## Testing Policy
 
-- Unit tests: Fast, isolated, in `#[cfg(test)]` modules
-- Name tests after observable behavior: `handles_turn_preparation()`, `validates_action_execution()`
-- Integration tests: Cross-crate behavior in `tests/` subdirectories
-- Always run `cargo test --workspace` before pushing
-- Test runtime event flows and worker coordination with in-memory repositories
-- Capture regression scenarios from bugs as new test cases
+**IMPORTANT**: This project uses minimal testing to maximize development velocity.
+
+### Testing Philosophy
+
+- **Temporary unit tests OK during development**: You may write small `#[cfg(test)]` unit tests to verify logic while actively developing
+- **Delete after verification**: Once the feature works and is verified, DELETE all small unit tests from the same commit/PR
+- **No committed unit tests**: Small `#[cfg(test)]` modules create maintenance overhead and slow iteration - never commit them
+- **Integration tests only in main branch**: Focus on high-level module behavior in `crates/<name>/tests/` directories
+- **Test when complete**: Write integration tests for stable features after development is done
+
+### Test Guidelines
+
+- Integration tests verify entire workflows (runtime orchestration, action execution pipelines, event flows)
+- Name tests after complete behaviors: `test_movement_workflow()`, `test_turn_scheduling_pipeline()`
+- Use in-memory repositories for runtime tests to avoid I/O overhead
+- Always run `cargo test --workspace` before pushing to catch integration issues
+- Capture critical regression scenarios as focused integration tests
+
+### When to Write Tests
+
+**During Development (Temporary):**
+- ✅ Write small unit tests to verify your logic while coding
+- ✅ Use `#[cfg(test)]` modules to check edge cases during implementation
+- ⚠️ **MUST DELETE** these temporary tests before committing/pushing
+
+**For Permanent Tests (Integration Only):**
+- ✅ After feature development is complete and API is stable
+- ✅ For complex multi-crate integration scenarios
+- ✅ To document critical edge cases or regression scenarios
+
+**Never Write Tests For:**
+- ❌ Individual functions or small helper methods (in committed code)
+- ❌ Obvious logic or trivial getters/setters
+- ❌ Code that is still actively changing
+
+### Development Workflow
+
+1. **Write feature code** + temporary unit tests for verification
+2. **Verify** the feature works with `cargo test`
+3. **Delete** all temporary `#[cfg(test)]` unit test modules
+4. **Optionally add** integration tests in `tests/` directory for critical workflows
+5. **Commit** only the feature code (and integration tests if added)
 
 ## Commits
 
