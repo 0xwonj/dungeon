@@ -23,10 +23,11 @@ pub use env::{
     StaticTile, TablesOracle, TerrainKind,
 };
 pub use state::{
-    ActorPatch, ActorState, CollectionDelta, EntitiesDelta, EntitiesState, EntityId, GameState,
-    InitializationError, InventoryState, ItemHandle, ItemPatch, ItemState, OccupancyPatch,
-    Position, PropKind, PropPatch, PropState, StateDelta, Tick, TileMap, TileView, TurnDelta,
-    TurnState, WorldDelta, WorldState,
+    ActorChanges, ActorFields, ActorState, CollectionChanges, EntitiesChanges, EntitiesState,
+    EntityId, GameState, InitializationError, InventoryState, ItemChanges, ItemFields, ItemHandle,
+    ItemState, OccupancyChanges, Position, PropChanges, PropFields, PropKind, PropState,
+    StateDelta, Tick, TileMap, TileView, TurnChanges, TurnFields, TurnState, WorldChanges,
+    WorldState,
 };
 pub use stats::{
     ActorBonuses, Bonus, BonusStack, CoreEffective, CoreStatBonuses, CoreStats, DerivedBonuses,

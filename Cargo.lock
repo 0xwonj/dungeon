@@ -331,6 +331,7 @@ name = "game-core"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
+ "bitflags",
  "bounded-vector",
  "thiserror 2.0.17",
 ]

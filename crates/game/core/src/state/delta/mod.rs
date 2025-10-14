@@ -1,123 +1,172 @@
+mod bitmask;
+mod changes;
 mod collection;
-mod patch;
 
 use std::collections::BTreeSet;
 
 use crate::action::Action;
-use crate::state::types::{ActorState, ItemState, PropState};
-use crate::state::{EntitiesState, EntityId, GameState, Tick, TurnState, WorldState};
+use crate::state::{EntitiesState, GameState, Tick, WorldState};
 
-pub use collection::CollectionDelta;
-pub use patch::{ActorPatch, FieldDelta, ItemPatch, OccupancyPatch, PropPatch};
+pub use bitmask::{ActorFields, ItemFields, PropFields, TurnFields};
+pub use changes::{ActorChanges, ItemChanges, OccupancyChanges, PropChanges, TurnChanges};
+pub use collection::CollectionChanges;
 
+use changes::{ActorChanges as AC, ItemChanges as IC, PropChanges as PC};
 use collection::diff_collection;
 
 /// Minimal description of an executed action's impact on the deterministic state.
 ///
-/// The delta system computes granular patches to track exactly which fields changed.
-/// This design supports:
+/// The delta system uses **bitmask-based change tracking** to capture metadata about
+/// state transitions without storing actual values. This design supports:
+///
 /// - **ZK proof generation**: Efficiently encode only state changes in the proof circuit
 /// - **Bandwidth optimization**: Transmit minimal diffs over network
+/// - **Memory efficiency**: ~30 bytes per action vs. ~20KB with full state clone
 /// - **Audit trails**: Capture precise state transitions for replay and debugging
 ///
-/// The patches use [`FieldDelta`] to clearly distinguish between unchanged fields
-/// and fields that changed to a new value (including `None` for optional fields).
+/// # Design Philosophy
+///
+/// **Deltas store metadata, not values**:
+/// - Changed values exist in before/after `GameState`
+/// - Bitmasks indicate *which* fields changed
+/// - ZK layer queries actual values during witness generation
+///
+/// # Current Implementation: Post-hoc Diffing
+///
+/// Phase 1 uses **post-hoc state comparison** for simplicity and minimal invasiveness:
+/// ```rust,ignore
+/// let before = state.clone();
+/// let after = engine.execute(action, state)?;
+/// let delta = StateDelta::from_states(action, &before, &after);
+/// ```
+///
+/// **Trade-offs:**
+/// - ✅ Non-invasive: Game logic remains unchanged
+/// - ✅ Simple: Single comparison pass after execution
+/// - ✅ Maintainable: Delta generation isolated from game code
+/// - ⚠️ Requires `clone()`: ~1-2μs overhead per action
+/// - ⚠️ O(n) comparison: Scales with entity count
+///
+/// # Future Optimization: Inline Change Tracking
+///
+/// **Planned for Phase 4+**: Record changes during state mutations for zero-overhead deltas:
+/// ```rust,ignore
+/// impl GameState {
+///     pub fn move_actor(&mut self, id: EntityId, pos: Position) {
+///         self.entities.actor_mut(id).position = pos;
+///         self.delta_tracker.mark(id, ActorFields::POSITION); // O(1) bit set
+///     }
+/// }
+/// ```
+///
+/// **Benefits:**
+/// - Eliminates `clone()` requirement
+/// - O(1) per change instead of O(n) comparison
+/// - Suitable for large state (10K+ entities)
+///
+/// **Challenges:**
+/// - Invasive: Requires modifying all mutators
+/// - Coupling: State becomes aware of delta tracking
+/// - Complexity: Must ensure tracking consistency
+///
+/// **When to implement:** If profiling shows `clone()` or `from_states()` as bottleneck.
+///
+/// # Architecture
+///
+/// ```text
+/// GameEngine::execute() → StateDelta (bitmasks only)
+///                              ↓
+///                    Runtime broadcasts to:
+///                    - Clients (UI updates)
+///                    - ProverWorker (ZK generation)
+///                              ↓
+///              ProverWorker queries before/after states
+///                    using delta as a guide
+/// ```
+///
+/// See: `docs/state-delta-architecture.md` for detailed design rationale.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StateDelta {
+    /// The action that caused this state transition.
     pub action: Action,
-    pub turn: TurnDelta,
-    pub entities: EntitiesDelta,
-    pub world: WorldDelta,
+
+    /// Game clock tick when the action executed.
+    pub clock: Tick,
+
+    /// Changes to turn scheduling state.
+    pub turn: TurnChanges,
+
+    /// Changes to all game entities (player, NPCs, props, items).
+    pub entities: EntitiesChanges,
+
+    /// Changes to world state (occupancy grid).
+    pub world: WorldChanges,
 }
 
 impl StateDelta {
+    /// Creates a delta by comparing two game states.
+    ///
+    /// This is the primary entry point for delta creation. It performs field-by-field
+    /// comparison and generates bitmasks indicating which fields changed.
+    ///
+    /// # Algorithm
+    ///
+    /// 1. Compare turn state (clock, current actor, active set)
+    /// 2. Compare entities (player, NPCs, props, items) using collection diff
+    /// 3. Compare world occupancy grid
+    ///
+    /// # Complexity
+    ///
+    /// - Time: O(n) where n = number of entities
+    /// - Space: O(k) where k = number of changed entities (typically k << n)
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let before = state.clone();
+    /// let after = engine.execute(action, state)?;
+    /// let delta = StateDelta::from_states(action, &before, &after);
+    /// ```
     pub fn from_states(action: Action, before: &GameState, after: &GameState) -> Self {
         Self {
             action,
-            turn: TurnDelta::from_states(&before.turn, &after.turn),
-            entities: EntitiesDelta::from_states(&before.entities, &after.entities),
-            world: WorldDelta::from_states(&before.world, &after.world),
+            clock: after.turn.clock,
+            turn: TurnChanges::from_states(&before.turn, &after.turn),
+            entities: EntitiesChanges::from_states(&before.entities, &after.entities),
+            world: WorldChanges::from_states(&before.world, &after.world),
         }
+    }
+
+    /// Returns true if no state changes occurred (no-op action).
+    pub fn is_empty(&self) -> bool {
+        self.turn.is_empty() && self.entities.is_empty() && self.world.is_empty()
     }
 }
 
-/// Delta for [`TurnState`].
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct TurnDelta {
-    pub clock: Option<Tick>,
-    pub current_actor: Option<EntityId>,
-    pub activated: Vec<EntityId>,
-    pub deactivated: Vec<EntityId>,
-}
-
-impl TurnDelta {
-    fn from_states(before: &TurnState, after: &TurnState) -> Self {
-        let clock = if before.clock != after.clock {
-            Some(after.clock)
-        } else {
-            None
-        };
-
-        let current_actor = if before.current_actor != after.current_actor {
-            Some(after.current_actor)
-        } else {
-            None
-        };
-
-        let activated = after
-            .active_actors
-            .difference(&before.active_actors)
-            .copied()
-            .collect();
-        let deactivated = before
-            .active_actors
-            .difference(&after.active_actors)
-            .copied()
-            .collect();
-
-        Self {
-            clock,
-            current_actor,
-            activated,
-            deactivated,
-        }
-    }
-}
-
-/// Delta for [`EntitiesState`].
+/// Changes to all game entities.
 ///
-/// Tracks changes to all game entities (player, NPCs, props, items) using
-/// granular patches that only include modified fields.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct EntitiesDelta {
-    pub player: Option<ActorPatch>,
-    pub npcs: CollectionDelta<EntityId, ActorState, ActorPatch>,
-    pub props: CollectionDelta<EntityId, PropState, PropPatch>,
-    pub items: CollectionDelta<EntityId, ItemState, ItemPatch>,
+/// Tracks modifications to the four entity categories:
+/// - Player (single special entity)
+/// - NPCs (dynamic collection)
+/// - Props (dynamic collection)
+/// - Items (dynamic collection)
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EntitiesChanges {
+    pub player: Option<ActorChanges>,
+    pub npcs: CollectionChanges<ActorChanges>,
+    pub props: CollectionChanges<PropChanges>,
+    pub items: CollectionChanges<ItemChanges>,
 }
 
-impl EntitiesDelta {
+impl EntitiesChanges {
     fn from_states(before: &EntitiesState, after: &EntitiesState) -> Self {
-        let player = ActorPatch::from_states(&before.player, &after.player);
+        let player = AC::from_states(&before.player, &after.player);
 
-        let npcs = diff_collection(
-            &before.npcs,
-            &after.npcs,
-            |actor| actor.id,
-            ActorPatch::from_states,
-        );
-        let props = diff_collection(
-            &before.props,
-            &after.props,
-            |prop| prop.id,
-            PropPatch::from_states,
-        );
-        let items = diff_collection(
-            &before.items,
-            &after.items,
-            |item| item.id,
-            ItemPatch::from_states,
-        );
+        let npcs = diff_collection(&before.npcs, &after.npcs, |npc| npc.id, AC::from_states);
+
+        let props = diff_collection(&before.props, &after.props, |prop| prop.id, PC::from_states);
+
+        let items = diff_collection(&before.items, &after.items, |item| item.id, IC::from_states);
 
         Self {
             player,
@@ -126,23 +175,60 @@ impl EntitiesDelta {
             items,
         }
     }
-}
 
-/// Delta for [`WorldState`].
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct WorldDelta {
-    pub occupancy: Vec<OccupancyPatch>,
-}
-
-impl WorldDelta {
-    fn from_states(before: &WorldState, after: &WorldState) -> Self {
-        let occupancy = diff_occupancy(before, after);
-
-        Self { occupancy }
+    /// Returns true if no entity changes occurred.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.player.is_none()
+            && self.npcs.is_empty()
+            && self.props.is_empty()
+            && self.items.is_empty()
     }
 }
 
-fn diff_occupancy(before: &WorldState, after: &WorldState) -> Vec<OccupancyPatch> {
+/// Changes to world state.
+///
+/// Currently tracks only occupancy grid changes. Future extensions may include:
+/// - Terrain modifications
+/// - Fog of war updates
+/// - Region state changes
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct WorldChanges {
+    /// Tile positions where occupancy changed.
+    ///
+    /// The actual occupant lists are stored in before/after `WorldState` and
+    /// can be queried by position when needed (e.g., for ZK witness generation).
+    pub occupancy: Vec<OccupancyChanges>,
+}
+
+impl WorldChanges {
+    fn from_states(before: &WorldState, after: &WorldState) -> Self {
+        let occupancy = diff_occupancy(before, after);
+        Self { occupancy }
+    }
+
+    /// Returns true if no world changes occurred.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.occupancy.is_empty()
+    }
+}
+
+/// Compares occupancy grids and returns list of changed positions.
+///
+/// # Algorithm
+///
+/// 1. Collect all positions from both before and after occupancy maps
+/// 2. For each position, compare occupant lists
+/// 3. Return positions where lists differ
+///
+/// # Optimization Notes
+///
+/// We store only positions, not the actual occupant lists, because:
+/// - Occupant lists can be large (multiple entities per tile)
+/// - Lists are already in before/after WorldState
+/// - ZK layer queries by position when building witnesses
+fn diff_occupancy(before: &WorldState, after: &WorldState) -> Vec<OccupancyChanges> {
     let mut positions = BTreeSet::new();
     positions.extend(before.tile_map.occupancy().keys().copied());
     positions.extend(after.tile_map.occupancy().keys().copied());
@@ -150,24 +236,22 @@ fn diff_occupancy(before: &WorldState, after: &WorldState) -> Vec<OccupancyPatch
     positions
         .into_iter()
         .filter_map(|position| {
-            let before_vec = before
-                .tile_map
-                .occupants(&position)
-                .map(|slot| slot.iter().copied().collect::<Vec<_>>())
-                .unwrap_or_default();
-            let after_vec = after
+            let before_occupants = before
                 .tile_map
                 .occupants(&position)
                 .map(|slot| slot.iter().copied().collect::<Vec<_>>())
                 .unwrap_or_default();
 
-            if before_vec == after_vec {
-                None
+            let after_occupants = after
+                .tile_map
+                .occupants(&position)
+                .map(|slot| slot.iter().copied().collect::<Vec<_>>())
+                .unwrap_or_default();
+
+            if before_occupants != after_occupants {
+                Some(OccupancyChanges { position })
             } else {
-                Some(OccupancyPatch {
-                    position,
-                    occupants: after_vec,
-                })
+                None
             }
         })
         .collect()

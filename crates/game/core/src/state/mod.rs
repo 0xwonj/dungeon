@@ -10,8 +10,8 @@ use crate::env::{GameEnv, InitialEntityKind, MapOracle};
 use crate::stats::CoreStats;
 pub use bounded_vector::BoundedVec;
 pub use delta::{
-    ActorPatch, CollectionDelta, EntitiesDelta, ItemPatch, OccupancyPatch, PropPatch, StateDelta,
-    TurnDelta, WorldDelta,
+    ActorChanges, ActorFields, CollectionChanges, EntitiesChanges, ItemChanges, ItemFields,
+    OccupancyChanges, PropChanges, PropFields, StateDelta, TurnChanges, TurnFields, WorldChanges,
 };
 pub use types::{
     ActorState, EntitiesState, EntityId, InventoryState, ItemHandle, ItemState, Position, PropKind,

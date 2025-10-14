@@ -1,6 +1,6 @@
 //! Hook that manages entity activation based on player proximity.
 
-use game_core::{Action, ActionKind, ActivationAction, EntityId};
+use game_core::{Action, ActionKind, ActivationAction, ActorFields, EntityId};
 
 use super::{HookContext, HookCriticality, PostExecutionHook};
 
@@ -45,7 +45,7 @@ impl PostExecutionHook for ActivationHook {
                 .entities
                 .player
                 .as_ref()
-                .map(|patch| patch.position.is_changed())
+                .map(|changes| changes.fields.contains(ActorFields::POSITION))
                 .unwrap_or(false)
     }
 
