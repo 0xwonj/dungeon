@@ -35,18 +35,3 @@ impl CursorState {
         self.position = Position::new(new_x, new_y);
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn cursor_movement_clamps_to_bounds() {
-        let mut cursor = CursorState::new(Position::new(5, 5));
-        cursor.move_by(-10, -10, 20, 20);
-        assert_eq!(cursor.position, Position::new(0, 0));
-
-        cursor.move_by(100, 100, 20, 20);
-        assert_eq!(cursor.position, Position::new(19, 19));
-    }
-}

@@ -48,7 +48,7 @@ impl EventConsumer for CliEventConsumer {
                 delta: _,
                 clock,
             } => {
-                self.push_action(action, clock.0);
+                self.push_action(action, *clock);
                 // TODO: Use delta for more detailed feedback (e.g., "HP -5", "Item acquired")
                 EventImpact::redraw()
             }
@@ -58,7 +58,7 @@ impl EventConsumer for CliEventConsumer {
                 error,
                 clock,
             } => {
-                self.push_failure(action, phase.as_str(), error, clock.0);
+                self.push_failure(action, phase.as_str(), error, *clock);
                 EventImpact::redraw()
             }
         }

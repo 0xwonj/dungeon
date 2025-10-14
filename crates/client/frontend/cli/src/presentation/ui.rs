@@ -219,7 +219,7 @@ fn render_player_stats(
     ]));
 
     lines.push(Line::from(vec![
-        Span::styled("Speed: ", Style::default().fg(Color::White)),
+        Span::styled("Speed (Phys): ", Style::default().fg(Color::White)),
         Span::raw(player.stats.speed.to_string()),
     ]));
 
@@ -347,10 +347,6 @@ fn glyph_for_tile(tile: &MapTile) -> (String, Style) {
         return ("*".to_string(), Style::default().fg(Color::LightCyan));
     }
 
-    if tile.overlays > 0 {
-        return ("!".to_string(), Style::default().fg(Color::Magenta));
-    }
-
     let (glyph, color) = match tile.terrain {
         TerrainKind::Floor => ('.', Color::DarkGray),
         TerrainKind::Wall => ('#', Color::Gray),
@@ -462,10 +458,6 @@ fn render_tile_info(
         Line::from(vec![
             Span::styled("Occupied: ", Style::default().fg(Color::White)),
             Span::raw(occupied),
-        ]),
-        Line::from(vec![
-            Span::styled("Overlays: ", Style::default().fg(Color::White)),
-            Span::raw(tile_info.overlay_count.to_string()),
         ]),
     ];
 

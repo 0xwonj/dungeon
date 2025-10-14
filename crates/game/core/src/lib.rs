@@ -9,22 +9,28 @@ pub mod config;
 pub mod engine;
 pub mod env;
 pub mod state;
+pub mod stats;
 pub use action::{
-    Action, ActionCommand, ActionKind, ActionTransition, AttackAction, AttackCommand, AttackStyle,
-    CardinalDirection, CommandContext, InteractAction, InteractCommand, InventorySlot, ItemTarget,
-    MoveAction, MoveCommand, MoveError, UseItemAction, UseItemCommand,
+    Action, ActionCostAction, ActionKind, ActionTransition, ActivationAction, AttackAction,
+    AttackStyle, CardinalDirection, InteractAction, InventorySlot, ItemTarget, MoveAction,
+    MoveError, PrepareTurnAction, TurnError, UseItemAction,
 };
 pub use config::GameConfig;
-pub use engine::{ExecuteError, GameEngine, TransitionPhase, TransitionPhaseError, TurnError};
+pub use engine::{ExecuteError, GameEngine, TransitionPhase, TransitionPhaseError};
 pub use env::{
     AttackProfile, Env, GameEnv, InitialEntityKind, InitialEntitySpec, ItemCategory,
     ItemDefinition, ItemOracle, MapDimensions, MapOracle, MovementRules, NpcOracle, NpcTemplate,
     StaticTile, TablesOracle, TerrainKind,
 };
 pub use state::{
-    ActorPatch, ActorState, ActorStats, CollectionDelta, EntitiesDelta, EntitiesState, EntityId,
-    EventId, GameState, HazardOverlay, InitializationError, InventoryState, ItemHandle, ItemPatch,
-    ItemState, OccupancyPatch, Overlay, OverlayPatch, OverlaySet, Position, PropKind, PropPatch,
-    PropState, ResourceMeter, StateDelta, Tick, TileMap, TileView, TurnDelta, TurnState,
-    WorldDelta, WorldState,
+    ActorPatch, ActorState, CollectionDelta, EntitiesDelta, EntitiesState, EntityId, GameState,
+    InitializationError, InventoryState, ItemHandle, ItemPatch, ItemState, OccupancyPatch,
+    Position, PropKind, PropPatch, PropState, StateDelta, Tick, TileMap, TileView, TurnDelta,
+    TurnState, WorldDelta, WorldState,
+};
+pub use stats::{
+    ActorBonuses, Bonus, BonusStack, CoreEffective, CoreStatBonuses, CoreStats, DerivedBonuses,
+    DerivedStats, ModifierBonuses, ResourceBonuses, ResourceCurrent, ResourceMaximums,
+    SpeedBonuses, SpeedKind, SpeedStats, StatBounds, StatLayer, StatModifiers, StatsSnapshot,
+    StatsSnapshotBuilder, compute_actor_bonuses,
 };

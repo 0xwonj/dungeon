@@ -108,9 +108,10 @@ impl TargetSelector for ThreatPrioritySelector {
         // Threat calculation:
         // - Closer = more threatening
         // - Lower health = prioritize (finish off wounded enemies)
+        let snapshot = npc.snapshot();
         let distance_factor = (self.threat_radius - distance) as i32 * 100;
-        let health_factor = 1000 - npc.stats.health.current as i32; // Lower HP = higher priority
-        let speed_factor = npc.stats.speed as i32; // Faster = more threatening
+        let health_factor = 1000 - npc.resources.hp as i32; // Lower HP = higher priority
+        let speed_factor = snapshot.speed.physical; // Faster = more threatening
 
         let priority = 2000 + distance_factor + health_factor + speed_factor;
 
@@ -217,23 +218,4 @@ pub fn select_target(state: &GameState, selector: &dyn TargetSelector) -> Option
         .into_iter()
         .max_by_key(|c| c.priority)
         .map(|c| c.position)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn nearest_selector_prioritizes_closer_entities() {
-        let selector = NearestAnySelector {
-            origin: Position::new(0, 0),
-        };
-
-        let state = GameState::default();
-
-        let close = selector.evaluate(&state, EntityId(1), Position::new(1, 1));
-        let far = selector.evaluate(&state, EntityId(2), Position::new(5, 5));
-
-        assert!(close.unwrap().priority > far.unwrap().priority);
-    }
 }

@@ -7,15 +7,15 @@ pub mod delta;
 pub mod types;
 
 use crate::env::{GameEnv, InitialEntityKind, MapOracle};
+use crate::stats::CoreStats;
 pub use bounded_vector::BoundedVec;
 pub use delta::{
-    ActorPatch, CollectionDelta, EntitiesDelta, ItemPatch, OccupancyPatch, OverlayPatch, PropPatch,
-    StateDelta, TurnDelta, WorldDelta,
+    ActorPatch, CollectionDelta, EntitiesDelta, ItemPatch, OccupancyPatch, PropPatch, StateDelta,
+    TurnDelta, WorldDelta,
 };
 pub use types::{
-    ActorState, ActorStats, EntitiesState, EntityId, EventId, HazardOverlay, InventoryState,
-    ItemHandle, ItemState, Overlay, OverlaySet, Position, PropKind, PropState, ResourceMeter, Tick,
-    TileMap, TileView, TurnState, WorldState,
+    ActorState, EntitiesState, EntityId, InventoryState, ItemHandle, ItemState, Position, PropKind,
+    PropState, Tick, TileMap, TileView, TurnState, WorldState,
 };
 
 /// Canonical snapshot of the deterministic game state.
@@ -39,8 +39,8 @@ impl GameState {
         }
     }
 
-    /// Returns a merged tile view that combines static map data with runtime overlays.
-    pub fn tile_view<'a, M>(&'a self, map: &M, position: Position) -> Option<TileView<'a>>
+    /// Returns a merged tile view that combines static map data with runtime occupants.
+    pub fn tile_view<M>(&self, map: &M, position: Position) -> Option<TileView>
     where
         M: MapOracle + ?Sized,
     {
@@ -82,12 +82,12 @@ impl GameState {
                     state.entities.player = ActorState::new(
                         spec.id,
                         spec.position,
-                        ActorStats::default(),
+                        CoreStats::default(),
                         InventoryState::default(),
-                    );
+                    )
+                    .with_ready_at(0);
 
                     // Activate player in turn system at tick 0
-                    state.entities.player.ready_at = Some(Tick(0));
                     state.turn.active_actors.insert(spec.id);
 
                     // Add player to tile occupancy
@@ -100,14 +100,17 @@ impl GameState {
                         .template(template)
                         .ok_or(InitializationError::UnknownNpcTemplate(template))?;
 
-                    let actor = ActorState::new(
+                    let mut actor = ActorState::new(
                         spec.id,
                         spec.position,
-                        npc_template.stats,
+                        npc_template.core_stats,
                         npc_template.inventory,
                     )
                     .with_template_id(template)
-                    .with_ready_at(Tick(0));
+                    .with_ready_at(0);
+
+                    // Set initial resources from template
+                    actor.resources = npc_template.resources;
 
                     // Activate NPC in turn system at tick 0
                     state.turn.active_actors.insert(spec.id);
