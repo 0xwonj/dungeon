@@ -9,49 +9,8 @@
 //! - MP_max = (WIL + INT) × 5 + (EGO × 2) + (Level × √WIL)
 //! - Lucidity_max = √Level × ((STR+DEX+CON)/2 + (INT+WIL+EGO)×2)
 
+use super::bonus::{BonusStack, StatBounds, StatLayer};
 use super::core::CoreEffective;
-
-/// Resource pool with current and maximum values.
-///
-/// Maximum is computed from stats, current is part of game state.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct ResourceMeter {
-    pub current: u32,
-    pub maximum: u32,
-}
-
-impl ResourceMeter {
-    /// Create a new resource meter
-    pub const fn new(current: u32, maximum: u32) -> Self {
-        Self { current, maximum }
-    }
-
-    /// Create a full resource meter
-    pub const fn full(maximum: u32) -> Self {
-        Self {
-            current: maximum,
-            maximum,
-        }
-    }
-
-    /// Check if depleted (current = 0)
-    pub const fn is_depleted(&self) -> bool {
-        self.current == 0
-    }
-
-    /// Check if full (current = maximum)
-    pub const fn is_full(&self) -> bool {
-        self.current >= self.maximum
-    }
-
-    /// Get percentage (0-100)
-    pub fn percent(&self) -> u32 {
-        if self.maximum == 0 {
-            return 0;
-        }
-        (self.current * 100) / self.maximum
-    }
-}
 
 /// Maximum resource values computed from stats.
 ///
@@ -64,13 +23,13 @@ pub struct ResourceMaximums {
 }
 
 impl ResourceMaximums {
-    /// Compute maximum resource values from CoreEffective
+    /// Compute maximum resource values from CoreEffective (internal helper)
     ///
     /// Formulas:
     /// - HP_max = (CON × 10) + (Level × CON / 2)
     /// - MP_max = (WIL + INT) × 5 + (EGO × 2) + (Level × √WIL)
     /// - Lucidity_max = √Level × ((STR+DEX+CON)/2 + (INT+WIL+EGO)×2)
-    pub fn compute(core: &CoreEffective) -> Self {
+    fn compute_base(core: &CoreEffective) -> Self {
         let hp_max = Self::compute_hp(core);
         let mp_max = Self::compute_mp(core);
         let lucidity_max = Self::compute_lucidity(core);
@@ -126,6 +85,63 @@ impl ResourceMaximums {
     }
 }
 
+/// Bonuses that apply to resource maximums.
+///
+/// Sources: equipment (+HP armor), buffs (+30% Max MP), class features, etc.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ResourceBonuses {
+    pub hp_max: BonusStack,
+    pub mp_max: BonusStack,
+    pub lucidity_max: BonusStack,
+}
+
+impl ResourceBonuses {
+    /// Create new empty resource bonuses
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+/// Layer 5: Resource Maximums Layer
+///
+/// Base: CoreEffective (output from Layer 1)
+/// Bonuses: ResourceBonuses (from equipment, buffs, etc.)
+/// Final: ResourceMaximums (max HP/MP/Lucidity)
+impl StatLayer for ResourceMaximums {
+    type Base = CoreEffective;
+    type Bonuses = ResourceBonuses;
+    type Final = Self;
+
+    fn compute(base: &Self::Base, bonuses: &Self::Bonuses) -> Self::Final {
+        let bounds = StatBounds::RESOURCE_MAXIMUMS;
+        let base_resources = Self::compute_base(base);
+
+        Self {
+            hp_max: bonuses
+                .hp_max
+                .apply(base_resources.hp_max as i32, bounds.min, bounds.max)
+                as u32,
+            mp_max: bonuses
+                .mp_max
+                .apply(base_resources.mp_max as i32, bounds.min, bounds.max)
+                as u32,
+            lucidity_max: bonuses.lucidity_max.apply(
+                base_resources.lucidity_max as i32,
+                bounds.min,
+                bounds.max,
+            ) as u32,
+        }
+    }
+
+    fn empty_bonuses() -> Self::Bonuses {
+        ResourceBonuses::new()
+    }
+
+    fn bounds() -> Option<StatBounds> {
+        Some(StatBounds::RESOURCE_MAXIMUMS)
+    }
+}
+
 /// Current resource values (game state, must be stored).
 ///
 /// This is the only part of the resource system that is persisted.
@@ -149,46 +165,5 @@ impl ResourceCurrent {
             mp: max.mp_max,
             lucidity: max.lucidity_max,
         }
-    }
-
-    /// Combine current values with maximums to create meters
-    pub fn to_meters(&self, max: &ResourceMaximums) -> ResourceMeters {
-        ResourceMeters {
-            hp: ResourceMeter::new(self.hp, max.hp_max),
-            mp: ResourceMeter::new(self.mp, max.mp_max),
-            lucidity: ResourceMeter::new(self.lucidity, max.lucidity_max),
-        }
-    }
-}
-
-/// Complete resource pools (current + maximum).
-///
-/// This combines current (stored) and maximum (computed) values.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct ResourceMeters {
-    pub hp: ResourceMeter,
-    pub mp: ResourceMeter,
-    pub lucidity: ResourceMeter,
-}
-
-impl ResourceMeters {
-    /// Create from current and maximum values
-    pub fn new(current: &ResourceCurrent, max: &ResourceMaximums) -> Self {
-        current.to_meters(max)
-    }
-
-    /// Check if HP is depleted (dead/unconscious)
-    pub fn is_hp_depleted(&self) -> bool {
-        self.hp.is_depleted()
-    }
-
-    /// Check if MP is depleted
-    pub fn is_mp_depleted(&self) -> bool {
-        self.mp.is_depleted()
-    }
-
-    /// Check if Lucidity is depleted
-    pub fn is_lucidity_depleted(&self) -> bool {
-        self.lucidity.is_depleted()
     }
 }

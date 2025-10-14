@@ -45,7 +45,7 @@ impl TurnSummary {
         let mut active: Vec<_> = state.turn.active_actors.iter().copied().collect();
         active.sort();
         Self {
-            clock: state.turn.clock.0,
+            clock: state.turn.clock,
             current_actor: state.turn.current_actor,
             active_actors: active,
         }
@@ -86,7 +86,6 @@ pub struct MapTile {
     pub position: Position,
     pub terrain: TerrainKind,
     pub occupants: Vec<OccupantView>,
-    pub overlays: usize,
     pub loose_items: usize,
 }
 
@@ -98,7 +97,6 @@ pub struct TileInfoSnapshot {
     pub is_passable: bool,
     pub is_occupied: bool,
     pub entities: Vec<EntityDetailView>,
-    pub overlay_count: usize,
 }
 
 /// Detailed entity view for inspection.
@@ -137,11 +135,6 @@ impl MapTile {
             .unwrap_or(TerrainKind::Void);
 
         let occupants = build_occupants(state, position);
-        let overlays = state
-            .world
-            .tile_map
-            .overlay(&position)
-            .map_or(0, |overlay| overlay.iter().count());
 
         let loose_items = state
             .entities
@@ -154,7 +147,6 @@ impl MapTile {
             position,
             terrain,
             occupants,
-            overlays,
             loose_items,
         }
     }
@@ -200,15 +192,18 @@ pub struct PlayerSnapshot {
 impl PlayerSnapshot {
     fn from_state(state: &GameState) -> Self {
         let player = &state.entities.player;
-        let resources = player.stats.resource_meters();
+        let snapshot = player.snapshot();
+        let (hp_current, hp_max) = snapshot.hp();
+        let (mp_current, mp_max) = snapshot.mp();
+
         Self {
             id: player.id,
             position: player.position,
             stats: PlayerStats {
-                health: ResourceSnapshot::new(resources.hp.current, resources.hp.maximum),
-                energy: ResourceSnapshot::new(resources.mp.current, resources.mp.maximum),
-                speed: player.stats.speed_physical() as u16,
-                ready_at: player.ready_at.map(|tick| tick.0),
+                health: ResourceSnapshot::new(hp_current, hp_max),
+                energy: ResourceSnapshot::new(mp_current, mp_max),
+                speed: snapshot.speed.physical as u16,
+                ready_at: player.ready_at,
             },
             inventory_items: player.inventory.items.len(),
         }
@@ -258,12 +253,15 @@ fn collect_messages(messages: &MessageLog, limit: usize) -> Vec<MessageEntry> {
 
 /// Helper to create ActorStatsSnapshot from ActorState.
 fn actor_stats_snapshot(actor: &game_core::ActorState) -> ActorStatsSnapshot {
-    let resources = actor.stats.resource_meters();
+    let snapshot = actor.snapshot();
+    let (hp_current, hp_max) = snapshot.hp();
+    let (mp_current, mp_max) = snapshot.mp();
+
     ActorStatsSnapshot {
-        health: ResourceSnapshot::new(resources.hp.current, resources.hp.maximum),
-        energy: ResourceSnapshot::new(resources.mp.current, resources.mp.maximum),
-        speed: actor.stats.speed_physical() as u16,
-        ready_at: actor.ready_at.map(|tick| tick.0),
+        health: ResourceSnapshot::new(hp_current, hp_max),
+        energy: ResourceSnapshot::new(mp_current, mp_max),
+        speed: snapshot.speed.physical as u16,
+        ready_at: actor.ready_at,
     }
 }
 
@@ -325,19 +323,12 @@ impl TileInfoSnapshot {
             }
         }
 
-        let overlay_count = state
-            .world
-            .tile_map
-            .overlay(&position)
-            .map_or(0, |overlay| overlay.iter().count());
-
         Self {
             position,
             terrain,
             is_passable,
             is_occupied,
             entities,
-            overlay_count,
         }
     }
 }

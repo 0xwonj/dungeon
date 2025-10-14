@@ -17,4 +17,4 @@ mod prepare_turn;
 
 pub use action_cost::ActionCostAction;
 pub use activation::ActivationAction;
-pub use prepare_turn::PrepareTurnAction;
+pub use prepare_turn::{PrepareTurnAction, TurnError};

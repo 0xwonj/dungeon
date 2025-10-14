@@ -2,7 +2,7 @@ use core::convert::Infallible;
 
 use crate::action::ActionTransition;
 use crate::env::GameEnv;
-use crate::state::{EntityId, GameState};
+use crate::state::{EntityId, GameState, Tick};
 
 /// Offensive action against a target entity.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -22,19 +22,6 @@ impl AttackAction {
     }
 }
 
-/// High-level command describing an attack intent.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AttackCommand {
-    pub target: EntityId,
-    pub style: AttackStyle,
-}
-
-impl AttackCommand {
-    pub fn new(target: EntityId, style: AttackStyle) -> Self {
-        Self { target, style }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AttackStyle {
     Melee,
@@ -43,8 +30,12 @@ pub enum AttackStyle {
 impl ActionTransition for AttackAction {
     type Error = Infallible;
 
-    fn cost(&self) -> crate::state::Tick {
-        crate::state::Tick(15)
+    fn actor(&self) -> EntityId {
+        self.actor
+    }
+
+    fn cost(&self) -> Tick {
+        0
     }
 
     fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {

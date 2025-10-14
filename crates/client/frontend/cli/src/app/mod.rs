@@ -82,7 +82,7 @@ impl CliApp {
         let mut messages = MessageLog::new(config.messages.capacity);
         messages.push_text(format!(
             "[{}] Welcome to the dungeon.",
-            initial_state.turn.clock.0
+            initial_state.turn.clock
         ));
 
         let consumer = CliEventConsumer::new(messages);

@@ -48,10 +48,10 @@ impl PostExecutionHook for ActionCostHook {
         let Some(actor) = ctx.state.entities.actor(actor_id) else {
             return vec![];
         };
-        let stats = actor.stats.clone();
+        let snapshot = actor.snapshot();
 
         // Calculate speed-scaled cost
-        let cost = ctx.delta.action.cost(&stats);
+        let cost = ctx.delta.action.cost(&snapshot);
 
         // Create system action to apply the cost
         vec![Action::new(

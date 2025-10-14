@@ -5,7 +5,7 @@
 //!
 //! Components: Attack, Accuracy, Evasion, AC, PsiPower, FocusEff
 
-use super::bonus::BonusStack;
+use super::bonus::{BonusStack, StatBounds, StatLayer};
 use super::core::CoreEffective;
 
 /// Derived combat statistics.
@@ -34,7 +34,7 @@ pub struct DerivedStats {
 }
 
 impl DerivedStats {
-    /// Compute derived stats from CoreEffective
+    /// Compute base derived stats from CoreEffective (internal helper)
     ///
     /// Base formulas (before bonuses):
     /// - Attack: STR × 1.5
@@ -43,7 +43,7 @@ impl DerivedStats {
     /// - AC: 10 + (DEX-10)/2
     /// - PsiPower: INT × 0.8 + EGO × 0.5
     /// - FocusEff: WIL × 1.2
-    pub fn compute_base(core: &CoreEffective) -> Self {
+    fn compute_base(core: &CoreEffective) -> Self {
         Self {
             attack: (core.str * 15) / 10,
             accuracy: core.dex,
@@ -53,30 +53,12 @@ impl DerivedStats {
             focus_eff: (core.wil * 12) / 10,
         }
     }
-
-    /// Apply bonuses to derived stats
-    pub fn apply_bonuses(&self, bonuses: &DerivedBonuses) -> Self {
-        Self {
-            attack: bonuses.attack.apply_unclamped(self.attack),
-            accuracy: bonuses.accuracy.apply_unclamped(self.accuracy),
-            evasion: bonuses.evasion.apply_unclamped(self.evasion),
-            ac: bonuses.ac.apply_unclamped(self.ac),
-            psi_power: bonuses.psi_power.apply_unclamped(self.psi_power),
-            focus_eff: bonuses.focus_eff.apply_unclamped(self.focus_eff),
-        }
-    }
-
-    /// Compute derived stats with bonuses
-    pub fn compute(core: &CoreEffective, bonuses: &DerivedBonuses) -> Self {
-        let base = Self::compute_base(core);
-        base.apply_bonuses(bonuses)
-    }
 }
 
 /// Bonuses that apply to derived stats.
 ///
 /// Sources: equipment, buffs, environmental effects, etc.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DerivedBonuses {
     pub attack: BonusStack,
     pub accuracy: BonusStack,
@@ -90,5 +72,48 @@ impl DerivedBonuses {
     /// Create new empty derived bonuses
     pub fn new() -> Self {
         Self::default()
+    }
+}
+
+/// Layer 2: Derived Stats Layer
+///
+/// Base: CoreEffective (output from Layer 1)
+/// Bonuses: DerivedBonuses (from equipment, skills, etc.)
+/// Final: DerivedStats (combat stats)
+impl StatLayer for DerivedStats {
+    type Base = CoreEffective;
+    type Bonuses = DerivedBonuses;
+    type Final = Self;
+
+    fn compute(base: &Self::Base, bonuses: &Self::Bonuses) -> Self::Final {
+        let bounds = StatBounds::DERIVED_STATS;
+        let base_stats = Self::compute_base(base);
+
+        Self {
+            attack: bonuses
+                .attack
+                .apply(base_stats.attack, bounds.min, bounds.max),
+            accuracy: bonuses
+                .accuracy
+                .apply(base_stats.accuracy, bounds.min, bounds.max),
+            evasion: bonuses
+                .evasion
+                .apply(base_stats.evasion, bounds.min, bounds.max),
+            ac: bonuses.ac.apply(base_stats.ac, bounds.min, bounds.max),
+            psi_power: bonuses
+                .psi_power
+                .apply(base_stats.psi_power, bounds.min, bounds.max),
+            focus_eff: bonuses
+                .focus_eff
+                .apply(base_stats.focus_eff, bounds.min, bounds.max),
+        }
+    }
+
+    fn empty_bonuses() -> Self::Bonuses {
+        DerivedBonuses::new()
+    }
+
+    fn bounds() -> Option<StatBounds> {
+        Some(StatBounds::DERIVED_STATS)
     }
 }

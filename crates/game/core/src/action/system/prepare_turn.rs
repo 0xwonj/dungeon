@@ -4,9 +4,8 @@
 //! the game clock to that entity's scheduled time.
 
 use crate::action::ActionTransition;
-use crate::engine::TurnError;
 use crate::env::GameEnv;
-use crate::state::{GameState, Tick};
+use crate::state::{EntityId, GameState, Tick};
 
 /// System action that prepares the next turn by selecting which entity acts next.
 ///
@@ -26,7 +25,16 @@ pub struct PrepareTurnAction;
 impl ActionTransition for PrepareTurnAction {
     type Error = TurnError;
 
+    fn actor(&self) -> EntityId {
+        EntityId::SYSTEM
+    }
+
     fn pre_validate(&self, state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
+        // Verify this action is executed by the SYSTEM actor
+        if self.actor() != EntityId::SYSTEM {
+            return Err(TurnError::NotSystemActor);
+        }
+
         // Verify at least one entity is active and ready
         let has_ready_entity = state
             .turn
@@ -92,6 +100,16 @@ impl ActionTransition for PrepareTurnAction {
 
     fn cost(&self) -> Tick {
         // System actions have no time cost
-        Tick::ZERO
+        0
     }
+}
+
+/// Errors that can occur during turn operations
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum TurnError {
+    #[error("prepare turn action must be executed by SYSTEM actor")]
+    NotSystemActor,
+
+    #[error("no entities are currently active")]
+    NoActiveEntities,
 }

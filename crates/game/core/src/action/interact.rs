@@ -2,7 +2,7 @@ use core::convert::Infallible;
 
 use crate::action::ActionTransition;
 use crate::env::GameEnv;
-use crate::state::{EntityId, GameState};
+use crate::state::{EntityId, GameState, Tick};
 
 /// Performs an interaction with a nearby prop or entity.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -17,23 +17,15 @@ impl InteractAction {
     }
 }
 
-/// Command describing a generic interaction intent.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct InteractCommand {
-    pub target: EntityId,
-}
-
-impl InteractCommand {
-    pub fn new(target: EntityId) -> Self {
-        Self { target }
-    }
-}
-
 impl ActionTransition for InteractAction {
     type Error = Infallible;
 
-    fn cost(&self) -> crate::state::Tick {
-        crate::state::Tick(5)
+    fn actor(&self) -> EntityId {
+        self.actor
+    }
+
+    fn cost(&self) -> Tick {
+        5
     }
 
     fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {

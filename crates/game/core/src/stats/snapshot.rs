@@ -1,33 +1,34 @@
-//! ActionSnapshot - Complete stat snapshot at action initiation.
+//! StatsSnapshot - Complete stat snapshot at a point in time.
 //!
-//! The snapshot captures all derived values at the moment an action begins,
-//! ensuring deterministic resolution regardless of mid-action state changes.
+//! The snapshot captures all derived values at a specific moment (typically action initiation),
+//! ensuring deterministic resolution regardless of subsequent state changes.
 //!
 //! This is critical for:
 //! - Deterministic gameplay
 //! - ZK proof generation
 //! - Replay consistency
 
-use super::core::{CoreEffective, CoreStatBonuses, CoreStats};
-use super::derived::{DerivedBonuses, DerivedStats};
-use super::modifiers::{FinalModifiers, ModifierBonuses};
-use super::resources::{ResourceCurrent, ResourceMaximums, ResourceMeters};
-use super::speed::{SpeedConditions, SpeedStats};
+use super::bonus::{ActorBonuses, StatLayer};
+use super::core::{CoreEffective, CoreStats};
+use super::derived::DerivedStats;
+use super::modifiers::StatModifiers;
+use super::resources::{ResourceBonuses, ResourceCurrent, ResourceMaximums};
+use super::speed::SpeedStats;
 
-/// Complete snapshot of all stats at action initiation.
+/// Complete snapshot of all stats at a point in time.
 ///
 /// This struct captures:
 /// 1. CoreEffective - Base stats after bonuses
 /// 2. DerivedStats - Combat stats (attack, evasion, etc.)
 /// 3. SpeedStats - Action speed values
-/// 4. FinalModifiers - Roll modifiers
+/// 4. StatModifiers - Roll modifiers
 /// 5. ResourceMaximums - Maximum HP/MP/Lucidity
 /// 6. ResourceCurrent - Current HP/MP/Lucidity
 ///
 /// All values are computed and locked at snapshot creation.
 /// The snapshot is immutable - create a new one if state changes.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ActionSnapshot {
+pub struct StatsSnapshot {
     /// Core stats after applying bonuses (Layer 1)
     pub core: CoreEffective,
 
@@ -38,7 +39,7 @@ pub struct ActionSnapshot {
     pub speed: SpeedStats,
 
     /// Roll modifiers (Layer 4)
-    pub modifiers: FinalModifiers,
+    pub modifiers: StatModifiers,
 
     /// Maximum resource values (Layer 5)
     pub resource_max: ResourceMaximums,
@@ -47,41 +48,42 @@ pub struct ActionSnapshot {
     pub resource_current: ResourceCurrent,
 }
 
-impl ActionSnapshot {
+impl StatsSnapshot {
     /// Create a complete snapshot from all inputs.
     ///
     /// This is the primary constructor that computes all layers.
     ///
     /// # Arguments
     /// * `base_stats` - Base core stats (stored state)
-    /// * `core_bonuses` - Bonuses to apply to core stats
-    /// * `derived_bonuses` - Bonuses to apply to derived stats
-    /// * `modifier_bonuses` - Bonuses to apply to modifiers
-    /// * `speed_conditions` - Conditions affecting speed
+    /// * `bonuses` - Aggregated bonuses for all stat layers
     /// * `resource_current` - Current HP/MP/Lucidity (stored state)
     pub fn create(
         base_stats: &CoreStats,
-        core_bonuses: &CoreStatBonuses,
-        derived_bonuses: &DerivedBonuses,
-        modifier_bonuses: &ModifierBonuses,
-        speed_conditions: &SpeedConditions,
+        bonuses: &ActorBonuses,
         resource_current: &ResourceCurrent,
     ) -> Self {
         // Layer 1: Compute CoreEffective
-        let core = CoreEffective::compute(base_stats, core_bonuses);
+        let core = <CoreEffective as StatLayer>::compute(base_stats, &bonuses.core);
 
         // Layer 2: Compute Derived Stats
-        let derived = DerivedStats::compute(&core, derived_bonuses);
+        let derived = <DerivedStats as StatLayer>::compute(&core, &bonuses.derived);
 
         // Layer 3: Compute Speed
-        let speed_base = SpeedStats::compute(&core);
-        let speed = speed_base.apply_conditions(speed_conditions);
+        let speed = <SpeedStats as StatLayer>::compute(&core, &bonuses.speed);
 
         // Layer 4: Compute Modifiers
-        let modifiers = FinalModifiers::compute(&core, modifier_bonuses);
+        let modifiers = <StatModifiers as StatLayer>::compute(&core, &bonuses.modifiers);
 
         // Layer 5: Compute Resource Maximums
-        let resource_max = ResourceMaximums::compute(&core);
+        let resource_max = <ResourceMaximums as StatLayer>::compute(&core, &bonuses.resources);
+
+        // Clamp current resources to not exceed maximums
+        // This ensures invariant: current <= max, even if stats changed (e.g., unequipped +HP item)
+        let clamped_current = ResourceCurrent {
+            hp: resource_current.hp.min(resource_max.hp_max),
+            mp: resource_current.mp.min(resource_max.mp_max),
+            lucidity: resource_current.lucidity.min(resource_max.lucidity_max),
+        };
 
         Self {
             core,
@@ -89,25 +91,31 @@ impl ActionSnapshot {
             speed,
             modifiers,
             resource_max,
-            resource_current: resource_current.clone(),
+            resource_current: clamped_current,
         }
     }
 
     /// Create a snapshot with no bonuses (base stats only)
     pub fn from_base(base_stats: &CoreStats, resource_current: &ResourceCurrent) -> Self {
-        Self::create(
-            base_stats,
-            &CoreStatBonuses::new(),
-            &DerivedBonuses::new(),
-            &ModifierBonuses::new(),
-            &SpeedConditions::new(),
-            resource_current,
-        )
+        Self::create(base_stats, &ActorBonuses::new(), resource_current)
     }
 
-    /// Get complete resource meters (current + maximum)
-    pub fn resource_meters(&self) -> ResourceMeters {
-        ResourceMeters::new(&self.resource_current, &self.resource_max)
+    /// Get HP (current, maximum)
+    pub fn hp(&self) -> (u32, u32) {
+        (self.resource_current.hp, self.resource_max.hp_max)
+    }
+
+    /// Get MP (current, maximum)
+    pub fn mp(&self) -> (u32, u32) {
+        (self.resource_current.mp, self.resource_max.mp_max)
+    }
+
+    /// Get Lucidity (current, maximum)
+    pub fn lucidity(&self) -> (u32, u32) {
+        (
+            self.resource_current.lucidity,
+            self.resource_max.lucidity_max,
+        )
     }
 
     /// Check if actor is alive (HP > 0)
@@ -129,55 +137,63 @@ impl ActionSnapshot {
     }
 }
 
-/// Builder for constructing snapshots with a fluent API.
+/// Builder for constructing stats snapshots with a fluent API.
 ///
 /// This provides an ergonomic way to build snapshots step-by-step.
-pub struct SnapshotBuilder {
+pub struct StatsSnapshotBuilder {
     base_stats: CoreStats,
-    core_bonuses: CoreStatBonuses,
-    derived_bonuses: DerivedBonuses,
-    modifier_bonuses: ModifierBonuses,
-    speed_conditions: SpeedConditions,
     resource_current: ResourceCurrent,
+    actor_bonuses: ActorBonuses,
 }
 
-impl SnapshotBuilder {
+impl StatsSnapshotBuilder {
     /// Start building a snapshot from base stats
     pub fn from_base(base_stats: CoreStats) -> Self {
-        let resource_max = ResourceMaximums::compute(&CoreEffective::from_base(&base_stats));
+        let core = <CoreEffective as StatLayer>::from_base(&base_stats);
+        let resource_max = <ResourceMaximums as StatLayer>::compute(&core, &ResourceBonuses::new());
         let resource_current = ResourceCurrent::at_max(&resource_max);
+        let actor_bonuses = ActorBonuses::new();
 
         Self {
             base_stats,
-            core_bonuses: CoreStatBonuses::new(),
-            derived_bonuses: DerivedBonuses::new(),
-            modifier_bonuses: ModifierBonuses::new(),
-            speed_conditions: SpeedConditions::new(),
             resource_current,
+            actor_bonuses,
         }
     }
 
+    /// Set actor bonuses (all layers at once)
+    pub fn with_bonuses(mut self, bonuses: ActorBonuses) -> Self {
+        self.actor_bonuses = bonuses;
+        self
+    }
+
     /// Set core stat bonuses
-    pub fn with_core_bonuses(mut self, bonuses: CoreStatBonuses) -> Self {
-        self.core_bonuses = bonuses;
+    pub fn with_core_bonuses(mut self, bonuses: super::core::CoreStatBonuses) -> Self {
+        self.actor_bonuses.core = bonuses;
         self
     }
 
     /// Set derived stat bonuses
-    pub fn with_derived_bonuses(mut self, bonuses: DerivedBonuses) -> Self {
-        self.derived_bonuses = bonuses;
+    pub fn with_derived_bonuses(mut self, bonuses: super::derived::DerivedBonuses) -> Self {
+        self.actor_bonuses.derived = bonuses;
         self
     }
 
     /// Set modifier bonuses
-    pub fn with_modifier_bonuses(mut self, bonuses: ModifierBonuses) -> Self {
-        self.modifier_bonuses = bonuses;
+    pub fn with_modifier_bonuses(mut self, bonuses: super::modifiers::ModifierBonuses) -> Self {
+        self.actor_bonuses.modifiers = bonuses;
         self
     }
 
-    /// Set speed conditions
-    pub fn with_speed_conditions(mut self, conditions: SpeedConditions) -> Self {
-        self.speed_conditions = conditions;
+    /// Set speed bonuses
+    pub fn with_speed_bonuses(mut self, bonuses: super::speed::SpeedBonuses) -> Self {
+        self.actor_bonuses.speed = bonuses;
+        self
+    }
+
+    /// Set resource bonuses
+    pub fn with_resource_bonuses(mut self, bonuses: super::resources::ResourceBonuses) -> Self {
+        self.actor_bonuses.resources = bonuses;
         self
     }
 
@@ -188,13 +204,10 @@ impl SnapshotBuilder {
     }
 
     /// Build the snapshot
-    pub fn build(self) -> ActionSnapshot {
-        ActionSnapshot::create(
+    pub fn build(self) -> StatsSnapshot {
+        StatsSnapshot::create(
             &self.base_stats,
-            &self.core_bonuses,
-            &self.derived_bonuses,
-            &self.modifier_bonuses,
-            &self.speed_conditions,
+            &self.actor_bonuses,
             &self.resource_current,
         )
     }
@@ -204,26 +217,21 @@ impl SnapshotBuilder {
 mod tests {
     use super::*;
     use crate::stats::bonus::Bonus;
+    use crate::stats::resources::ResourceBonuses;
 
     #[test]
     fn integrated_warrior_snapshot() {
         let base = CoreStats::new(18, 16, 14, 10, 10, 10, 5);
 
-        let mut derived_bonuses = DerivedBonuses::new();
-        derived_bonuses.attack.add(Bonus::flat(20)); // Weapon damage
-        derived_bonuses.ac.add(Bonus::flat(8)); // Armor
+        let mut bonuses = ActorBonuses::new();
+        bonuses.derived.attack.add(Bonus::flat(20)); // Weapon damage
+        bonuses.derived.ac.add(Bonus::flat(8)); // Armor
 
-        let resource_max = ResourceMaximums::compute(&CoreEffective::from_base(&base));
+        let core = CoreEffective::from_base(&base);
+        let resource_max = <ResourceMaximums as StatLayer>::compute(&core, &ResourceBonuses::new());
         let resources = ResourceCurrent::at_max(&resource_max);
 
-        let snapshot = ActionSnapshot::create(
-            &base,
-            &CoreStatBonuses::new(),
-            &derived_bonuses,
-            &ModifierBonuses::new(),
-            &SpeedConditions::new(),
-            &resources,
-        );
+        let snapshot = StatsSnapshot::create(&base, &bonuses, &resources);
 
         // Attack: 18 × 1.5 + 20 = 27 + 20 = 47
         assert_eq!(snapshot.derived.attack, 47);
@@ -237,24 +245,67 @@ mod tests {
     fn integrated_mage_snapshot() {
         let base = CoreStats::new(10, 10, 10, 18, 16, 14, 5);
 
-        let mut speed_conditions = SpeedConditions::new();
-        speed_conditions.cognitive.add(Bonus::more(25)); // Mental acceleration
+        let mut bonuses = ActorBonuses::new();
+        bonuses.speed.cognitive.add(Bonus::more(25)); // Mental acceleration
 
-        let resource_max = ResourceMaximums::compute(&CoreEffective::from_base(&base));
+        let core = CoreEffective::from_base(&base);
+        let resource_max = <ResourceMaximums as StatLayer>::compute(&core, &ResourceBonuses::new());
         let resources = ResourceCurrent::at_max(&resource_max);
 
-        let snapshot = ActionSnapshot::create(
-            &base,
-            &CoreStatBonuses::new(),
-            &DerivedBonuses::new(),
-            &ModifierBonuses::new(),
-            &speed_conditions,
-            &resources,
-        );
+        let snapshot = StatsSnapshot::create(&base, &bonuses, &resources);
 
         // Cognitive speed: 116 × 1.25 = 145
         assert_eq!(snapshot.speed.cognitive, 145);
         // MP: (16 + 18) × 5 + (14 × 2) + (5 × √16) = 170 + 28 + 20 = 218
         assert_eq!(snapshot.resource_max.mp_max, 218);
+    }
+
+    #[test]
+    fn resource_clamping_exceeds_maximum() {
+        let base = CoreStats::new(10, 10, 10, 10, 10, 10, 1);
+
+        // Calculate actual maximum: HP = 10 × 10 + 1 × 10 / 2 = 100 + 5 = 105
+        let core = CoreEffective::from_base(&base);
+        let max = <ResourceMaximums as StatLayer>::compute(&core, &ResourceBonuses::new());
+        assert_eq!(max.hp_max, 105);
+
+        // Try to create snapshot with current HP > max HP
+        let invalid_resources = ResourceCurrent::new(999, 999, 999);
+
+        let snapshot = StatsSnapshot::from_base(&base, &invalid_resources);
+
+        // Current should be clamped to maximum
+        assert_eq!(snapshot.resource_current.hp, 105);
+        assert_eq!(snapshot.resource_max.hp_max, 105);
+        assert!(snapshot.resource_current.hp <= snapshot.resource_max.hp_max);
+    }
+
+    #[test]
+    fn resource_clamping_after_unequipping_hp_item() {
+        let base = CoreStats::new(10, 10, 10, 10, 10, 10, 1);
+
+        // Scenario: Equipped +100 HP item
+        let mut bonuses_with_item = ActorBonuses::new();
+        bonuses_with_item.resources.hp_max.add(Bonus::flat(100));
+
+        let core = CoreEffective::from_base(&base);
+        let max_with_item =
+            <ResourceMaximums as StatLayer>::compute(&core, &bonuses_with_item.resources);
+        // Base 105 + 100 bonus = 205
+        assert_eq!(max_with_item.hp_max, 205);
+
+        // Character at full HP with item equipped
+        let current_with_item = ResourceCurrent::new(205, 0, 0);
+
+        // Now unequip the item (no bonuses)
+        let snapshot_after_unequip = StatsSnapshot::from_base(&base, &current_with_item);
+
+        // Current HP should be clamped to new maximum (105, not 205)
+        assert_eq!(snapshot_after_unequip.resource_max.hp_max, 105);
+        assert_eq!(snapshot_after_unequip.resource_current.hp, 105);
+        assert!(
+            snapshot_after_unequip.resource_current.hp
+                <= snapshot_after_unequip.resource_max.hp_max
+        );
     }
 }

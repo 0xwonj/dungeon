@@ -96,12 +96,15 @@ impl SimulationWorker {
         let _delta = engine.execute(env, &prepare_action).map_err(|e| match e {
             ExecuteError::PrepareTurn(phase_error) => match phase_error.error {
                 game_core::TurnError::NoActiveEntities => RuntimeError::NoActiveEntities,
+                game_core::TurnError::NotSystemActor => {
+                    unreachable!("PrepareTurnAction is constructed with SYSTEM actor")
+                }
             },
             _ => unreachable!("PrepareTurnAction should only return PrepareTurn error"),
         })?;
 
         // Get the current actor (now set by the system action)
-        let entity = engine.current_actor();
+        let entity = self.state.turn.current_actor;
 
         // Clone the current state for action decision-making
         let state_clone = self.state.clone();
@@ -142,11 +145,7 @@ impl SimulationWorker {
 
     /// Validates that the action actor matches the current turn actor.
     fn validate_current_actor(&self, action: &Action) -> Result<()> {
-        let mut state_clone = self.state.clone();
-        let current_actor = {
-            let engine = GameEngine::new(&mut state_clone);
-            engine.current_actor()
-        };
+        let current_actor = self.state.turn.current_actor;
 
         if action.actor != current_actor {
             return Err(RuntimeError::InvalidActionActor {

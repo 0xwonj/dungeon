@@ -5,7 +5,7 @@
 //!
 //! CoreEffective = (Base + Flat) × (1 + %Inc) × More × Less × Clamp
 
-use super::bonus::{Bonus, BonusStack};
+use super::bonus::{Bonus, BonusStack, StatBounds, StatLayer};
 
 /// The six core attributes that define a character.
 ///
@@ -61,7 +61,7 @@ impl Default for CoreStats {
 ///
 /// These are NOT stored - they are computed from the game state
 /// (equipped items, active buffs, environmental effects, etc.)
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CoreStatBonuses {
     pub str_bonuses: BonusStack,
     pub con_bonuses: BonusStack,
@@ -126,26 +126,38 @@ pub struct CoreEffective {
 }
 
 impl CoreEffective {
-    /// Compute CoreEffective from base stats and bonuses
-    ///
-    /// Stats are clamped to [1, 99] range to prevent edge cases.
-    pub fn compute(base: &CoreStats, bonuses: &CoreStatBonuses) -> Self {
-        const MIN_STAT: i32 = 1;
-        const MAX_STAT: i32 = 99;
+    // No methods here - use StatLayer trait instead
+}
+
+/// Layer 1: Core Stats Layer
+///
+/// Base: CoreStats (stored state)
+/// Bonuses: CoreStatBonuses (from equipment, buffs, etc.)
+/// Final: CoreEffective (computed values)
+impl StatLayer for CoreEffective {
+    type Base = CoreStats;
+    type Bonuses = CoreStatBonuses;
+    type Final = Self;
+
+    fn compute(base: &Self::Base, bonuses: &Self::Bonuses) -> Self::Final {
+        let bounds = StatBounds::CORE_STATS;
 
         Self {
-            str: bonuses.str_bonuses.apply(base.str, MIN_STAT, MAX_STAT),
-            con: bonuses.con_bonuses.apply(base.con, MIN_STAT, MAX_STAT),
-            dex: bonuses.dex_bonuses.apply(base.dex, MIN_STAT, MAX_STAT),
-            int: bonuses.int_bonuses.apply(base.int, MIN_STAT, MAX_STAT),
-            wil: bonuses.wil_bonuses.apply(base.wil, MIN_STAT, MAX_STAT),
-            ego: bonuses.ego_bonuses.apply(base.ego, MIN_STAT, MAX_STAT),
+            str: bonuses.str_bonuses.apply(base.str, bounds.min, bounds.max),
+            con: bonuses.con_bonuses.apply(base.con, bounds.min, bounds.max),
+            dex: bonuses.dex_bonuses.apply(base.dex, bounds.min, bounds.max),
+            int: bonuses.int_bonuses.apply(base.int, bounds.min, bounds.max),
+            wil: bonuses.wil_bonuses.apply(base.wil, bounds.min, bounds.max),
+            ego: bonuses.ego_bonuses.apply(base.ego, bounds.min, bounds.max),
             level: base.level, // Level is not affected by bonuses
         }
     }
 
-    /// Compute with no bonuses (base stats only)
-    pub fn from_base(base: &CoreStats) -> Self {
-        Self::compute(base, &CoreStatBonuses::new())
+    fn empty_bonuses() -> Self::Bonuses {
+        CoreStatBonuses::new()
+    }
+
+    fn bounds() -> Option<StatBounds> {
+        Some(StatBounds::CORE_STATS)
     }
 }

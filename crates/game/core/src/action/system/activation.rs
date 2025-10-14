@@ -44,10 +44,14 @@ impl ActivationAction {
 impl ActionTransition for ActivationAction {
     type Error = ActivationError;
 
-    fn pre_validate(&self, state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
-        // Verify player exists (should always be true, but defensive check)
-        if state.entities.player.id != EntityId::PLAYER {
-            return Err(ActivationError::PlayerNotFound);
+    fn actor(&self) -> EntityId {
+        EntityId::SYSTEM
+    }
+
+    fn pre_validate(&self, _state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
+        // Verify this action is executed by the SYSTEM actor
+        if self.actor() != EntityId::SYSTEM {
+            return Err(ActivationError::NotSystemActor);
         }
 
         Ok(())
@@ -64,26 +68,26 @@ impl ActionTransition for ActivationAction {
             .iter()
             .map(|npc| {
                 let is_active = state.turn.active_actors.contains(&npc.id);
-                (npc.id, npc.position, is_active, npc.stats.clone())
+                (npc.id, npc.position, is_active, npc.is_alive())
             })
             .collect();
 
         // Process each NPC's activation status
-        for (entity_id, npc_position, is_active, stats) in npc_data {
+        for (entity_id, npc_position, is_active, is_alive) in npc_data {
             let distance = Self::grid_distance(self.player_position, npc_position);
 
             if distance <= activation_radius {
-                // Within activation radius - activate if not already active
-                if !is_active {
+                // Within activation radius - activate if not already active and alive
+                if !is_active && is_alive {
                     state.turn.active_actors.insert(entity_id);
 
                     // Set initial ready_at using Wait action cost (100 ticks scaled by speed)
                     // This gives the NPC time to "wake up" before acting
-                    let speed = stats.speed_physical().max(1) as u64;
-                    let delay = Tick(100 * 100 / speed);
-
                     if let Some(actor) = state.entities.actor_mut(entity_id) {
-                        actor.ready_at = Some(Tick(clock.0 + delay.0));
+                        let snapshot = actor.snapshot();
+                        let speed = snapshot.speed.physical.max(1) as u64;
+                        let delay = 100 * 100 / speed;
+                        actor.ready_at = Some(clock + delay);
                     }
                 }
             } else if is_active {
@@ -116,13 +120,16 @@ impl ActionTransition for ActivationAction {
 
     fn cost(&self) -> Tick {
         // System actions have no time cost
-        Tick::ZERO
+        0
     }
 }
 
 /// Errors that can occur during activation updates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ActivationError {
+    #[error("activation action must be executed by SYSTEM actor")]
+    NotSystemActor,
+
     #[error("player not found in game state")]
     PlayerNotFound,
 }

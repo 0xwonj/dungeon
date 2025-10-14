@@ -1,6 +1,6 @@
 use crate::action::ActionTransition;
 use crate::env::GameEnv;
-use crate::state::{EntityId, GameState, Position};
+use crate::state::{EntityId, GameState, Position, Tick};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum MoveError {
@@ -65,22 +65,6 @@ impl MoveAction {
     }
 }
 
-/// Cardinal grid movement command. Distance defaults to a single tile.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct MoveCommand {
-    pub direction: CardinalDirection,
-    pub distance: u32,
-}
-
-impl MoveCommand {
-    pub fn new(direction: CardinalDirection, distance: u32) -> Self {
-        Self {
-            direction,
-            distance,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CardinalDirection {
     North,
@@ -103,8 +87,12 @@ impl CardinalDirection {
 impl ActionTransition for MoveAction {
     type Error = MoveError;
 
-    fn cost(&self) -> crate::state::Tick {
-        crate::state::Tick(10)
+    fn actor(&self) -> EntityId {
+        self.actor
+    }
+
+    fn cost(&self) -> Tick {
+        10
     }
 
     fn pre_validate(&self, state: &GameState, env: &GameEnv<'_>) -> Result<(), Self::Error> {

@@ -7,7 +7,7 @@
 //! - SpeedKind = base + weighted(CoreEffective) - penalties
 //! - final_cost = base_cost × Conditions × 100 / clamp(SpeedKind, 50, 200)
 
-use super::bonus::BonusStack;
+use super::bonus::{BonusStack, StatBounds, StatLayer};
 use super::core::CoreEffective;
 
 /// Speed statistics for different action types.
@@ -27,15 +27,13 @@ pub struct SpeedStats {
 }
 
 impl SpeedStats {
-    /// Compute speed stats from CoreEffective
+    /// Compute base speed stats from CoreEffective (internal helper)
     ///
     /// Formulas:
     /// - Physical: 100 + DEX × 0.8 + STR × 0.2 - ArmorPenalty
     /// - Cognitive: 100 + INT × 0.6 + WIL × 0.4
     /// - Ritual: 100 + WIL × 0.5 + EGO × 0.5
-    ///
-    /// Note: ArmorPenalty is not implemented yet (future feature)
-    pub fn compute(core: &CoreEffective) -> Self {
+    fn compute_base(core: &CoreEffective) -> Self {
         let physical = 100 + (core.dex * 8 / 10) + (core.str * 2 / 10);
         let cognitive = 100 + (core.int * 6 / 10) + (core.wil * 4 / 10);
         let ritual = 100 + (core.wil * 5 / 10) + (core.ego * 5 / 10);
@@ -46,42 +44,59 @@ impl SpeedStats {
             ritual,
         }
     }
-
-    /// Apply condition modifiers to speed (e.g., Haste, Slow)
-    ///
-    /// Conditions are applied as final multipliers after base calculation.
-    /// Results are clamped to [50, 200] range.
-    pub fn apply_conditions(&self, conditions: &SpeedConditions) -> Self {
-        const MIN_SPEED: i32 = 50;
-        const MAX_SPEED: i32 = 200;
-
-        Self {
-            physical: conditions
-                .physical
-                .apply(self.physical, MIN_SPEED, MAX_SPEED),
-            cognitive: conditions
-                .cognitive
-                .apply(self.cognitive, MIN_SPEED, MAX_SPEED),
-            ritual: conditions.ritual.apply(self.ritual, MIN_SPEED, MAX_SPEED),
-        }
-    }
 }
 
-/// Condition modifiers for speed values.
+/// Bonus modifiers for speed values.
 ///
 /// Represents effects like Haste, Slow, Stun, etc.
 /// Applied as final multipliers to base speed values.
-#[derive(Clone, Debug, Default)]
-pub struct SpeedConditions {
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SpeedBonuses {
     pub physical: BonusStack,
     pub cognitive: BonusStack,
     pub ritual: BonusStack,
 }
 
-impl SpeedConditions {
-    /// Create new empty condition set
+impl SpeedBonuses {
+    /// Create new empty bonus set
     pub fn new() -> Self {
         Self::default()
+    }
+}
+
+/// Layer 3: Speed Stats Layer
+///
+/// Base: CoreEffective (output from Layer 1)
+/// Bonuses: SpeedBonuses (from buffs, debuffs, conditions)
+/// Final: SpeedStats (action speed values)
+impl StatLayer for SpeedStats {
+    type Base = CoreEffective;
+    type Bonuses = SpeedBonuses;
+    type Final = Self;
+
+    fn compute(base: &Self::Base, bonuses: &Self::Bonuses) -> Self::Final {
+        let bounds = StatBounds::SPEED_STATS;
+        let base_speed = Self::compute_base(base);
+
+        Self {
+            physical: bonuses
+                .physical
+                .apply(base_speed.physical, bounds.min, bounds.max),
+            cognitive: bonuses
+                .cognitive
+                .apply(base_speed.cognitive, bounds.min, bounds.max),
+            ritual: bonuses
+                .ritual
+                .apply(base_speed.ritual, bounds.min, bounds.max),
+        }
+    }
+
+    fn empty_bonuses() -> Self::Bonuses {
+        SpeedBonuses::new()
+    }
+
+    fn bounds() -> Option<StatBounds> {
+        Some(StatBounds::SPEED_STATS)
     }
 }
 

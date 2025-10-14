@@ -2,6 +2,9 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 /// Generic collection delta capturing additions, removals, and updates.
+///
+/// This structure is designed for efficient ZK proof generation and network
+/// transmission by tracking only the minimal set of changes to a collection.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CollectionDelta<Id, Added, Patch> {
     pub added: Vec<Added>,

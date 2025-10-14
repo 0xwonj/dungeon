@@ -1,20 +1,53 @@
 //! Action domain definitions.
 //!
-//! Provides typed representations for player intent, including parsing helpers
-//! (`ActionCommand`) and concrete action kinds executed by the engine.
-pub mod command;
-pub mod kinds;
-pub mod transition;
+//! Provides typed representations for player intent and concrete action kinds executed by the engine.
+pub mod combat;
+pub mod interact;
+pub mod inventory;
+pub mod movement;
+pub mod system;
 
-use crate::state::{EntityId, Tick};
+use crate::env::GameEnv;
+use crate::state::{EntityId, GameState, Tick};
 
-pub use command::{ActionCommand, CommandContext};
-pub use kinds::{
-    ActionCostAction, ActivationAction, AttackAction, AttackCommand, AttackStyle,
-    CardinalDirection, InteractAction, InteractCommand, InventorySlot, ItemTarget, MoveAction,
-    MoveCommand, MoveError, PrepareTurnAction, UseItemAction, UseItemCommand,
-};
-pub use transition::ActionTransition;
+pub use combat::{AttackAction, AttackStyle};
+pub use interact::InteractAction;
+pub use inventory::{InventorySlot, ItemTarget, UseItemAction};
+pub use movement::{CardinalDirection, MoveAction, MoveError};
+pub use system::{ActionCostAction, ActivationAction, PrepareTurnAction, TurnError};
+
+/// Defines how a concrete action variant mutates game state while mirroring
+/// the constraint checks enforced inside zk circuits.
+///
+/// Implementors can override the validation hooks to surface pre- and
+/// post-conditions that must hold around the state mutation. All hooks receive
+/// read-only access to deterministic environment facts via `Env` and must stay
+/// side-effect free.
+pub trait ActionTransition {
+    type Error;
+
+    /// Returns the entity performing this action.
+    /// For system actions, this should return `EntityId::SYSTEM`.
+    fn actor(&self) -> EntityId;
+
+    /// Returns the time cost of this action in ticks.
+    /// This cost is used to advance the actor's ready_at value.
+    fn cost(&self) -> Tick;
+
+    /// Validates pre-conditions using the state **before** mutation.
+    fn pre_validate(&self, _state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    /// Applies the action by mutating the game state directly. Implementations should
+    /// assume that `pre_validate` has already run successfully.
+    fn apply(&self, state: &mut GameState, env: &GameEnv<'_>) -> Result<(), Self::Error>;
+
+    /// Validates post-conditions using the state **after** mutation.
+    fn post_validate(&self, _state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 /// Describes a single intent issued by an entity for the current turn.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -39,40 +72,29 @@ impl Action {
         Self { actor, kind }
     }
 
-    pub fn from_command<C>(
-        actor: EntityId,
-        command: C,
-        ctx: CommandContext<'_>,
-    ) -> Result<Self, C::Error>
-    where
-        C: ActionCommand,
-    {
-        command.into_action(actor, ctx)
-    }
-
     /// Returns the time cost (in ticks) for this action.
     /// This determines how much the entity's ready_at advances after execution.
-    /// Cost is scaled by the actor's speed stat.
-    pub fn cost(&self, stats: &crate::stats::ActorStats) -> Tick {
+    /// Cost is scaled by the actor's speed stat (from snapshot).
+    pub fn cost(&self, snapshot: &crate::stats::StatsSnapshot) -> Tick {
         use crate::action::ActionTransition;
 
         // Get base cost
         let base_cost = match &self.kind {
-            ActionKind::Move(action) => action.cost().0,
-            ActionKind::Attack(action) => action.cost().0,
-            ActionKind::UseItem(action) => action.cost().0,
-            ActionKind::Interact(action) => action.cost().0,
+            ActionKind::Move(action) => action.cost(),
+            ActionKind::Attack(action) => action.cost(),
+            ActionKind::UseItem(action) => action.cost(),
+            ActionKind::Interact(action) => action.cost(),
             ActionKind::Wait => 100,
             // System actions have no time cost
-            ActionKind::PrepareTurn(action) => action.cost().0,
-            ActionKind::ActionCost(action) => action.cost().0,
-            ActionKind::Activation(action) => action.cost().0,
+            ActionKind::PrepareTurn(action) => action.cost(),
+            ActionKind::ActionCost(action) => action.cost(),
+            ActionKind::Activation(action) => action.cost(),
         };
 
         // Scale by speed (100 = baseline)
         // Use physical speed for all actions (for now)
-        let speed = stats.speed_physical().max(1) as u64;
-        Tick(base_cost * 100 / speed)
+        let speed = snapshot.speed.physical.max(1) as u64;
+        base_cost * 100 / speed
     }
 }
 

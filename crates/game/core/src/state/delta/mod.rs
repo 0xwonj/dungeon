@@ -4,16 +4,24 @@ mod patch;
 use std::collections::BTreeSet;
 
 use crate::action::Action;
-use crate::state::types::Overlay;
 use crate::state::types::{ActorState, ItemState, PropState};
-use crate::state::{EntitiesState, EntityId, GameState, Position, Tick, TurnState, WorldState};
+use crate::state::{EntitiesState, EntityId, GameState, Tick, TurnState, WorldState};
 
 pub use collection::CollectionDelta;
-pub use patch::{ActorPatch, ItemPatch, PropPatch};
+pub use patch::{ActorPatch, FieldDelta, ItemPatch, OccupancyPatch, PropPatch};
 
 use collection::diff_collection;
 
 /// Minimal description of an executed action's impact on the deterministic state.
+///
+/// The delta system computes granular patches to track exactly which fields changed.
+/// This design supports:
+/// - **ZK proof generation**: Efficiently encode only state changes in the proof circuit
+/// - **Bandwidth optimization**: Transmit minimal diffs over network
+/// - **Audit trails**: Capture precise state transitions for replay and debugging
+///
+/// The patches use [`FieldDelta`] to clearly distinguish between unchanged fields
+/// and fields that changed to a new value (including `None` for optional fields).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StateDelta {
     pub action: Action,
@@ -77,6 +85,9 @@ impl TurnDelta {
 }
 
 /// Delta for [`EntitiesState`].
+///
+/// Tracks changes to all game entities (player, NPCs, props, items) using
+/// granular patches that only include modified fields.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct EntitiesDelta {
     pub player: Option<ActorPatch>,
@@ -121,31 +132,14 @@ impl EntitiesDelta {
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct WorldDelta {
     pub occupancy: Vec<OccupancyPatch>,
-    pub overlays: Vec<OverlayPatch>,
 }
 
 impl WorldDelta {
     fn from_states(before: &WorldState, after: &WorldState) -> Self {
         let occupancy = diff_occupancy(before, after);
-        let overlays = diff_overlays(before, after);
 
-        Self {
-            occupancy,
-            overlays,
-        }
+        Self { occupancy }
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct OccupancyPatch {
-    pub position: Position,
-    pub occupants: Vec<EntityId>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct OverlayPatch {
-    pub position: Position,
-    pub overlays: Vec<Overlay>,
 }
 
 fn diff_occupancy(before: &WorldState, after: &WorldState) -> Vec<OccupancyPatch> {
@@ -177,34 +171,4 @@ fn diff_occupancy(before: &WorldState, after: &WorldState) -> Vec<OccupancyPatch
             }
         })
         .collect()
-}
-
-fn diff_overlays(before: &WorldState, after: &WorldState) -> Vec<OverlayPatch> {
-    let mut positions = BTreeSet::new();
-    positions.extend(before.tile_map.overlays().keys().copied());
-    positions.extend(after.tile_map.overlays().keys().copied());
-
-    positions
-        .into_iter()
-        .filter_map(|position| {
-            let before_vec = overlay_vec(before.tile_map.overlay(&position));
-            let after_vec = overlay_vec(after.tile_map.overlay(&position));
-
-            if before_vec == after_vec {
-                None
-            } else {
-                Some(OverlayPatch {
-                    position,
-                    overlays: after_vec,
-                })
-            }
-        })
-        .collect()
-}
-
-fn overlay_vec(set: Option<&crate::state::types::OverlaySet>) -> Vec<Overlay> {
-    match set {
-        Some(overlay_set) => overlay_set.iter().cloned().collect(),
-        None => Vec::new(),
-    }
 }

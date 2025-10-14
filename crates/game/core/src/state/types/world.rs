@@ -7,7 +7,6 @@ use crate::env::{MapOracle, StaticTile};
 
 use super::{EntityId, Position};
 
-type OverlaySlots = ArrayVec<Overlay, { GameConfig::MAX_OVERLAYS_PER_TILE }>;
 type OccupantSlots = ArrayVec<EntityId, { GameConfig::MAX_OCCUPANTS_PER_TILE }>;
 
 /// Aggregated world-level state layered on top of the static map commitment.
@@ -21,13 +20,12 @@ impl WorldState {
         Self { tile_map }
     }
 
-    /// Produces a merged view combining static tile data with dynamic overlays and occupants.
-    pub fn tile_view<'a, M>(&'a self, map: &M, position: Position) -> Option<TileView<'a>>
+    /// Produces a merged view combining static tile data with dynamic occupants.
+    pub fn tile_view<M>(&self, map: &M, position: Position) -> Option<TileView>
     where
         M: MapOracle + ?Sized,
     {
         let static_tile = map.tile(position)?;
-        let overlay = self.tile_map.overlay(&position);
         let occupants = self
             .tile_map
             .occupants(&position)
@@ -37,7 +35,6 @@ impl WorldState {
         Some(TileView {
             position,
             static_tile,
-            overlay,
             occupants,
         })
     }
@@ -46,49 +43,12 @@ impl WorldState {
 /// Dynamic world deltas layered on top of immutable static tiles.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct TileMap {
-    overlays: BTreeMap<Position, OverlaySet>,
     occupancy: BTreeMap<Position, OccupantSlots>,
 }
 
 impl TileMap {
-    pub fn new(
-        overlays: BTreeMap<Position, OverlaySet>,
-        occupancy: BTreeMap<Position, OccupantSlots>,
-    ) -> Self {
-        Self {
-            overlays,
-            occupancy,
-        }
-    }
-
-    pub fn overlays(&self) -> &BTreeMap<Position, OverlaySet> {
-        &self.overlays
-    }
-
-    pub fn overlay(&self, position: &Position) -> Option<&OverlaySet> {
-        self.overlays.get(position)
-    }
-
-    pub fn set_overlay(&mut self, position: Position, overlay: OverlaySet) {
-        if overlay.is_empty() {
-            self.overlays.remove(&position);
-        } else {
-            self.overlays.insert(position, overlay);
-        }
-    }
-
-    pub fn with_overlay<F>(&mut self, position: Position, mutate: F)
-    where
-        F: FnOnce(&mut OverlaySet),
-    {
-        let should_remove = {
-            let entry = self.overlays.entry(position).or_default();
-            mutate(entry);
-            entry.is_empty()
-        };
-        if should_remove {
-            self.overlays.remove(&position);
-        }
+    pub fn new(occupancy: BTreeMap<Position, OccupantSlots>) -> Self {
+        Self { occupancy }
     }
 
     pub fn occupancy(&self) -> &BTreeMap<Position, OccupantSlots> {
@@ -137,119 +97,20 @@ impl TileMap {
     }
 }
 
-/// Collection of dynamic overlays that modify an individual tile.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct OverlaySet {
-    overlays: OverlaySlots,
-}
-
-impl OverlaySet {
-    pub fn new(overlays: OverlaySlots) -> Self {
-        Self { overlays }
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &Overlay> + '_ {
-        self.overlays.iter()
-    }
-
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Overlay> + '_ {
-        self.overlays.iter_mut()
-    }
-
-    pub fn push_overlay(&mut self, overlay: Overlay) -> Result<(), Overlay> {
-        self.overlays.try_push(overlay).map_err(|err| err.element())
-    }
-
-    pub fn retain_overlays<F>(&mut self, mut predicate: F)
-    where
-        F: FnMut(&Overlay) -> bool,
-    {
-        self.overlays.retain(|overlay| predicate(overlay));
-    }
-
-    pub fn clear(&mut self) {
-        self.overlays.clear();
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.overlays.is_empty()
-    }
-
-    pub fn is_passable(&self) -> bool {
-        self.iter().all(|overlay| overlay.is_passable())
-    }
-}
-
-/// General overlay applied to a tile.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Overlay {
-    /// Lingering hazard that may apply damage or block entry while active.
-    Hazard(HazardOverlay),
-    /// Example effect showing how scripted events could tag tiles.
-    EventMarker(EventId),
-}
-
-impl Overlay {
-    pub fn hazard(&self) -> Option<&HazardOverlay> {
-        if let Overlay::Hazard(hazard) = self {
-            Some(hazard)
-        } else {
-            None
-        }
-    }
-
-    pub fn hazard_mut(&mut self) -> Option<&mut HazardOverlay> {
-        if let Overlay::Hazard(hazard) = self {
-            Some(hazard)
-        } else {
-            None
-        }
-    }
-
-    pub fn is_passable(&self) -> bool {
-        match self {
-            Overlay::Hazard(hazard) => hazard.is_passable(),
-            Overlay::EventMarker(_) => true,
-        }
-    }
-}
-
-/// Transient hazard applied to the tile (e.g., lingering fire).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HazardOverlay {
-    pub remaining_turns: u32,
-    pub passable: bool,
-}
-
-impl HazardOverlay {
-    pub fn is_passable(&self) -> bool {
-        self.passable
-    }
-}
-
-/// Identifier referencing a scripted world event or trigger.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct EventId(pub u16);
-
 /// Aggregated tile information used by reducers and commands.
-pub struct TileView<'a> {
+pub struct TileView {
     position: Position,
     static_tile: StaticTile,
-    overlay: Option<&'a OverlaySet>,
     occupants: OccupantSlots,
 }
 
-impl<'a> TileView<'a> {
+impl TileView {
     pub fn position(&self) -> Position {
         self.position
     }
 
     pub fn static_tile(&self) -> &StaticTile {
         &self.static_tile
-    }
-
-    pub fn overlay(&self) -> Option<&'a OverlaySet> {
-        self.overlay
     }
 
     pub fn occupants(&self) -> impl Iterator<Item = EntityId> + '_ {
@@ -264,24 +125,8 @@ impl<'a> TileView<'a> {
         !self.occupants.is_empty()
     }
 
-    pub fn has_hazard(&self) -> bool {
-        self.overlay
-            .map(|overlay| {
-                overlay
-                    .iter()
-                    .any(|overlay| matches!(overlay, Overlay::Hazard(_)))
-            })
-            .unwrap_or(false)
-    }
-
     pub fn is_passable(&self) -> bool {
-        if !self.static_tile.is_passable() {
-            return false;
-        }
-
-        self.overlay
-            .map(|overlay| overlay.is_passable())
-            .unwrap_or(true)
+        self.static_tile.is_passable()
     }
 
     pub fn terrain(&self) -> crate::env::TerrainKind {

@@ -45,8 +45,8 @@ impl PostExecutionHook for ActivationHook {
                 .entities
                 .player
                 .as_ref()
-                .and_then(|patch| patch.position)
-                .is_some()
+                .map(|patch| patch.position.is_changed())
+                .unwrap_or(false)
     }
 
     fn create_actions(&self, ctx: &HookContext<'_>) -> Vec<Action> {

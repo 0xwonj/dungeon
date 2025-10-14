@@ -3,7 +3,9 @@ use bounded_vector::BoundedVec;
 
 use super::{EntityId, Position, Tick};
 use crate::config::GameConfig;
-use crate::stats::ActorStats;
+use crate::stats::{
+    ActorBonuses, CoreStats, ResourceCurrent, StatsSnapshot, compute_actor_bonuses,
+};
 
 /// Aggregate state for every entity in the map.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -56,34 +58,86 @@ impl EntitiesState {
     }
 }
 
-/// Minimal representation of any active actor (player or NPC).
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+/// Complete actor state including stats and computed bonuses.
+///
+/// # Design Principles
+///
+/// 1. **SSOT (Single Source of Truth)**: Only `core_stats` and `resources` are stored
+/// 2. **Cached Bonuses**: `bonuses` field amortizes ZK proof costs
+/// 3. **Snapshot Pattern**: External code uses `snapshot()` for complete stats
+///
+/// # Invariants
+///
+/// - `bonuses` must always reflect current `inventory` state
+/// - Update `bonuses` whenever `inventory` changes
+/// - Never expose mutable `inventory` without recomputing `bonuses`
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActorState {
     pub id: EntityId,
     pub position: Position,
-    pub stats: ActorStats,
+
+    // SSOT: Stored state
+    pub core_stats: CoreStats,
+    pub resources: ResourceCurrent,
+
+    // Cached: Derived from inventory/effects
+    pub bonuses: ActorBonuses,
+
     pub inventory: InventoryState,
+
     /// When this actor is scheduled to act next. None means not currently scheduled.
     pub ready_at: Option<Tick>,
+
     /// NPC template ID (0 for player).
     pub template_id: u16,
 }
 
 impl ActorState {
+    /// Create new actor with given core stats.
+    ///
+    /// Resources are initialized to maximum based on core stats.
+    /// Bonuses start empty (no equipment/effects).
     pub fn new(
         id: EntityId,
         position: Position,
-        stats: ActorStats,
+        core_stats: CoreStats,
         inventory: InventoryState,
     ) -> Self {
+        let bonuses = compute_actor_bonuses();
+
+        // Compute initial resource maximums
+        let snapshot = StatsSnapshot::create(
+            &core_stats,
+            &bonuses,
+            &ResourceCurrent::new(0, 0, 0), // Dummy
+        );
+
+        let resources = ResourceCurrent::at_max(&snapshot.resource_max);
+
         Self {
             id,
             position,
-            stats,
+            core_stats,
+            resources,
+            bonuses,
             inventory,
             ready_at: None,
             template_id: 0,
         }
+    }
+
+    /// Create complete stats snapshot with all bonuses applied.
+    ///
+    /// This is the primary way external code should access actor stats.
+    /// Ensures consistency between stored state and computed values.
+    pub fn snapshot(&self) -> StatsSnapshot {
+        StatsSnapshot::create(&self.core_stats, &self.bonuses, &self.resources)
+    }
+
+    /// Quick check if actor is alive (without full snapshot).
+    #[inline]
+    pub fn is_alive(&self) -> bool {
+        self.resources.hp > 0
     }
 
     pub fn with_ready_at(mut self, ready_at: Tick) -> Self {
@@ -94,6 +148,17 @@ impl ActorState {
     pub fn with_template_id(mut self, template_id: u16) -> Self {
         self.template_id = template_id;
         self
+    }
+}
+
+impl Default for ActorState {
+    fn default() -> Self {
+        Self::new(
+            EntityId::default(),
+            Position::default(),
+            CoreStats::default(),
+            InventoryState::default(),
+        )
     }
 }
 

@@ -2,7 +2,7 @@ use core::convert::Infallible;
 
 use crate::action::ActionTransition;
 use crate::env::GameEnv;
-use crate::state::{EntityId, GameState, Position};
+use crate::state::{EntityId, GameState, Position, Tick};
 
 /// Consumes or activates an item from the actor's inventory.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -19,19 +19,6 @@ impl UseItemAction {
             slot,
             target,
         }
-    }
-}
-
-/// Command describing how an item should be used.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct UseItemCommand {
-    pub slot: InventorySlot,
-    pub target: Option<ItemTarget>,
-}
-
-impl UseItemCommand {
-    pub fn new(slot: InventorySlot, target: Option<ItemTarget>) -> Self {
-        Self { slot, target }
     }
 }
 
@@ -55,8 +42,12 @@ pub enum ItemTarget {
 impl ActionTransition for UseItemAction {
     type Error = Infallible;
 
-    fn cost(&self) -> crate::state::Tick {
-        crate::state::Tick(8)
+    fn actor(&self) -> EntityId {
+        self.actor
+    }
+
+    fn cost(&self) -> Tick {
+        8
     }
 
     fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {

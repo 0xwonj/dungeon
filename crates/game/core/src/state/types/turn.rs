@@ -22,7 +22,7 @@ impl TurnState {
     /// Creates a new turn state.
     pub fn new() -> Self {
         Self {
-            clock: Tick::ZERO,
+            clock: 0,
             active_actors: HashSet::new(),
             current_actor: EntityId::PLAYER, // Default to player
         }

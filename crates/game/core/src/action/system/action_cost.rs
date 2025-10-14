@@ -36,7 +36,16 @@ impl ActionCostAction {
 impl ActionTransition for ActionCostAction {
     type Error = ActionCostError;
 
+    fn actor(&self) -> EntityId {
+        EntityId::SYSTEM
+    }
+
     fn pre_validate(&self, state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
+        // Verify this action is executed by the SYSTEM actor
+        if self.actor() != EntityId::SYSTEM {
+            return Err(ActionCostError::NotSystemActor);
+        }
+
         // Verify target actor exists
         let actor = state
             .entities
@@ -66,7 +75,7 @@ impl ActionTransition for ActionCostAction {
 
         // Update ready_at by adding the pre-calculated cost
         if let Some(actor) = state.entities.actor_mut(self.target_actor) {
-            actor.ready_at = Some(current_ready_at + self.cost.0);
+            actor.ready_at = Some(current_ready_at + self.cost);
         }
 
         Ok(())
@@ -86,13 +95,16 @@ impl ActionTransition for ActionCostAction {
 
     fn cost(&self) -> Tick {
         // System actions have no time cost
-        Tick::ZERO
+        0
     }
 }
 
 /// Errors that can occur during action cost application.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ActionCostError {
+    #[error("action cost action must be executed by SYSTEM actor")]
+    NotSystemActor,
+
     #[error("actor {0} not found in game state")]
     ActorNotFound(EntityId),
 

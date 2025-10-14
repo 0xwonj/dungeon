@@ -149,7 +149,7 @@ where
                 let state = self.handle.query_state().await?;
                 self.consumer
                     .message_log_mut()
-                    .push_text(format!("[{}] Quitting...", state.turn.clock.0));
+                    .push_text(format!("[{}] Quitting...", state.turn.clock));
                 self.render_with_state(terminal, map, &state)?;
                 Ok(true)
             }

@@ -1,12 +1,13 @@
 //! NPC template definitions and oracle interface.
 
 use crate::state::InventoryState;
-use crate::stats::{ActorStats, CoreStats, ResourceCurrent};
+use crate::stats::{CoreStats, ResourceCurrent};
 
 /// NPC template defining base attributes and inventory.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NpcTemplate {
-    pub stats: ActorStats,
+    pub core_stats: CoreStats,
+    pub resources: ResourceCurrent,
     pub inventory: InventoryState,
 }
 
@@ -18,10 +19,7 @@ impl NpcTemplate {
 
     /// Create a test NPC with default stats
     pub fn test_npc() -> Self {
-        Self {
-            stats: ActorStats::default(),
-            inventory: InventoryState::default(),
-        }
+        NpcTemplate::builder().build()
     }
 }
 
@@ -68,16 +66,24 @@ impl NpcTemplateBuilder {
 
     /// Build the NPC template
     pub fn build(self) -> NpcTemplate {
-        let core = self.stats.unwrap_or_default();
-        let actor_stats =
+        let core_stats = self.stats.unwrap_or_default();
+
+        // Compute default resource maximums if not explicitly set
+        let resources =
             if let (Some(hp), Some(mp), Some(luc)) = (self.health, self.mana, self.lucidity) {
-                ActorStats::new(core, ResourceCurrent::new(hp, mp, luc))
+                ResourceCurrent::new(hp, mp, luc)
             } else {
-                ActorStats::at_full(core)
+                // Use reasonable defaults based on core stats
+                // HP ≈ CON × 10, MP ≈ WIL × 5, Lucidity ≈ 50
+                let hp = (core_stats.con as u32) * 10;
+                let mp = (core_stats.wil as u32) * 5;
+                let luc = 50;
+                ResourceCurrent::new(hp, mp, luc)
             };
 
         NpcTemplate {
-            stats: actor_stats,
+            core_stats,
+            resources,
             inventory: self.inventory.unwrap_or_default(),
         }
     }

@@ -108,9 +108,10 @@ impl TargetSelector for ThreatPrioritySelector {
         // Threat calculation:
         // - Closer = more threatening
         // - Lower health = prioritize (finish off wounded enemies)
+        let snapshot = npc.snapshot();
         let distance_factor = (self.threat_radius - distance) as i32 * 100;
-        let health_factor = 1000 - npc.stats.resources.hp as i32; // Lower HP = higher priority
-        let speed_factor = npc.stats.speed_physical(); // Faster = more threatening
+        let health_factor = 1000 - npc.resources.hp as i32; // Lower HP = higher priority
+        let speed_factor = snapshot.speed.physical; // Faster = more threatening
 
         let priority = 2000 + distance_factor + health_factor + speed_factor;
 
