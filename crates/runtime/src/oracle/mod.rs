@@ -20,6 +20,7 @@ pub use npc::NpcOracleImpl;
 pub use tables::TablesOracleImpl;
 
 /// Manages all oracle implementations and provides unified access
+#[derive(Clone)]
 pub struct OracleManager {
     pub(crate) map: Arc<MapOracleImpl>,
     pub(crate) items: Arc<ItemOracleImpl>,

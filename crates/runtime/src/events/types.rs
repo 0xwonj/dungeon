@@ -1,18 +1,13 @@
-//! Events emitted during simulation for front-ends to observe.
-//!
-//! Consumers subscribe to [`GameEvent`] to react to state changes without
-//! blocking the worker loop.
+//! Event types for different topics.
+
 use game_core::{Action, EntityId, GameState, StateDelta, Tick, engine::TransitionPhase};
 
 // Re-export ProofData from zk crate
 pub use zk::{ProofBackend, ProofData};
 
-/// Events emitted by the runtime during game simulation
+/// Events related to game state changes (actions, failures)
 #[derive(Debug, Clone)]
-pub enum GameEvent {
-    /// A turn was completed by an entity
-    TurnCompleted { entity: EntityId },
-
+pub enum GameStateEvent {
     /// An action was executed with resulting state changes
     ActionExecuted {
         action: Action,
@@ -31,11 +26,15 @@ pub enum GameEvent {
         error: String,
         clock: Tick,
     },
+}
 
+/// Events related to ZK proof generation
+#[derive(Debug, Clone)]
+pub enum ProofEvent {
     /// ZK proof generation started for an action
     ProofStarted { action: Action, clock: Tick },
 
-    /// ZK proof successfully generated
+    /// ZK proof successfully generated (already verified by zkVM)
     ProofGenerated {
         action: Action,
         clock: Tick,
@@ -49,4 +48,13 @@ pub enum GameEvent {
         clock: Tick,
         error: String,
     },
+}
+
+/// Events related to turn management (lightweight)
+#[derive(Debug, Clone)]
+pub struct TurnEvent {
+    /// Entity that will act in this turn
+    pub entity: EntityId,
+    /// Current game clock
+    pub clock: Tick,
 }

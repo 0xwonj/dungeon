@@ -1,15 +1,16 @@
 //! Simulation worker that owns the authoritative [`game_core::GameState`].
 //!
 //! Receives commands from [`RuntimeHandle`], executes actions via
-//! [`game_core::engine::GameEngine`], and publishes [`GameEvent`] notifications.
+//! [`game_core::engine::GameEngine`], and publishes events to the EventBus.
 
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot};
 
 use game_core::engine::{ExecuteError, TransitionPhase};
 use game_core::{Action, ActionKind, EntityId, GameEngine, GameState, PrepareTurnAction, Tick};
 use tracing::{debug, error};
 
-use crate::api::{GameEvent, Result, RuntimeError};
+use crate::api::{Result, RuntimeError};
+use crate::events::{Event, EventBus, GameStateEvent, TurnEvent};
 use crate::hooks::HookRegistry;
 use crate::oracle::OracleManager;
 
@@ -34,7 +35,7 @@ pub struct SimulationWorker {
     state: GameState,
     oracles: OracleManager,
     command_rx: mpsc::Receiver<Command>,
-    event_tx: broadcast::Sender<GameEvent>,
+    event_bus: EventBus,
     hooks: HookRegistry,
 }
 
@@ -44,14 +45,14 @@ impl SimulationWorker {
         state: GameState,
         oracles: OracleManager,
         command_rx: mpsc::Receiver<Command>,
-        event_tx: broadcast::Sender<GameEvent>,
+        event_bus: EventBus,
         hooks: HookRegistry,
     ) -> Self {
         Self {
             state,
             oracles,
             command_rx,
-            event_tx,
+            event_bus,
             hooks,
         }
     }
@@ -72,14 +73,20 @@ impl SimulationWorker {
         match cmd {
             Command::PrepareNextTurn { reply } => {
                 let result = self.prepare_next_turn();
-                let _ = reply.send(result);
+                if reply.send(result).is_err() {
+                    debug!("PrepareNextTurn reply channel closed (caller dropped)");
+                }
             }
             Command::ExecuteAction { action, reply } => {
                 let result = self.execute_action(action);
-                let _ = reply.send(result);
+                if reply.send(result).is_err() {
+                    debug!("ExecuteAction reply channel closed (caller dropped)");
+                }
             }
             Command::QueryState { reply } => {
-                let _ = reply.send(self.state.clone());
+                if reply.send(self.state.clone()).is_err() {
+                    debug!("QueryState reply channel closed (caller dropped)");
+                }
             }
         }
     }
@@ -109,8 +116,10 @@ impl SimulationWorker {
         // Clone the current state for action decision-making
         let state_clone = self.state.clone();
 
-        // Publish TurnCompleted event
-        let _ = self.event_tx.send(GameEvent::TurnCompleted { entity });
+        // Publish TurnCompleted event to Turn topic
+        let clock = self.state.turn.clock;
+        self.event_bus
+            .publish(Event::Turn(TurnEvent { entity, clock }));
 
         Ok((entity, state_clone))
     }
@@ -205,13 +214,15 @@ impl SimulationWorker {
         let after_state = working_state.clone();
         self.state = working_state;
 
-        let _ = self.event_tx.send(GameEvent::ActionExecuted {
-            action,
-            delta: Box::new(delta),
-            clock,
-            before_state: Box::new(before_state),
-            after_state: Box::new(after_state),
-        });
+        // Publish ActionExecuted event to GameState topic
+        self.event_bus
+            .publish(Event::GameState(GameStateEvent::ActionExecuted {
+                action,
+                delta: Box::new(delta),
+                clock,
+                before_state: Box::new(before_state),
+                after_state: Box::new(after_state),
+            }));
     }
 
     fn handle_execute_error(&self, action: &Action, error: ExecuteError, clock: Tick) {
@@ -263,11 +274,13 @@ impl SimulationWorker {
             );
         }
 
-        let _ = self.event_tx.send(GameEvent::ActionFailed {
-            action: action.clone(),
-            phase,
-            error: message,
-            clock,
-        });
+        // Publish ActionFailed event to GameState topic
+        self.event_bus
+            .publish(Event::GameState(GameStateEvent::ActionFailed {
+                action: action.clone(),
+                phase,
+                error: message,
+                clock,
+            }));
     }
 }

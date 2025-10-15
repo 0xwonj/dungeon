@@ -3,12 +3,13 @@
 //! The runtime owns background workers, wires up command/event channels, and
 //! exposes a builder-based API for clients to drive the simulation.
 
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use game_core::{EntityId, GameConfig, GameState};
 
-use crate::api::{ActionProvider, GameEvent, ProviderKind, Result, RuntimeError, RuntimeHandle};
+use crate::api::{ActionProvider, ProviderKind, Result, RuntimeError, RuntimeHandle};
+use crate::events::EventBus;
 use crate::hooks::{HookRegistry, PostExecutionHook};
 use crate::oracle::OracleManager;
 use crate::workers::{Command, ProverWorker, SimulationWorker};
@@ -21,6 +22,8 @@ pub struct RuntimeConfig {
     pub command_buffer_size: usize,
     /// Enable ZK proof generation worker (default: false)
     pub enable_proving: bool,
+    /// Optional directory to save generated proofs
+    pub save_proofs_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for RuntimeConfig {
@@ -30,6 +33,7 @@ impl Default for RuntimeConfig {
             event_buffer_size: 100,
             command_buffer_size: 32,
             enable_proving: false,
+            save_proofs_dir: None,
         }
     }
 }
@@ -49,6 +53,10 @@ pub struct Runtime {
     // Background workers
     sim_worker_handle: JoinHandle<()>,
     prover_worker_handle: Option<JoinHandle<()>>,
+
+    // Proof metrics (shared with ProverWorker if enabled)
+    // Uses atomics for lock-free access
+    proof_metrics: Option<std::sync::Arc<crate::workers::ProofMetrics>>,
 }
 
 impl Runtime {
@@ -64,9 +72,12 @@ impl Runtime {
         self.handle.clone()
     }
 
-    /// Subscribe to game events
-    pub fn subscribe_events(&self) -> broadcast::Receiver<GameEvent> {
-        self.handle.subscribe_events()
+    /// Get proof generation metrics Arc (if proving is enabled).
+    ///
+    /// Returns `None` if proving is not enabled.
+    /// The returned Arc can be used to query metrics without locking.
+    pub fn proof_metrics(&self) -> Option<std::sync::Arc<crate::workers::ProofMetrics>> {
+        self.proof_metrics.as_ref().map(std::sync::Arc::clone)
     }
 
     /// Execute a single turn step
@@ -284,19 +295,22 @@ impl RuntimeBuilder {
         };
 
         let (command_tx, command_rx) = mpsc::channel::<Command>(self.config.command_buffer_size);
-        let (event_tx, _event_rx) = broadcast::channel::<GameEvent>(self.config.event_buffer_size);
+        let event_bus = EventBus::with_capacity(self.config.event_buffer_size);
 
-        let handle = RuntimeHandle::new(command_tx, event_tx.clone());
+        let handle = RuntimeHandle::new(command_tx, event_bus.clone());
 
         // Use provided hooks or default registry
         let hooks = self.hooks.unwrap_or_default();
+
+        // Clone oracles for prover worker (if enabled)
+        let oracles_for_prover = oracles.clone();
 
         // Create simulation worker
         let sim_worker = SimulationWorker::new(
             initial_state.clone(),
             oracles,
             command_rx,
-            event_tx.clone(),
+            event_bus.clone(),
             hooks,
         );
 
@@ -305,16 +319,24 @@ impl RuntimeBuilder {
         });
 
         // Create prover worker (if enabled)
-        let prover_worker_handle = if self.config.enable_proving {
-            let prover_event_rx = event_tx.subscribe();
-            let prover_event_tx = event_tx.clone();
-            let prover_worker = ProverWorker::new(initial_state, prover_event_rx, prover_event_tx);
+        let (prover_worker_handle, proof_metrics) = if self.config.enable_proving {
+            let prover_worker = ProverWorker::new(
+                initial_state,
+                event_bus.clone(),
+                oracles_for_prover,
+                self.config.save_proofs_dir.clone(),
+            );
 
-            Some(tokio::spawn(async move {
-                prover_worker.run().await;
-            }))
+            let prover_metrics = prover_worker.metrics();
+
+            (
+                Some(tokio::spawn(async move {
+                    prover_worker.run().await;
+                })),
+                Some(prover_metrics),
+            )
         } else {
-            None
+            (None, None)
         };
 
         Ok(Runtime {
@@ -323,6 +345,7 @@ impl RuntimeBuilder {
             npc_provider: self.npc_provider,
             sim_worker_handle,
             prover_worker_handle,
+            proof_metrics,
         })
     }
 }
