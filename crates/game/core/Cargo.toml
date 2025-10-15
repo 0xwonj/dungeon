@@ -6,6 +6,7 @@ edition = "2024"
 [features]
 default = ["std"]
 std = []
+zkvm = []
 serde = [
     "dep:serde",
     "bounded-vector/serde",

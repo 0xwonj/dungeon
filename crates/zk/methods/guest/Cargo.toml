@@ -8,7 +8,7 @@ edition = "2024"
 
 [dependencies]
 risc0-zkvm = { version = "3.0", default-features = false, features = ["std"] }
-game-core = { path = "../../../game/core", features = ["serde"] }
+game-core = { path = "../../../game/core", features = ["serde", "zkvm"] }
 serde = { version = "1.0", default-features = false, features = [
     "derive",
     "alloc",

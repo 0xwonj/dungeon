@@ -2,7 +2,7 @@
 //!
 //! Defines the common interface implemented by all proving backends.
 
-use game_core::{Action, GameState, StateDelta};
+use game_core::{Action, GameState};
 
 /// ZK proof data container.
 ///
@@ -67,7 +67,6 @@ pub trait Prover: Send + Sync {
         before_state: &GameState,
         action: &Action,
         after_state: &GameState,
-        delta: &StateDelta,
     ) -> Result<ProofData, ProofError>;
 
     /// Verify a proof locally (for testing and debugging).
@@ -105,7 +104,6 @@ impl Prover for StubProver {
         _before_state: &GameState,
         _action: &Action,
         _after_state: &GameState,
-        _delta: &StateDelta,
     ) -> Result<ProofData, ProofError> {
         Ok(ProofData {
             bytes: vec![0xDE, 0xAD, 0xBE, 0xEF],

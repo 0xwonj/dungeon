@@ -23,7 +23,7 @@
 
 use crate::prover::{ProofBackend, ProofData, ProofError};
 use crate::OracleSnapshot;
-use game_core::{Action, GameState, StateDelta};
+use game_core::{Action, GameState};
 
 /// SP1 zkVM prover implementation.
 ///
@@ -51,7 +51,6 @@ impl crate::Prover for Sp1Prover {
         _before_state: &GameState,
         _action: &Action,
         _after_state: &GameState,
-        _delta: &StateDelta,
     ) -> Result<ProofData, ProofError> {
         Err(ProofError::ZkvmError(
             "SP1 prover backend is not yet implemented".to_string(),

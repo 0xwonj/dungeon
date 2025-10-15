@@ -13,13 +13,12 @@
 //!
 //! Guest executes:
 //!   1. GameEngine::execute(env, action) on mutable before_state
-//!   2. Computes result state and delta deterministically
+//!   2. Computes result state deterministically
 //!   3. Commits public outputs to journal
 //!
 //! zkVM → Host:
 //!   - Receipt (proof + journal):
 //!     - after_state (computed result)
-//!     - delta (state changes)
 //!     - action (what was executed)
 //!
 //! Host verifies:
@@ -33,6 +32,14 @@
 //! - Reduces input size (no need to pass expected state into zkVM)
 //! - Maintains security: journal data is cryptographically committed in the proof
 //! - Host can efficiently verify journal contents match expected results
+//!
+//! # Delta Optimization
+//!
+//! Delta computation is disabled in zkVM mode (via `zkvm` feature flag):
+//! - Eliminates ~1-2μs clone() overhead per action
+//! - Skips O(n) state comparison pass
+//! - Reduces journal size (no delta commitment needed)
+//! - Host can compute deltas if needed by comparing before/after states
 //! ```
 
 #![no_main]
@@ -63,7 +70,7 @@ pub fn main() {
     // This is the CORE PROOF: GameEngine::execute() runs inside zkVM
     let mut engine = game_core::GameEngine::new(&mut state);
 
-    let delta = engine
+    engine
         .execute(oracle_bundle.as_env().into_game_env(), &action)
         .unwrap_or_else(|e| {
             // In zkVM guest, panics are converted to proof failures
@@ -72,9 +79,6 @@ pub fn main() {
         });
 
     // Commit public outputs to journal
-    // The host will verify these outputs match the simulation worker's results
-    // This approach keeps zkVM overhead minimal while maintaining security
     env::commit(&state); // Resulting state after action execution
-    env::commit(&delta); // State changes
     env::commit(&action); // Action that was executed
 }

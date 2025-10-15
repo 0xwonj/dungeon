@@ -123,11 +123,15 @@ impl<'a> GameEngine<'a> {
     ///
     /// Returns a [`StateDelta`] capturing all state changes made by the action.
     /// Both player/NPC actions and system actions go through the same pipeline.
+    ///
+    /// When `zkvm` feature is enabled, delta computation is skipped to reduce overhead
+    /// in zero-knowledge proof circuits. The returned delta will be empty but valid.
     pub fn execute(
         &mut self,
         env: GameEnv<'_>,
         action: &Action,
     ) -> Result<StateDelta, ExecuteError> {
+        #[cfg(not(feature = "zkvm"))]
         let before = self.state.clone();
 
         dispatch_transition!(action, self.state, &env, {
@@ -141,8 +145,15 @@ impl<'a> GameEngine<'a> {
         })?;
 
         // Generate delta capturing all state changes
-        let delta = StateDelta::from_states(action.clone(), &before, self.state);
-        Ok(delta)
+        #[cfg(not(feature = "zkvm"))]
+        {
+            let delta = StateDelta::from_states(action.clone(), &before, self.state);
+            Ok(delta)
+        }
+
+        // In zkvm mode, skip delta computation and return empty delta
+        #[cfg(feature = "zkvm")]
+        Ok(StateDelta::empty())
     }
 }
 

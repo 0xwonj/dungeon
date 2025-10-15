@@ -43,6 +43,13 @@ impl<TChanges> CollectionChanges<TChanges> {
         }
     }
 
+    /// Creates an empty collection delta (alias for zkvm compatibility).
+    #[cfg(feature = "zkvm")]
+    #[inline]
+    pub(crate) fn empty() -> Self {
+        Self::new()
+    }
+
     /// Returns true if the collection is completely unchanged.
     #[inline]
     pub fn is_empty(&self) -> bool {

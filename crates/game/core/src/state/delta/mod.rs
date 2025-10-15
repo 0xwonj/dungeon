@@ -142,6 +142,29 @@ impl StateDelta {
     pub fn is_empty(&self) -> bool {
         self.turn.is_empty() && self.entities.is_empty() && self.world.is_empty()
     }
+
+    /// Creates a minimal empty delta.
+    ///
+    /// This is used in zkvm mode where delta computation is completely skipped to reduce overhead.
+    /// The delta contains placeholder values and no change tracking - it's only used to satisfy
+    /// the return type while avoiding all computation costs. The placeholder values (action, clock)
+    /// have no meaning and should not be used.
+    #[cfg(feature = "zkvm")]
+    pub fn empty() -> Self {
+        use crate::action::ActionKind;
+        use crate::state::EntityId;
+
+        Self {
+            action: Action {
+                actor: EntityId(0),
+                kind: ActionKind::Wait,
+            },
+            clock: 0,
+            turn: TurnChanges::default(),
+            entities: EntitiesChanges::empty(),
+            world: WorldChanges::default(),
+        }
+    }
 }
 
 /// Changes to all game entities.
@@ -185,6 +208,18 @@ impl EntitiesChanges {
             && self.npcs.is_empty()
             && self.props.is_empty()
             && self.items.is_empty()
+    }
+}
+
+#[cfg(feature = "zkvm")]
+impl EntitiesChanges {
+    fn empty() -> Self {
+        Self {
+            player: None,
+            npcs: CollectionChanges::empty(),
+            props: CollectionChanges::empty(),
+            items: CollectionChanges::empty(),
+        }
     }
 }
 

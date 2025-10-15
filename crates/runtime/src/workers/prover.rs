@@ -15,7 +15,7 @@ use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
 use game_core::{Action, GameState, StateDelta, Tick};
-use zk::{ProofData, ProofError};
+use zk::{ProofData, ProofError, Prover, ZkProver};
 
 use crate::events::{Event, EventBus, GameStateEvent, ProofEvent, Topic};
 use crate::oracle::OracleManager;
@@ -25,33 +25,12 @@ use crate::workers::ProofMetrics;
 ///
 /// Subscribes to ActionExecuted events, generates zero-knowledge proofs,
 /// and broadcasts ProofGenerated/ProofFailed events.
-///
-/// # Architecture
-///
-/// ```text
-/// SimulationWorker                    ProverWorker
-///       │                                  │
-///       │ ActionExecuted event             │
-///       │ (action, delta, before, after)   │
-///       ├─────────────────────────────────▶│
-///       │                                  │ Update state
-///       │                                  │ Generate proof (async)
-///       │                                  │
-///       │                        ProofGenerated event
-///       │◀─────────────────────────────────┤
-///       │                                  │
-/// ```
-///
-/// # Phases
-///
-/// - **Phase 2 (Current)**: RISC0 zkVM with oracle snapshots
-/// - **Phase 4 (Future)**: Incremental Merkle tree updates
 pub struct ProverWorker {
     /// Current game state (synchronized with simulation worker via events)
     current_state: GameState,
 
-    /// Oracle manager for creating oracle snapshots
-    oracle_manager: OracleManager,
+    /// ZK prover instance
+    prover: ZkProver,
 
     /// Receives game state events (especially ActionExecuted)
     event_rx: broadcast::Receiver<Event>,
@@ -85,9 +64,13 @@ impl ProverWorker {
         // Subscribe to GameState topic only
         let event_rx = event_bus.subscribe(Topic::GameState);
 
+        // Create prover
+        let oracle_snapshot = Self::create_oracle_snapshot(&oracle_manager);
+        let prover = ZkProver::new(oracle_snapshot);
+
         Self {
             current_state: initial_state,
-            oracle_manager,
+            prover,
             event_rx,
             event_bus,
             metrics: Arc::new(ProofMetrics::new()),
@@ -180,15 +163,10 @@ impl ProverWorker {
     /// 2. Generate proof (Phase 2: full rebuild, Phase 4: incremental)
     /// 3. Broadcast ProofGenerated or ProofFailed event
     /// 4. Update internal state reference
-    ///
-    /// # Performance
-    ///
-    /// Phase 2: ~10ms (full tree rebuild) + seconds (proof generation)
-    /// Phase 4: ~0.5ms (incremental update) + seconds (proof generation)
     async fn handle_action_executed(
         &mut self,
         action: Action,
-        delta: StateDelta,
+        _delta: StateDelta,
         clock: Tick,
         before_state: GameState,
         after_state: GameState,
@@ -206,35 +184,20 @@ impl ProverWorker {
                 clock,
             }));
 
-        let event_received_time = std::time::Instant::now();
-
-        // Phase 2: Full rebuild approach
-        // TODO: This will be replaced with incremental updates in Phase 4
+        // Generate proof
         match self
-            .generate_proof_full_rebuild(
-                &action,
-                &delta,
-                &before_state,
-                &after_state,
-                event_received_time,
-            )
+            .generate_proof(&action, &before_state, &after_state)
             .await
         {
-            Ok((proof_data, wait_time, proving_time)) => {
+            Ok((proof_data, proving_time)) => {
                 let generation_time_ms = proving_time.as_millis() as u64;
-                let wait_time_ms = wait_time.as_millis() as u64;
 
                 info!(
-                    "Proof generated for action at tick {} (wait: {}ms, proving: {}ms)",
-                    clock, wait_time_ms, generation_time_ms
+                    "Proof generated for action at tick {} (proving: {}ms)",
+                    clock, generation_time_ms
                 );
 
-                // NOTE: Proof is already verified by RISC0 during prove().
-                // No need to verify again in the same process immediately after generation.
-                // The verify() method will be used when loading proofs from files or external sources.
-
                 // Update metrics - lock-free atomic operations
-                self.metrics.record_wait(wait_time);
                 self.metrics.record_success(proving_time);
                 let new_depth = self.metrics.queue_depth().saturating_sub(1);
                 self.metrics.set_queue_depth(new_depth);
@@ -331,47 +294,29 @@ impl ProverWorker {
     /// Creates an oracle snapshot and invokes the zkVM prover to generate
     /// a proof that executing the action on before_state produces after_state.
     ///
-    /// Returns a tuple of (ProofData, wait_time, proving_time) where:
-    /// - wait_time: Duration between event received and blocking task started
+    /// Returns a tuple of (ProofData, proving_time) where:
     /// - proving_time: Duration of actual proof generation
-    ///
-    /// # Performance
-    ///
-    /// - Production: 30-60 seconds (with GPU/Metal acceleration)
-    /// - Development (RISC0_DEV_MODE=1): <100ms (mock proofs)
-    async fn generate_proof_full_rebuild(
+    async fn generate_proof(
         &self,
         action: &Action,
-        delta: &StateDelta,
         before_state: &GameState,
         after_state: &GameState,
-        event_received_time: std::time::Instant,
-    ) -> Result<(ProofData, std::time::Duration, std::time::Duration), ProofError> {
-        // Use the configured prover from zk crate (determined by zk's feature flags)
-        use zk::{Prover, ZkProver};
-
-        // Clone oracle manager to send to blocking task
-        let oracle_manager = self.oracle_manager.clone();
+    ) -> Result<(ProofData, std::time::Duration), ProofError> {
+        // Clone prover and states to send to blocking task
+        let prover = self.prover.clone();
         let before_state = before_state.clone();
         let action = action.clone();
         let after_state = after_state.clone();
-        let delta = delta.clone();
 
         // Generate proof (may take seconds for real proofs)
         // Use tokio::spawn_blocking to avoid blocking the async runtime
         let proof = tokio::task::spawn_blocking(move || {
-            // Measure wait time (from event received to blocking task started)
-            let blocking_task_started = std::time::Instant::now();
-            let wait_time = blocking_task_started.duration_since(event_received_time);
-
             // Measure proving time
             let proving_start = std::time::Instant::now();
-            let oracle_snapshot = Self::create_oracle_snapshot(&oracle_manager);
-            let prover = ZkProver::new(oracle_snapshot);
-            let result = prover.prove(&before_state, &action, &after_state, &delta);
+            let result = prover.prove(&before_state, &action, &after_state);
             let proving_time = proving_start.elapsed();
 
-            result.map(|proof_data| (proof_data, wait_time, proving_time))
+            result.map(|proof_data| (proof_data, proving_time))
         })
         .await
         .map_err(|e| ProofError::ZkvmError(format!("Proof task failed: {}", e)))??;

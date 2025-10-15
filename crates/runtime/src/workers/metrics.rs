@@ -25,9 +25,6 @@ pub struct ProofMetrics {
     /// Total time spent generating proofs (sum of all durations, in nanoseconds)
     total_proving_time_nanos: AtomicU64,
 
-    /// Total time from action execution to proof generation start (in nanoseconds)
-    total_wait_time_nanos: AtomicU64,
-
     /// Peak queue depth observed
     peak_queue_depth: AtomicU64,
 }
@@ -48,12 +45,6 @@ impl ProofMetrics {
     /// Records a failed proof generation.
     pub fn record_failure(&self) {
         self.failed.fetch_add(1, Ordering::Relaxed);
-    }
-
-    /// Records wait time before proof generation starts.
-    pub fn record_wait(&self, wait_time: Duration) {
-        self.total_wait_time_nanos
-            .fetch_add(wait_time.as_nanos() as u64, Ordering::Relaxed);
     }
 
     /// Updates queue depth and tracks peak.
@@ -106,20 +97,6 @@ impl ProofMetrics {
         }
     }
 
-    /// Calculates average wait time before proving starts.
-    pub fn avg_wait_time(&self) -> Duration {
-        let generated = self.generated.load(Ordering::Relaxed);
-        let failed = self.failed.load(Ordering::Relaxed);
-        let total_requests = generated + failed;
-
-        if total_requests == 0 {
-            Duration::ZERO
-        } else {
-            let total_nanos = self.total_wait_time_nanos.load(Ordering::Relaxed);
-            Duration::from_nanos(total_nanos / total_requests)
-        }
-    }
-
     /// Returns success rate as a percentage (0-100).
     pub fn success_rate(&self) -> f64 {
         let generated = self.generated.load(Ordering::Relaxed);
@@ -150,7 +127,6 @@ impl ProofMetrics {
             queue_depth: self.queue_depth(),
             peak_queue_depth: self.peak_queue_depth(),
             avg_proving_time: self.avg_proving_time(),
-            avg_wait_time: self.avg_wait_time(),
             success_rate: self.success_rate(),
         }
     }
@@ -164,6 +140,5 @@ pub struct MetricsSnapshot {
     pub queue_depth: u64,
     pub peak_queue_depth: u64,
     pub avg_proving_time: Duration,
-    pub avg_wait_time: Duration,
     pub success_rate: f64,
 }
