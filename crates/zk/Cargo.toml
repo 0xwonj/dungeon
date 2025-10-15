@@ -4,16 +4,16 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-# Default: RISC0 zkVM backend with std
-default = ["std", "risc0"]
+# Default: RISC0 zkVM backend
+default = ["risc0"]
 
-# Standard library support (enabled by default, disable for no_std guest)
-std = []
+# zkVM meta-feature (shared by all zkVM backends)
+zkvm = []
 
 # Proving backends (mutually exclusive - choose one)
-risc0 = ["risc0-zkvm", "risc0-build"]  # RISC0 zkVM backend
-sp1 = ["sp1-sdk"]                       # SP1 zkVM backend (not implemented)
-stub = []                               # Stub prover (returns dummy proofs, no verification)
+risc0 = ["zkvm", "risc0-zkvm", "risc0-build"] # RISC0 zkVM backend
+sp1 = ["zkvm", "sp1-sdk"]                     # SP1 zkVM backend (not implemented)
+stub = []                                     # Stub prover (returns dummy proofs)
 
 # Arkworks circuit (future, requires StateTransition/Merkle with Poseidon hash)
 arkworks = [

@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::OracleManager;
 use tracing::{debug, error};
 
 use super::{HookCriticality, PostExecutionHook};
@@ -91,7 +92,7 @@ impl HookRegistry {
         &self,
         delta: &game_core::StateDelta,
         state: &mut game_core::GameState,
-        oracles: &crate::oracle::OracleManager,
+        oracles: &OracleManager,
     ) -> Result<(), game_core::ExecuteError> {
         let env = oracles.as_game_env();
 

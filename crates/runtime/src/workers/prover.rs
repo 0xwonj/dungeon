@@ -348,7 +348,7 @@ impl ProverWorker {
         event_received_time: std::time::Instant,
     ) -> Result<(ProofData, std::time::Duration, std::time::Duration), ProofError> {
         // Use the configured prover from zk crate (determined by zk's feature flags)
-        use zk::{Prover, zkvm::ZkProver};
+        use zk::{Prover, ZkProver};
 
         // Clone oracle manager to send to blocking task
         let oracle_manager = self.oracle_manager.clone();

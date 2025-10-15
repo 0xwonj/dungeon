@@ -1,7 +1,7 @@
 //! RISC0 zkVM guest program for game state verification.
 //!
 //! This program runs inside the RISC0 zkVM and proves that executing
-//! an action on a given state produces the expected result.
+//! an action on a given state produces a specific result deterministically.
 //!
 //! # Verification Model
 //!
@@ -12,8 +12,8 @@
 //!   - action (Action)
 //!
 //! Guest executes:
-//!   1. GameEngine::execute(env, action) on mutable state
-//!   2. Computes after_state and delta deterministically
+//!   1. GameEngine::execute(env, action) on mutable before_state
+//!   2. Computes result state and delta deterministically
 //!   3. Commits public outputs to journal
 //!
 //! zkVM → Host:
@@ -21,6 +21,18 @@
 //!     - after_state (computed result)
 //!     - delta (state changes)
 //!     - action (what was executed)
+//!
+//! Host verifies:
+//!   - Receipt is valid (cryptographic verification)
+//!   - Journal's after_state matches simulation worker's expected state
+//!
+//! # Design Rationale
+//!
+//! Consistency verification happens on the host side rather than inside zkVM:
+//! - Reduces zkVM computational overhead (state comparison is expensive)
+//! - Reduces input size (no need to pass expected state into zkVM)
+//! - Maintains security: journal data is cryptographically committed in the proof
+//! - Host can efficiently verify journal contents match expected results
 //! ```
 
 #![no_main]
@@ -59,10 +71,10 @@ pub fn main() {
             panic!("Action execution failed in zkVM guest: {:?}", e)
         });
 
-    // After execute(), state has been mutated to after_state
-    // Commit public outputs to journal for verification
-    // These outputs prove that executing the action produced this specific result
-    env::commit(&state); // Complete resulting state (after execution)
-    env::commit(&delta); // What changed
-    env::commit(&action); // Which action was executed
+    // Commit public outputs to journal
+    // The host will verify these outputs match the simulation worker's results
+    // This approach keeps zkVM overhead minimal while maintaining security
+    env::commit(&state); // Resulting state after action execution
+    env::commit(&delta); // State changes
+    env::commit(&action); // Action that was executed
 }

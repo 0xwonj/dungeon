@@ -12,7 +12,7 @@ use crate::api::{ActionProvider, ProviderKind, Result, RuntimeError, RuntimeHand
 use crate::events::EventBus;
 use crate::hooks::{HookRegistry, PostExecutionHook};
 use crate::oracle::OracleManager;
-use crate::workers::{Command, ProverWorker, SimulationWorker};
+use crate::workers::{Command, ProofMetrics, ProverWorker, SimulationWorker};
 
 /// Runtime configuration shared across the orchestrator and workers.
 #[derive(Debug, Clone)]
@@ -56,7 +56,7 @@ pub struct Runtime {
 
     // Proof metrics (shared with ProverWorker if enabled)
     // Uses atomics for lock-free access
-    proof_metrics: Option<std::sync::Arc<crate::workers::ProofMetrics>>,
+    proof_metrics: Option<std::sync::Arc<ProofMetrics>>,
 }
 
 impl Runtime {
@@ -76,7 +76,7 @@ impl Runtime {
     ///
     /// Returns `None` if proving is not enabled.
     /// The returned Arc can be used to query metrics without locking.
-    pub fn proof_metrics(&self) -> Option<std::sync::Arc<crate::workers::ProofMetrics>> {
+    pub fn proof_metrics(&self) -> Option<std::sync::Arc<ProofMetrics>> {
         self.proof_metrics.as_ref().map(std::sync::Arc::clone)
     }
 
