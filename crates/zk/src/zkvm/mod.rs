@@ -1,79 +1,44 @@
-//! zkVM proving backend (SP1, RISC0).
+//! zkVM proving backend implementations.
 //!
-//! This module provides a simple interface for proving game actions using zkVMs.
-//! Unlike custom circuits, zkVMs automatically generate execution traces and don't
-//! require manual witness construction or Merkle tree management.
+//! This module provides zkVM-based proving backends that implement the `Prover` trait.
+//! zkVMs automatically generate execution traces without requiring manual witness
+//! construction or circuit design.
 //!
-//! # Design
+//! # Available Backends
 //!
-//! ```text
-//! ProverWorker
-//!   ↓
-//! zkvm::prove(before_state, action, after_state)
-//!   ↓
-//! zkVM Guest Program (runs in zkVM)
-//!   - Execute game logic
-//!   - Verify state transition
-//!   - Commit public outputs
-//!   ↓
-//! Proof (contains execution trace)
-//! ```
+//! - **Risc0Prover** (feature: `risc0`): Production-ready RISC0 zkVM backend
+//! - **Sp1Prover** (feature: `sp1`): SP1 zkVM backend (not yet implemented)
 //!
-//! # Implementation Status
+//! # Backend Selection
 //!
-//! - Phase 2A (current): Stub implementation
-//! - Phase 2B: SP1 integration
-//! - Phase 2C: RISC0 integration (optional)
+//! Use the `ZkProver` type alias to get the configured backend at compile time.
+//! The backend is selected via Cargo features.
 
-use crate::{ProofBackend, ProofData, ProofError};
+use crate::prover::{ProofBackend, ProofData, ProofError};
 use game_core::{Action, GameState, StateDelta};
 
-/// zkVM prover interface.
+/// Stub prover for testing and development.
 ///
-/// This trait abstracts over different zkVM backends (SP1, RISC0).
-pub trait ZkvmProver: Send + Sync {
-    /// Generate a proof that executing `action` on `before_state` produces `after_state`.
-    ///
-    /// # Arguments
-    ///
-    /// * `before_state` - Game state before action execution
-    /// * `action` - Action to prove
-    /// * `after_state` - Expected game state after action execution
-    /// * `delta` - State delta (for optimization hints, not strictly required)
-    ///
-    /// # Returns
-    ///
-    /// A proof that can be verified on-chain or off-chain.
-    fn prove(
-        &self,
-        before_state: &GameState,
-        action: &Action,
-        after_state: &GameState,
-        delta: &StateDelta,
-    ) -> Result<ProofData, ProofError>;
-
-    /// Verify a proof locally (for testing).
-    fn verify(&self, proof: &ProofData) -> Result<bool, ProofError>;
-}
-
-/// Stub zkVM prover (Phase 2A).
+/// Returns dummy proofs without performing actual proof generation.
+/// All proofs verify successfully. Use this for:
+/// - Fast iteration during development
+/// - Testing without zkVM infrastructure
+/// - CI environments where proof generation is not needed
 ///
-/// This is a placeholder that returns dummy proofs until we integrate SP1/RISC0.
-pub struct StubZkvmProver;
+/// # Warning
+///
+/// Do not use in production - provides no cryptographic guarantees.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct StubProver;
 
-impl StubZkvmProver {
+impl StubProver {
+    /// Creates a new stub prover instance.
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for StubZkvmProver {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ZkvmProver for StubZkvmProver {
+impl crate::Prover for StubProver {
     fn prove(
         &self,
         _before_state: &GameState,
@@ -81,20 +46,73 @@ impl ZkvmProver for StubZkvmProver {
         _after_state: &GameState,
         _delta: &StateDelta,
     ) -> Result<ProofData, ProofError> {
-        // Phase 2A: Return a stub proof
-        // TODO: Replace with actual SP1 proving once integrated
+        // Return recognizable dummy bytes for debugging
         Ok(ProofData {
-            bytes: vec![0xDE, 0xAD, 0xBE, 0xEF], // Dummy proof
+            bytes: vec![0xDE, 0xAD, 0xBE, 0xEF],
             backend: ProofBackend::Stub,
         })
     }
 
-    fn verify(&self, _proof: &ProofData) -> Result<bool, ProofError> {
-        // Phase 2A: Always accept stub proofs
-        // TODO: Replace with actual verification
+    fn verify(&self, proof: &ProofData) -> Result<bool, ProofError> {
+        // Only verify stub proofs
+        if proof.backend != ProofBackend::Stub {
+            return Err(ProofError::ZkvmError(format!(
+                "StubProver can only verify stub proofs, got {:?}",
+                proof.backend
+            )));
+        }
         Ok(true)
     }
 }
 
-// Re-export the default prover
-pub use StubZkvmProver as DefaultProver;
+// Backend implementations (conditionally compiled)
+#[cfg(feature = "risc0")]
+mod risc0;
+#[cfg(feature = "risc0")]
+pub use risc0::Risc0Prover;
+
+// SP1 backend not yet implemented
+// #[cfg(feature = "sp1")]
+// mod sp1;
+// #[cfg(feature = "sp1")]
+// pub use sp1::Sp1Prover;
+
+// ============================================================================
+// ZkProver type alias - compile-time backend selection
+// ============================================================================
+//
+// This type alias resolves to the configured proving backend based on enabled
+// features. Use this in your code instead of concrete prover types to allow
+// flexible backend selection at compile time.
+//
+// Selection priority:
+// 1. risc0 feature → Risc0Prover
+// 2. sp1 feature → Sp1Prover (when implemented)
+// 3. No backend features → StubProver (safe fallback)
+//
+// # Example
+//
+// ```rust
+// use zk::{Prover, zkvm::ZkProver};
+//
+// let prover = ZkProver::new(oracle_snapshot);
+// let proof = prover.prove(&before, &action, &after, &delta)?;
+// ```
+
+#[cfg(feature = "risc0")]
+/// The ZK prover backend configured for this build.
+///
+/// Currently using: **RISC0 zkVM** (feature: `risc0`)
+pub type ZkProver = Risc0Prover;
+
+#[cfg(all(not(feature = "risc0"), feature = "sp1"))]
+/// The ZK prover backend configured for this build.
+///
+/// Currently using: **SP1 zkVM** (feature: `sp1`)
+pub type ZkProver = Sp1Prover;
+
+#[cfg(all(not(feature = "risc0"), not(feature = "sp1")))]
+/// The ZK prover backend configured for this build.
+///
+/// Currently using: **Stub prover** (no backend features enabled)
+pub type ZkProver = StubProver;

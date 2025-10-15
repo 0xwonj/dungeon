@@ -1,50 +1,81 @@
 //! ZK proof generation utilities.
 //!
-//! This crate supports multiple proving modes:
-//! - **RISC0** (default): RISC0 zkVM backend for production
-//! - **SP1**: Alternative zkVM backend
-//! - **zkvm**: Stub prover for development/testing without real backend
-//! - **arkworks** (future): Hand-crafted circuits with Merkle witnesses using Poseidon hash
+//! This crate provides a unified interface for different proving backends:
+//! - **RISC0** (default): Production-ready zkVM backend
+//! - **SP1**: Alternative zkVM backend (not yet implemented)
+//! - **Stub**: Dummy prover for fast development iteration
+//! - **Arkworks** (future): Custom circuits with Poseidon-based Merkle trees
+//!
+//! # no_std Support
+//!
+//! Supports `no_std` by disabling the `std` feature, allowing oracle snapshots
+//! and adapters to run inside zkVM guest programs.
 //!
 //! # Feature Flags
 //!
-//! - (default): RISC0 zkVM backend
-//! - `risc0`: Use RISC0 zkVM backend (default)
-//! - `sp1`: Use SP1 zkVM backend
-//! - `zkvm`: Stub prover for development/testing
-//! - `arkworks`: Enable Arkworks circuit proving with Poseidon-based Merkle trees
+//! Proving backends (mutually exclusive - choose one):
+//! - `risc0` (default): RISC0 zkVM backend
+//! - `sp1`: SP1 zkVM backend (not implemented)
+//! - `stub`: Stub prover returning dummy proofs
+//! - No features: Falls back to `stub` automatically
+//!
+//! Other features:
+//! - `std` (default): Enable standard library support
+//! - `arkworks` (future): Enable Arkworks circuit proving
 //!
 //! # Examples
 //!
 //! ```toml
-//! # Default: RISC0 zkVM
+//! # Default: RISC0 zkVM with std
 //! zk = { path = "../zk" }
 //!
-//! # Use SP1 zkVM instead
-//! zk = { path = "../zk", default-features = false, features = ["sp1"] }
+//! # Guest program (no_std, no prover)
+//! zk = { path = "../zk", default-features = false }
 //!
-//! # Use stub prover for testing
-//! zk = { path = "../zk", default-features = false, features = ["zkvm"] }
+//! # Use SP1 zkVM (when implemented)
+//! zk = { path = "../zk", default-features = false, features = ["std", "sp1"] }
 //!
-//! # Use Arkworks circuit with Poseidon
-//! zk = { path = "../zk", features = ["arkworks"] }
+//! # Use stub prover for fast iteration
+//! zk = { path = "../zk", default-features = false, features = ["std", "stub"] }
 //!
-//! # Hybrid: both zkVM and Arkworks circuit
+//! # Arkworks circuit (future)
 //! zk = { path = "../zk", features = ["arkworks"] }
 //! ```
+
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+// Include generated methods from build.rs (RISC0 ELF and ImageID)
+// The build script generates this file with the guest program binary
+#[cfg(feature = "risc0")]
+mod generated {
+    // Try to include generated methods, fall back to placeholders if not available
+    include!(concat!(env!("OUT_DIR"), "/methods.rs"));
+}
+
+#[cfg(feature = "risc0")]
+pub use generated::{GAME_VERIFIER_ELF, GAME_VERIFIER_ID};
 
 // Oracle snapshot for serializable game content
 pub mod oracle;
 pub use oracle::{
-    ConfigSnapshot, ItemsSnapshot, MapSnapshot, NpcsSnapshot, OracleSnapshot,
-    OracleSnapshotBuilder, TablesSnapshot,
+    ConfigSnapshot, ItemsSnapshot, MapSnapshot, NpcsSnapshot, OracleSnapshot, TablesSnapshot,
 };
 
-// zkVM module (optional)
-#[cfg(feature = "zkvm")]
+// Prover module - universal interface and types for all proving backends
+#[cfg(feature = "std")]
+pub mod prover;
+
+#[cfg(feature = "std")]
+pub use prover::{ProofBackend, ProofData, ProofError, Prover};
+
+// zkVM module - zkVM-based proving backend implementations
+#[cfg(feature = "std")]
 pub mod zkvm;
 
-#[cfg(feature = "zkvm")]
+#[cfg(feature = "std")]
 pub use zkvm::*;
 
 // Arkworks circuit module (optional, Phase 2+)
@@ -54,70 +85,5 @@ pub mod circuit;
 #[cfg(feature = "arkworks")]
 pub use circuit::*;
 
-// Re-export commonly used types
+// Re-export commonly used types from game-core
 pub use game_core::{Action, GameState, StateDelta};
-
-/// ZK proof data container.
-///
-/// The internal representation depends on the enabled backend:
-/// - zkVM: Contains SP1/RISC0 proof bytes
-/// - Arkworks: Contains Groth16 proof bytes
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ProofData {
-    /// Proof bytes (format depends on backend)
-    pub bytes: Vec<u8>,
-
-    /// Backend identifier
-    pub backend: ProofBackend,
-}
-
-/// Identifies which proving backend was used
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum ProofBackend {
-    /// No proof generated (game-only mode)
-    None,
-
-    /// Stub prover (used when no real backend is available)
-    #[cfg(feature = "zkvm")]
-    Stub,
-
-    #[cfg(feature = "sp1")]
-    Sp1,
-
-    #[cfg(feature = "risc0")]
-    Risc0,
-
-    #[cfg(feature = "arkworks")]
-    Arkworks,
-}
-
-/// Errors that can occur during proof generation
-#[derive(Debug, thiserror::Error)]
-pub enum ProofError {
-    /// zkVM proof generation failed
-    #[error("zkVM proof generation failed: {0}")]
-    ZkvmError(String),
-
-    /// Merkle tree construction failed
-    #[cfg(feature = "arkworks")]
-    #[error("Merkle tree construction failed: {0}")]
-    MerkleTreeError(String),
-
-    /// Witness generation failed
-    #[cfg(feature = "arkworks")]
-    #[error("Witness generation failed: {0}")]
-    WitnessError(String),
-
-    /// Circuit proof generation failed
-    #[cfg(feature = "arkworks")]
-    #[error("Circuit proof generation failed: {0}")]
-    CircuitProofError(String),
-
-    /// State inconsistency detected
-    #[error("State inconsistency: {0}")]
-    StateInconsistency(String),
-
-    /// Serialization error
-    #[error("Serialization error: {0}")]
-    SerializationError(String),
-}

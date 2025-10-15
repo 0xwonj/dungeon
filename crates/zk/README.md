@@ -62,8 +62,8 @@ zk = { path = "../zk", features = ["zkvm"] }
 # With SP1 backend (Phase 2B)
 zk = { path = "../zk", features = ["sp1"] }
 
-# With RISC0 backend (Phase 2C)
-zk = { path = "../zk", features = ["risc0"] }
+# With RISC0 backend (default)
+zk = { path = "../zk", features = ["risc0"] }  # or just default = ["risc0"]
 ```
 
 ### Custom Circuit (Phase 2+) 🚧
@@ -185,18 +185,20 @@ Proof (compact)
 - [x] StubZkvmProver (returns dummy proofs)
 - [x] Module structure for future backends
 
-### Phase 2B: SP1 Integration 🎯 (Next)
+### Phase 2B: RISC0 Integration ✅ (Complete)
+
+- [x] Add RISC0 zkVM dependency
+- [x] Write guest program (proves game execution)
+- [x] Implement Risc0Prover with oracle snapshots
+- [x] Build script for guest compilation
+- [x] Integration with runtime ProverWorker
+- [x] Production and development mode support
+
+### Phase 2C: SP1 Integration (Future)
 
 - [ ] Add SP1 SDK dependency
-- [ ] Write guest program (proves game execution)
+- [ ] Port guest program to SP1
 - [ ] Implement Sp1Prover
-- [ ] Integration tests
-
-### Phase 2C: RISC0 Integration (Optional)
-
-- [ ] Add RISC0 zkVM dependency
-- [ ] Port guest program to RISC0
-- [ ] Implement Risc0Prover
 
 ### Phase 3: Custom Circuit (Future)
 
@@ -226,11 +228,19 @@ let runtime = Runtime::builder()
 runtime.step().await?;
 ```
 
-### With zkVM Proving
+### With RISC0 Proving
 
 ```toml
-# Cargo.toml
-zk = { path = "../zk", features = ["zkvm"] }
+# Cargo.toml (risc0 is default)
+zk = { path = "../zk" }
+```
+
+```bash
+# Production mode (real proofs, 30-60 seconds per action)
+ENABLE_ZK_PROVING=1 cargo run -p cli-client
+
+# Development mode (mock proofs, <100ms per action)
+ENABLE_ZK_PROVING=1 RISC0_DEV_MODE=1 cargo run -p cli-client
 ```
 
 ```rust
