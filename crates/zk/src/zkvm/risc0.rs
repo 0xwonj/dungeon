@@ -207,10 +207,9 @@ impl Risc0Prover {
     ) -> Result<(), ProofError> {
         // Extract after_state from zkVM journal
         // Journal order: [after_state, delta, action]
-        let zkvm_after_state: GameState = receipt
-            .journal
-            .decode()
-            .map_err(|e| ProofError::SerializationError(format!("Failed to decode zkVM after_state: {}", e)))?;
+        let zkvm_after_state: GameState = receipt.journal.decode().map_err(|e| {
+            ProofError::SerializationError(format!("Failed to decode zkVM after_state: {}", e))
+        })?;
 
         // Compare after_state (this implicitly validates delta too)
         if &zkvm_after_state != expected_after_state {
@@ -218,8 +217,7 @@ impl Risc0Prover {
                 "zkVM computed different after_state than simulation worker. \
                  This indicates non-determinism or oracle mismatch. \
                  zkVM clock={}, simulation clock={}",
-                zkvm_after_state.turn.clock,
-                expected_after_state.turn.clock
+                zkvm_after_state.turn.clock, expected_after_state.turn.clock
             )));
         }
 
