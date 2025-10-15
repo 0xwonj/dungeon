@@ -115,6 +115,23 @@ pub enum ActionKind {
     Activation(ActivationAction),
 }
 
+impl ActionKind {
+    /// Returns the snake_case string representation of the action variant.
+    /// Useful for logging, metrics, and file naming.
+    pub fn as_snake_case(&self) -> &'static str {
+        match self {
+            ActionKind::Move(_) => "move",
+            ActionKind::Attack(_) => "attack",
+            ActionKind::UseItem(_) => "use_item",
+            ActionKind::Interact(_) => "interact",
+            ActionKind::Wait => "wait",
+            ActionKind::PrepareTurn(_) => "prepare_turn",
+            ActionKind::ActionCost(_) => "action_cost",
+            ActionKind::Activation(_) => "activation",
+        }
+    }
+}
+
 impl From<MoveAction> for ActionKind {
     fn from(action: MoveAction) -> Self {
         Self::Move(action)

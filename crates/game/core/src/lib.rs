@@ -18,9 +18,12 @@ pub use action::{
 pub use config::GameConfig;
 pub use engine::{ExecuteError, GameEngine, TransitionPhase, TransitionPhaseError};
 pub use env::{
-    AttackProfile, ConfigOracle, Env, GameEnv, InitialEntityKind, InitialEntitySpec, ItemCategory,
-    ItemDefinition, ItemOracle, MapDimensions, MapOracle, MovementRules, NpcOracle, NpcTemplate,
-    StaticTile, TablesOracle, TerrainKind,
+    AttackProfile, ConfigOracle, ConfigSnapshot, Env, GameEnv, InitialEntityKind,
+    InitialEntitySpec, ItemCategory, ItemDefinition, ItemOracle, ItemsSnapshot, MapDimensions,
+    MapOracle, MapSnapshot, MovementRules, NpcOracle, NpcTemplate, NpcsSnapshot, OracleSnapshot,
+    SnapshotConfigOracle, SnapshotItemOracle, SnapshotMapOracle, SnapshotNpcOracle,
+    SnapshotOracleBundle, SnapshotTablesOracle, StaticTile, TablesOracle, TablesSnapshot,
+    TerrainKind,
 };
 pub use state::{
     ActorChanges, ActorFields, ActorState, CollectionChanges, EntitiesChanges, EntitiesState,

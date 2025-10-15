@@ -20,6 +20,7 @@ pub use types::{
 
 /// Canonical snapshot of the deterministic game state.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GameState {
     /// Turn bookkeeping including current phase within the turn.
     pub turn: TurnState,
