@@ -28,6 +28,7 @@ use super::speed::SpeedStats;
 /// All values are computed and locked at snapshot creation.
 /// The snapshot is immutable - create a new one if state changes.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StatsSnapshot {
     /// Core stats after applying bonuses (Layer 1)
     pub core: CoreEffective,

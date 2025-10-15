@@ -18,7 +18,7 @@ pub use action::{
 pub use config::GameConfig;
 pub use engine::{ExecuteError, GameEngine, TransitionPhase, TransitionPhaseError};
 pub use env::{
-    AttackProfile, Env, GameEnv, InitialEntityKind, InitialEntitySpec, ItemCategory,
+    AttackProfile, ConfigOracle, Env, GameEnv, InitialEntityKind, InitialEntitySpec, ItemCategory,
     ItemDefinition, ItemOracle, MapDimensions, MapOracle, MovementRules, NpcOracle, NpcTemplate,
     StaticTile, TablesOracle, TerrainKind,
 };

@@ -11,7 +11,7 @@ use game_core::{EntityId, GameConfig, GameState};
 use crate::api::{ActionProvider, GameEvent, ProviderKind, Result, RuntimeError, RuntimeHandle};
 use crate::hooks::{HookRegistry, PostExecutionHook};
 use crate::oracle::OracleManager;
-use crate::workers::{Command, SimulationWorker};
+use crate::workers::{Command, ProverWorker, SimulationWorker};
 
 /// Runtime configuration shared across the orchestrator and workers.
 #[derive(Debug, Clone)]
@@ -19,6 +19,8 @@ pub struct RuntimeConfig {
     pub game_config: GameConfig,
     pub event_buffer_size: usize,
     pub command_buffer_size: usize,
+    /// Enable ZK proof generation worker (default: false)
+    pub enable_proving: bool,
 }
 
 impl Default for RuntimeConfig {
@@ -27,6 +29,7 @@ impl Default for RuntimeConfig {
             game_config: GameConfig::default(),
             event_buffer_size: 100,
             command_buffer_size: 32,
+            enable_proving: false,
         }
     }
 }
@@ -45,7 +48,7 @@ pub struct Runtime {
 
     // Background workers
     sim_worker_handle: JoinHandle<()>,
-    // Future: proof_worker_handle, submit_worker_handle
+    prover_worker_handle: Option<JoinHandle<()>>,
 }
 
 impl Runtime {
@@ -121,6 +124,10 @@ impl Runtime {
             .await
             .map_err(RuntimeError::WorkerJoin)?;
 
+        if let Some(prover_handle) = self.prover_worker_handle {
+            prover_handle.await.map_err(RuntimeError::WorkerJoin)?;
+        }
+
         Ok(())
     }
 }
@@ -174,6 +181,12 @@ impl RuntimeBuilder {
     /// Set NPC action provider (optional)
     pub fn npc_provider(mut self, provider: impl ActionProvider + 'static) -> Self {
         self.npc_provider = Some(Box::new(provider));
+        self
+    }
+
+    /// Enable ZK proof generation worker
+    pub fn enable_proving(mut self, enable: bool) -> Self {
+        self.config.enable_proving = enable;
         self
     }
 
@@ -278,18 +291,38 @@ impl RuntimeBuilder {
         // Use provided hooks or default registry
         let hooks = self.hooks.unwrap_or_default();
 
-        let worker =
-            SimulationWorker::new(initial_state, oracles, command_rx, event_tx.clone(), hooks);
+        // Create simulation worker
+        let sim_worker = SimulationWorker::new(
+            initial_state.clone(),
+            oracles,
+            command_rx,
+            event_tx.clone(),
+            hooks,
+        );
 
         let sim_worker_handle = tokio::spawn(async move {
-            worker.run().await;
+            sim_worker.run().await;
         });
+
+        // Create prover worker (if enabled)
+        let prover_worker_handle = if self.config.enable_proving {
+            let prover_event_rx = event_tx.subscribe();
+            let prover_event_tx = event_tx.clone();
+            let prover_worker = ProverWorker::new(initial_state, prover_event_rx, prover_event_tx);
+
+            Some(tokio::spawn(async move {
+                prover_worker.run().await;
+            }))
+        } else {
+            None
+        };
 
         Ok(Runtime {
             handle,
             player_provider: self.player_provider,
             npc_provider: self.npc_provider,
             sim_worker_handle,
+            prover_worker_handle,
         })
     }
 }

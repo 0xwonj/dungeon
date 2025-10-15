@@ -6,6 +6,7 @@ use crate::state::{EntityId, GameState, Tick};
 
 /// Offensive action against a target entity.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AttackAction {
     pub actor: EntityId,
     pub target: EntityId,
@@ -23,6 +24,7 @@ impl AttackAction {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AttackStyle {
     Melee,
 }

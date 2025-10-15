@@ -25,6 +25,7 @@ use crate::state::EntityId;
 ///
 /// - `TChanges`: The change metadata type (e.g., `ActorChanges` with field bitmask)
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CollectionChanges<TChanges> {
     pub added: Vec<EntityId>,
     pub removed: Vec<EntityId>,

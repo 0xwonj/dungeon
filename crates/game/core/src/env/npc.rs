@@ -5,6 +5,7 @@ use crate::stats::{CoreStats, ResourceCurrent};
 
 /// NPC template defining base attributes and inventory.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NpcTemplate {
     pub core_stats: CoreStats,
     pub resources: ResourceCurrent,

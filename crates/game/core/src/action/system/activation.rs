@@ -22,6 +22,7 @@ use crate::state::{EntityId, GameState, Position, Tick};
 /// - Deactivated entities have their `ready_at` cleared
 /// - Active set and `ready_at` timestamps remain synchronized
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ActivationAction {
     /// Player's current position (center of activation radius)
     pub player_position: Position,
@@ -126,6 +127,7 @@ impl ActionTransition for ActivationAction {
 
 /// Errors that can occur during activation updates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ActivationError {
     #[error("activation action must be executed by SYSTEM actor")]
     NotSystemActor,

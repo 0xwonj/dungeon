@@ -15,6 +15,7 @@ use super::bitmask::{ActorFields, ItemFields, PropFields, TurnFields};
 /// - **ZK-friendly**: Bitmask directly indicates which fields need proof constraints
 /// - **Separation of concerns**: Metadata (what changed) vs. data (actual values)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ActorChanges {
     pub id: EntityId,
     pub fields: ActorFields,
@@ -64,6 +65,7 @@ impl ActorChanges {
 
 /// Metadata describing which fields of a prop changed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PropChanges {
     pub id: EntityId,
     pub fields: PropFields,
@@ -101,6 +103,7 @@ impl PropChanges {
 
 /// Metadata describing which fields of an item changed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ItemChanges {
     pub id: EntityId,
     pub fields: ItemFields,
@@ -139,6 +142,7 @@ impl ItemChanges {
 /// these are essential for turn scheduling and cannot be efficiently reconstructed
 /// from bitmasks alone.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TurnChanges {
     pub fields: TurnFields,
     pub activated: Vec<EntityId>,
@@ -189,6 +193,7 @@ impl TurnChanges {
 /// had their occupant list modified. Actual occupant lists are retrieved from
 /// the before/after [`WorldState`] when needed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OccupancyChanges {
     pub position: Position,
 }

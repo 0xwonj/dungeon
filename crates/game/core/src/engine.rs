@@ -15,6 +15,7 @@ use crate::state::{GameState, StateDelta};
 
 /// Identifies which stage of the transition pipeline produced an error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TransitionPhase {
     PreValidate,
     Apply,
@@ -33,6 +34,7 @@ impl TransitionPhase {
 
 /// Associates a transition phase with the underlying error.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TransitionPhaseError<E> {
     pub phase: TransitionPhase,
     pub error: E,
@@ -54,17 +56,21 @@ impl<E: std::fmt::Display + std::fmt::Debug> std::error::Error for TransitionPha
 
 /// Errors surfaced while executing an action through the game engine.
 #[derive(Clone, Debug, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExecuteError {
     #[error("move action failed: {0}")]
     Move(TransitionPhaseError<<MoveAction as ActionTransition>::Error>),
 
     #[error("attack action failed: {0}")]
+    #[cfg_attr(feature = "serde", serde(skip))]
     Attack(TransitionPhaseError<<AttackAction as ActionTransition>::Error>),
 
     #[error("use item action failed: {0}")]
+    #[cfg_attr(feature = "serde", serde(skip))]
     UseItem(TransitionPhaseError<<UseItemAction as ActionTransition>::Error>),
 
     #[error("interact action failed: {0}")]
+    #[cfg_attr(feature = "serde", serde(skip))]
     Interact(TransitionPhaseError<<InteractAction as ActionTransition>::Error>),
 
     #[error("prepare turn action failed: {0}")]

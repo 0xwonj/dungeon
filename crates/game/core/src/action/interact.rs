@@ -6,6 +6,7 @@ use crate::state::{EntityId, GameState, Tick};
 
 /// Performs an interaction with a nearby prop or entity.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct InteractAction {
     pub actor: EntityId,
     pub target: EntityId,

@@ -5,6 +5,7 @@ use super::{EntityId, Tick};
 /// Turn state managing the timeline-based scheduling system.
 /// This is the canonical state for ZK proofs - it explicitly tracks which actors are active.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TurnState {
     /// Current timeline clock.
     pub clock: Tick,

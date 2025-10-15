@@ -1,5 +1,6 @@
 /// Game configuration constants and tunable parameters.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GameConfig {
     /// Radius around the player within which NPCs are activated and scheduled.
     /// Entities outside this radius are deactivated to save computation.

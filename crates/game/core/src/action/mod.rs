@@ -51,6 +51,7 @@ pub trait ActionTransition {
 
 /// Describes a single intent issued by an entity for the current turn.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Action {
     pub actor: EntityId,
     pub kind: ActionKind,
@@ -99,6 +100,7 @@ impl Action {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ActionKind {
     // Player/NPC actions
     Move(MoveAction),

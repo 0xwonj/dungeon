@@ -6,6 +6,7 @@ use crate::state::{EntityId, GameState, Position, Tick};
 
 /// Consumes or activates an item from the actor's inventory.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct UseItemAction {
     pub actor: EntityId,
     pub slot: InventorySlot,
@@ -23,6 +24,7 @@ impl UseItemAction {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct InventorySlot {
     pub index: u8,
 }
@@ -34,6 +36,7 @@ impl InventorySlot {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ItemTarget {
     Entity(EntityId),
     Position(Position),

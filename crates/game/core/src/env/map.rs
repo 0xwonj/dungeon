@@ -16,6 +16,7 @@ pub trait MapOracle {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MapDimensions {
     pub width: u32,
     pub height: u32,
@@ -36,6 +37,7 @@ impl MapDimensions {
 
 /// Immutable descriptor for a tile in the static layout.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StaticTile {
     terrain: TerrainKind,
 }
@@ -58,6 +60,7 @@ impl StaticTile {
 
 /// Canonical terrain classes for static map tiles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TerrainKind {
     Floor,
     Wall,
@@ -74,6 +77,7 @@ impl TerrainKind {
 
 /// Blueprint describing an entity that should exist at the start of a session.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct InitialEntitySpec {
     pub id: EntityId,
     pub position: Position,
@@ -81,6 +85,7 @@ pub struct InitialEntitySpec {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum InitialEntityKind {
     Player,
     Npc { template: u16 },

@@ -86,6 +86,7 @@ use collection::diff_collection;
 ///
 /// See: `docs/state-delta-architecture.md` for detailed design rationale.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StateDelta {
     /// The action that caused this state transition.
     pub action: Action,
@@ -151,6 +152,7 @@ impl StateDelta {
 /// - Props (dynamic collection)
 /// - Items (dynamic collection)
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EntitiesChanges {
     pub player: Option<ActorChanges>,
     pub npcs: CollectionChanges<ActorChanges>,
@@ -193,6 +195,7 @@ impl EntitiesChanges {
 /// - Fog of war updates
 /// - Region state changes
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct WorldChanges {
     /// Tile positions where occupancy changed.
     ///

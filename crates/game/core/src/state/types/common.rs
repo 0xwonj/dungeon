@@ -2,6 +2,7 @@ use std::fmt;
 
 /// Unique identifier for any entity tracked in the state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EntityId(pub u32);
 
 impl EntityId {
@@ -42,6 +43,7 @@ impl fmt::Display for EntityId {
 
 /// Discrete grid position expressed in tile coordinates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Position {
     pub x: i32,
     pub y: i32,

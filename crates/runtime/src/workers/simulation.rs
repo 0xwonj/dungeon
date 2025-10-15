@@ -121,6 +121,9 @@ impl SimulationWorker {
 
         let clock = self.state.turn.clock;
 
+        // Capture before state for proof generation
+        let before_state = self.state.clone();
+
         // Execute primary action on staging state
         let (delta, mut working_state) = match self.execute_primary_action(action.clone()) {
             Ok(result) => result,
@@ -138,7 +141,7 @@ impl SimulationWorker {
         }
 
         // Commit and publish
-        self.commit_and_publish(action, delta, clock, working_state);
+        self.commit_and_publish(action, delta, clock, before_state, working_state);
 
         Ok(())
     }
@@ -196,14 +199,18 @@ impl SimulationWorker {
         action: Action,
         delta: game_core::StateDelta,
         clock: Tick,
+        before_state: GameState,
         working_state: GameState,
     ) {
+        let after_state = working_state.clone();
         self.state = working_state;
 
         let _ = self.event_tx.send(GameEvent::ActionExecuted {
             action,
             delta: Box::new(delta),
             clock,
+            before_state: Box::new(before_state),
+            after_state: Box::new(after_state),
         });
     }
 

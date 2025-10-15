@@ -47,6 +47,8 @@ impl EventConsumer for CliEventConsumer {
                 action,
                 delta: _,
                 clock,
+                before_state: _,
+                after_state: _,
             } => {
                 self.push_action(action, *clock);
                 // TODO: Use delta for more detailed feedback (e.g., "HP -5", "Item acquired")
@@ -60,6 +62,18 @@ impl EventConsumer for CliEventConsumer {
             } => {
                 self.push_failure(action, phase.as_str(), error, *clock);
                 EventImpact::redraw()
+            }
+            GameEvent::ProofStarted { .. } => {
+                // Ignore proof events in CLI for now
+                EventImpact::none()
+            }
+            GameEvent::ProofGenerated { .. } => {
+                // Ignore proof events in CLI for now
+                EventImpact::none()
+            }
+            GameEvent::ProofFailed { .. } => {
+                // Ignore proof events in CLI for now
+                EventImpact::none()
             }
         }
     }
