@@ -3,10 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::OracleManager;
-use tracing::{debug, error};
-
-use super::{HookCriticality, PostExecutionHook};
+use super::PostExecutionHook;
 
 /// Registry that manages and executes post-execution hooks.
 ///
@@ -72,38 +69,12 @@ impl HookRegistry {
         Self::new(root_hooks, all_hooks)
     }
 
-    /// Executes all root hooks for the given delta and state.
+    /// Returns an iterator over root hooks in priority order.
     ///
-    /// Only root hooks are evaluated in priority order. Lookup-only hooks
+    /// Root hooks are executed on every action. Lookup-only hooks
     /// are executed only when explicitly chained from another hook.
-    ///
-    /// # Error Handling
-    ///
-    /// Hook execution errors are handled based on criticality level:
-    /// - `Critical`: Returns error immediately, failing the action
-    /// - `Important`: Logs error and continues to next hook (default)
-    /// - `Optional`: Logs at debug level and continues silently
-    ///
-    /// # Returns
-    ///
-    /// - `Ok(())` if all critical hooks succeeded
-    /// - `Err(e)` if a critical hook failed
-    pub fn execute_hooks(
-        &self,
-        delta: &game_core::StateDelta,
-        state: &mut game_core::GameState,
-        oracles: &OracleManager,
-    ) -> Result<(), game_core::ExecuteError> {
-        let env = oracles.as_game_env();
-
-        // Only execute root hooks - lookup hooks are called via chaining
-        for hook in self.root_hooks.iter() {
-            if let Err(e) = hook.execute(delta, state, oracles, &env, self, 0) {
-                self.handle_hook_error(hook.as_ref(), e)?;
-            }
-        }
-
-        Ok(())
+    pub fn root_hooks(&self) -> &[Arc<dyn PostExecutionHook>] {
+        &self.root_hooks
     }
 
     /// Finds a hook by name from the lookup table.
@@ -137,50 +108,6 @@ impl HookRegistry {
     /// Returns an iterator over all hook names in the lookup table (for debugging).
     pub fn all_hook_names(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.lookup_table.keys().copied()
-    }
-
-    /// Handles hook execution errors based on criticality level.
-    ///
-    /// Returns Ok(()) for Important/Optional hooks, Err for Critical hooks.
-    fn handle_hook_error(
-        &self,
-        hook: &dyn PostExecutionHook,
-        error: game_core::ExecuteError,
-    ) -> Result<(), game_core::ExecuteError> {
-        let (level, message) = match hook.criticality() {
-            HookCriticality::Critical => {
-                error!(
-                    target: "runtime::hooks",
-                    hook = hook.name(),
-                    criticality = "critical",
-                    error = ?error,
-                    "Critical hook failed, aborting action"
-                );
-                return Err(error);
-            }
-            HookCriticality::Important => ("important", "Hook failed, continuing"),
-            HookCriticality::Optional => ("optional", "Optional hook failed"),
-        };
-
-        match hook.criticality() {
-            HookCriticality::Important => error!(
-                target: "runtime::hooks",
-                hook = hook.name(),
-                criticality = level,
-                error = ?error,
-                "{}", message
-            ),
-            HookCriticality::Optional => debug!(
-                target: "runtime::hooks",
-                hook = hook.name(),
-                criticality = level,
-                error = ?error,
-                "{}", message
-            ),
-            HookCriticality::Critical => unreachable!(),
-        }
-
-        Ok(())
     }
 }
 

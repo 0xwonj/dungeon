@@ -31,10 +31,7 @@ pub use context::HookContext;
 pub use damage::DamageHook;
 pub use registry::HookRegistry;
 
-use crate::oracle::OracleManager;
-use game_core::{Action, GameEnv, GameState, StateDelta};
-
-type Result<T> = std::result::Result<T, game_core::ExecuteError>;
+use game_core::Action;
 
 /// Defines the criticality level of a hook for error handling.
 ///
@@ -129,84 +126,5 @@ pub trait PostExecutionHook: Send + Sync {
     /// - Empty slice (default) means no chaining
     fn next_hook_names(&self) -> &[&'static str] {
         &[]
-    }
-
-    /// Executes this hook: checks trigger condition, creates and executes action,
-    /// then recursively executes next hooks in the chain.
-    ///
-    /// This provides a default implementation that most hooks don't need to override.
-    fn execute(
-        &self,
-        delta: &StateDelta,
-        state: &mut GameState,
-        oracles: &OracleManager,
-        env: &GameEnv<'_>,
-        registry: &HookRegistry,
-        depth: usize,
-    ) -> Result<()> {
-        const MAX_DEPTH: usize = 50;
-        if depth > MAX_DEPTH {
-            return Err(game_core::ExecuteError::HookChainTooDeep {
-                hook_name: self.name().to_string(),
-                depth,
-            });
-        }
-
-        // 1. Check trigger condition
-        let ctx = HookContext {
-            delta,
-            state,
-            oracles,
-        };
-
-        if !self.should_trigger(&ctx) {
-            return Ok(());
-        }
-
-        // 2. Create and execute actions
-        let actions = self.create_actions(&ctx);
-        if actions.is_empty() {
-            return Ok(());
-        }
-
-        // Execute each action and chain to next hooks after the last one
-        for (idx, action) in actions.iter().enumerate() {
-            let before = state.clone();
-            {
-                let mut engine = game_core::GameEngine::new(state);
-                // Manually copy env since dyn Trait prevents auto-copy
-                let env_copy = unsafe { std::ptr::read(env as *const GameEnv) };
-                engine.execute(env_copy, action)?;
-            }
-            let new_delta = StateDelta::from_states(action.clone(), &before, state);
-
-            // 3. Execute next hooks in chain only after the last action
-            if idx == actions.len() - 1 {
-                self.execute_next_hooks(&new_delta, state, oracles, env, registry, depth + 1)?;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Executes the next hooks in the chain.
-    ///
-    /// Default implementation looks up hooks by name and executes them.
-    /// Can be overridden for custom chaining logic.
-    fn execute_next_hooks(
-        &self,
-        delta: &StateDelta,
-        state: &mut GameState,
-        oracles: &OracleManager,
-        env: &GameEnv<'_>,
-        registry: &HookRegistry,
-        depth: usize,
-    ) -> Result<()> {
-        for name in self.next_hook_names() {
-            if let Some(hook) = registry.find(name) {
-                hook.execute(delta, state, oracles, env, registry, depth)?;
-            }
-        }
-        Ok(())
     }
 }
