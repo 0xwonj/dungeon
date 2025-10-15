@@ -32,7 +32,11 @@ impl ClientBootstrap {
         let oracles = self.oracle_factory.build();
         let manager = oracles.manager();
 
-        let mut runtime = Runtime::builder().oracles(manager).build().await?;
+        let mut runtime = Runtime::builder()
+            .oracles(manager)
+            .enable_proving(self.config.enable_proving) // Enable ZK proof generation
+            .build()
+            .await?;
         runtime.set_npc_provider(WaitActionProvider);
 
         Ok(RuntimeSetup {

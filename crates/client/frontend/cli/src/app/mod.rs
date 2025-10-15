@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use game_core::Action;
-use runtime::Runtime;
+use runtime::{Runtime, Topic};
 
 use crate::input::CliActionProvider;
 use crate::presentation::{CliEventConsumer, EventLoop, terminal};
@@ -75,8 +75,10 @@ impl CliApp {
             tx_action,
         } = self;
 
-        let event_rx = runtime.subscribe_events();
+        // Subscribe to topics that CLI needs (GameState and Proof)
         let handle = runtime.handle();
+        let subscriptions =
+            handle.subscribe_multiple(&[Topic::GameState, Topic::Proof, Topic::Turn]);
         let initial_state = handle.query_state().await?;
 
         let mut messages = MessageLog::new(config.messages.capacity);
@@ -89,7 +91,7 @@ impl CliApp {
 
         let event_loop = EventLoop::new(
             handle,
-            event_rx,
+            subscriptions,
             tx_action,
             initial_state.entities.player.id,
             consumer,

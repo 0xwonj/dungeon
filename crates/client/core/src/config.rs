@@ -7,6 +7,7 @@ pub struct CliConfig {
     pub world: WorldConfig,
     pub channels: ChannelConfig,
     pub messages: MessageConfig,
+    pub enable_proving: bool,
 }
 
 impl CliConfig {
@@ -15,6 +16,7 @@ impl CliConfig {
             world,
             channels,
             messages,
+            enable_proving: false,
         }
     }
 
@@ -23,6 +25,7 @@ impl CliConfig {
     /// - `CLI_MAP_WIDTH` / `CLI_MAP_HEIGHT`
     /// - `CLI_ACTION_BUFFER`
     /// - `CLI_MESSAGE_CAPACITY`
+    /// - `ENABLE_ZK_PROVING` - Enable ZK proof generation (default: false)
     pub fn from_env() -> Self {
         let mut config = Self::default();
 
@@ -39,6 +42,14 @@ impl CliConfig {
 
         if let Some(capacity) = read_env::<usize>("CLI_MESSAGE_CAPACITY") {
             config.messages.capacity = capacity.max(1);
+        }
+
+        // Enable ZK proving if environment variable is set
+        if let Some(enable) = read_env::<bool>("ENABLE_ZK_PROVING") {
+            config.enable_proving = enable;
+        } else if env::var("ENABLE_ZK_PROVING").is_ok() {
+            // Also accept just setting the variable without value as "true"
+            config.enable_proving = true;
         }
 
         config

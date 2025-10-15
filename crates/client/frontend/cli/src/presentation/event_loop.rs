@@ -4,10 +4,12 @@
 //! - Runtime event consumption (game state updates)
 //! - Keyboard input processing (player actions and UI navigation)
 //! - Rendering and auto-target computation
+use std::collections::HashMap;
+
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
+use crossterm::event::{self as term_event, Event as TermEvent, KeyEvent, KeyEventKind};
 use game_core::{Action, EntityId, GameState, env::MapOracle};
-use runtime::{GameEvent, RuntimeHandle};
+use runtime::{Event as RuntimeEvent, RuntimeHandle, Topic};
 use tokio::{
     sync::{broadcast, broadcast::error::RecvError, mpsc},
     time::{self, Duration},
@@ -28,7 +30,7 @@ where
     C: EventConsumer,
 {
     handle: RuntimeHandle,
-    event_rx: broadcast::Receiver<GameEvent>,
+    subscriptions: HashMap<Topic, broadcast::Receiver<RuntimeEvent>>,
     tx_action: mpsc::Sender<Action>,
     input: InputHandler,
     consumer: C,
@@ -41,14 +43,14 @@ where
 {
     pub fn new(
         handle: RuntimeHandle,
-        event_rx: broadcast::Receiver<GameEvent>,
+        subscriptions: HashMap<Topic, broadcast::Receiver<RuntimeEvent>>,
         tx_action: mpsc::Sender<Action>,
         player_entity: EntityId,
         consumer: C,
     ) -> Self {
         Self {
             handle,
-            event_rx,
+            subscriptions,
             tx_action,
             input: InputHandler::new(player_entity),
             consumer,
@@ -64,10 +66,25 @@ where
     ) -> Result<C> {
         self.render_with_state(terminal, map, &initial_state)?;
 
+        // Extract receivers from subscriptions
+        let mut game_rx = self.subscriptions.remove(&Topic::GameState);
+        let mut proof_rx = self.subscriptions.remove(&Topic::Proof);
+        let mut turn_rx = self.subscriptions.remove(&Topic::Turn);
+
         loop {
             tokio::select! {
-                result = self.event_rx.recv() => {
-                    if self.handle_runtime_channel(result, terminal, map).await? {
+                result = async { game_rx.as_mut().unwrap().recv().await }, if game_rx.is_some() => {
+                    if self.handle_runtime_event(result, terminal, map).await? {
+                        break;
+                    }
+                }
+                result = async { proof_rx.as_mut().unwrap().recv().await }, if proof_rx.is_some() => {
+                    if self.handle_runtime_event(result, terminal, map).await? {
+                        break;
+                    }
+                }
+                result = async { turn_rx.as_mut().unwrap().recv().await }, if turn_rx.is_some() => {
+                    if self.handle_runtime_event(result, terminal, map).await? {
                         break;
                     }
                 }
@@ -82,15 +99,16 @@ where
         Ok(self.consumer)
     }
 
-    async fn handle_runtime_channel<M: MapOracle>(
+    async fn handle_runtime_event<M: MapOracle>(
         &mut self,
-        result: Result<GameEvent, RecvError>,
+        result: Result<RuntimeEvent, RecvError>,
         terminal: &mut Tui,
         map: &M,
     ) -> Result<bool> {
         match result {
             Ok(event) => {
-                if self.collect_events(event) {
+                let impact = self.consumer.on_event(&event);
+                if impact.requires_redraw {
                     self.refresh_view(terminal, map).await?;
                 }
                 Ok(false)
@@ -106,31 +124,20 @@ where
         }
     }
 
-    fn collect_events(&mut self, initial: GameEvent) -> bool {
-        let mut should_render = self.consumer.on_event(&initial).requires_redraw;
-
-        while let Ok(event) = self.event_rx.try_recv() {
-            let impact = self.consumer.on_event(&event);
-            should_render |= impact.requires_redraw;
-        }
-
-        should_render
-    }
-
     async fn handle_input_tick<M: MapOracle>(
         &mut self,
         terminal: &mut Tui,
         map: &M,
     ) -> Result<bool> {
-        if !event::poll(Duration::from_millis(0))? {
+        if !term_event::poll(Duration::from_millis(0))? {
             return Ok(false);
         }
 
-        match event::read()? {
-            Event::Key(key) if key.kind == KeyEventKind::Press => {
+        match term_event::read()? {
+            TermEvent::Key(key) if key.kind == KeyEventKind::Press => {
                 self.handle_key_press(key, terminal, map).await
             }
-            Event::Resize(_, _) => {
+            TermEvent::Resize(_, _) => {
                 self.refresh_view(terminal, map).await?;
                 Ok(false)
             }
