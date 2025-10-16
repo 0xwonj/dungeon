@@ -27,7 +27,7 @@ mod bus;
 mod types;
 
 pub use bus::{Event, EventBus, Topic};
-pub use types::{ActionFlags, ActionRef, GameStateEvent, ProofEvent, TurnEvent};
+pub use types::{ActionRef, GameStateEvent, ProofEvent, TurnEvent};
 
 // Re-export for backwards compatibility
 pub use types::{ProofBackend, ProofData};

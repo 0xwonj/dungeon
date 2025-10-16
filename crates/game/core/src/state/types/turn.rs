@@ -8,6 +8,10 @@ use super::{EntityId, Tick};
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TurnState {
+    /// Sequential action counter (0, 1, 2, ...).
+    /// Increments with every action execution, providing unique action IDs.
+    pub nonce: u64,
+
     /// Current timeline clock.
     pub clock: Tick,
 
@@ -18,28 +22,16 @@ pub struct TurnState {
     /// The entity currently taking their turn.
     /// Updated by prepare_next_turn() before each action.
     pub current_actor: EntityId,
-
-    /// Sequential action identifier that increments with every action executed.
-    /// This provides a unique, monotonically increasing ID for each action,
-    /// enabling precise tracking and proof generation even when multiple actions
-    /// occur within the same clock tick.
-    ///
-    /// Used by the runtime for:
-    /// - Tracking proof generation progress
-    /// - Identifying actions uniquely (key in ProofIndex)
-    /// - Crash recovery and checkpoint resumption
-    #[cfg_attr(feature = "serde", serde(default))]
-    pub action_nonce: u64,
 }
 
 impl TurnState {
     /// Creates a new turn state.
     pub fn new() -> Self {
         Self {
+            nonce: 0,
             clock: 0,
             active_actors: HashSet::new(),
-            current_actor: EntityId::PLAYER, // Default to player
-            action_nonce: 0,
+            current_actor: EntityId::PLAYER,
         }
     }
 }

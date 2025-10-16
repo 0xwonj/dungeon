@@ -43,6 +43,6 @@ bitflags! {
     pub struct TurnFields: u8 {
         const CLOCK         = 1 << 0;
         const CURRENT_ACTOR = 1 << 1;
-        const ACTION_NONCE  = 1 << 2;
+        const NONCE         = 1 << 2;
     }
 }

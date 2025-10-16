@@ -144,8 +144,8 @@ impl<'a> GameEngine<'a> {
             Activation => Activation,
         })?;
 
-        // Increment action nonce after successful execution
-        self.state.turn.action_nonce += 1;
+        // Increment nonce after successful execution
+        self.state.turn.nonce += 1;
 
         // Generate delta capturing all state changes
         #[cfg(not(feature = "zkvm"))]

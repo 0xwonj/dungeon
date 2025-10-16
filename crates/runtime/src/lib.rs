@@ -24,7 +24,7 @@ mod workers;
 pub use api::{
     ActionProvider, ProviderKind, Result, RuntimeError, RuntimeHandle, WaitActionProvider,
 };
-pub use events::{ActionFlags, Event, EventBus, GameStateEvent, ProofEvent, Topic, TurnEvent};
+pub use events::{Event, EventBus, GameStateEvent, ProofEvent, Topic, TurnEvent};
 pub use hooks::{
     ActionCostHook, ActivationHook, HookContext, HookCriticality, HookRegistry, PostExecutionHook,
 };
