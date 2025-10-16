@@ -24,13 +24,18 @@ mod workers;
 pub use api::{
     ActionProvider, ProviderKind, Result, RuntimeError, RuntimeHandle, WaitActionProvider,
 };
-pub use events::{Event, EventBus, GameStateEvent, ProofEvent, Topic, TurnEvent};
+pub use events::{ActionFlags, Event, EventBus, GameStateEvent, ProofEvent, Topic, TurnEvent};
 pub use hooks::{
     ActionCostHook, ActivationHook, HookContext, HookCriticality, HookRegistry, PostExecutionHook,
 };
 pub use oracle::{
     ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, NpcOracleImpl, OracleManager, TablesOracleImpl,
 };
-pub use repository::{InMemoryStateRepo, RepositoryError, StateRepository};
+pub use repository::{
+    ActionLogEntry, ActionRepository, Checkpoint, CheckpointRepository, EventReference,
+    EventRepository, FileActionLog, FileCheckpointRepository, FileEventLog, FileStateRepository,
+    InMemoryStateRepo, ProofReference, RepositoryError, SnapshotService, StateReference,
+    StateRepository,
+};
 pub use runtime::{Runtime, RuntimeBuilder, RuntimeConfig};
 pub use workers::ProofMetrics;
