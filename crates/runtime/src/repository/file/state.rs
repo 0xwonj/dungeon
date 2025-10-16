@@ -100,9 +100,10 @@ impl StateRepository for FileStateRepository {
                 && let Some(nonce_str) = filename
                     .strip_prefix("state_")
                     .and_then(|s| s.strip_suffix(".json"))
-                    && let Ok(nonce) = nonce_str.parse::<u64>() {
-                        nonces.push(nonce);
-                    }
+                && let Ok(nonce) = nonce_str.parse::<u64>()
+            {
+                nonces.push(nonce);
+            }
         }
 
         nonces.sort_unstable();
