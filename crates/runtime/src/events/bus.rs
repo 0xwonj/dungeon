@@ -1,13 +1,14 @@
 //! Topic-based event bus implementation.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
 
-use super::types::{GameStateEvent, ProofEvent, TurnEvent};
+use super::types::{ActionRef, GameStateEvent, ProofEvent, TurnEvent};
 
 /// Topics for event routing
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Topic {
     /// Game state changes (actions, failures)
     GameState,
@@ -18,11 +19,18 @@ pub enum Topic {
 }
 
 /// Event wrapper that carries the topic and typed event
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Event {
     GameState(GameStateEvent),
     Proof(ProofEvent),
     Turn(TurnEvent),
+
+    /// Reference to an action in the actions.log file.
+    ///
+    /// This variant is used in events.log to maintain the complete event timeline
+    /// without duplicating the full action data. The full `ActionLogEntry` can be
+    /// retrieved from actions.log using the `action_offset`.
+    ActionRef(ActionRef),
 }
 
 impl Event {
@@ -31,6 +39,7 @@ impl Event {
             Event::GameState(_) => Topic::GameState,
             Event::Proof(_) => Topic::Proof,
             Event::Turn(_) => Topic::Turn,
+            Event::ActionRef(_) => Topic::GameState, // ActionRef belongs to GameState topic
         }
     }
 }

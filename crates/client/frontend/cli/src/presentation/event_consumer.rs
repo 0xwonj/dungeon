@@ -96,6 +96,10 @@ impl EventConsumer for CliEventConsumer {
                     .push(MessageEntry::new(text, Some(*clock), MessageLevel::Error));
                 EventImpact::redraw()
             }
+            Event::ActionRef(_) => {
+                // ActionRef is for internal persistence only, not displayed to user
+                EventImpact::none()
+            }
         }
     }
 
