@@ -160,6 +160,9 @@ impl TurnChanges {
         if before.current_actor != after.current_actor {
             fields |= TurnFields::CURRENT_ACTOR;
         }
+        if before.action_nonce != after.action_nonce {
+            fields |= TurnFields::ACTION_NONCE;
+        }
 
         let activated = after
             .active_actors
