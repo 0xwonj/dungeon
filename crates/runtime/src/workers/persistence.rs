@@ -234,7 +234,8 @@ impl PersistenceWorker {
 
                     debug!(
                         "Persisted action: nonce={}, actor={:?}",
-                        nonce, action.actor
+                        nonce,
+                        action.actor()
                     );
 
                     // Check if we should checkpoint

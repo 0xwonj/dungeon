@@ -1,7 +1,7 @@
 //! Event types for different topics.
 
 use game_core::{
-    Action, ActionKind, EntityId, GameState, StateDelta, Tick, engine::TransitionPhase,
+    Action, CharacterActionKind, EntityId, GameState, StateDelta, Tick, engine::TransitionPhase,
 };
 use serde::{Deserialize, Serialize};
 
@@ -100,5 +100,6 @@ pub struct ActionRef {
     pub actor: EntityId,
 
     /// Type of action (optional, for quick filtering without loading full data)
-    pub action_kind: Option<ActionKind>,
+    /// None for system actions, Some for character actions
+    pub action_kind: Option<CharacterActionKind>,
 }

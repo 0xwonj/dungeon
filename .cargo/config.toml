@@ -2,8 +2,7 @@
 
 [alias]
 # Lint and format
-lint = "clippy --workspace --all-targets --all-features"
-fmt = "fmt --all"
+lint = "clippy --workspace --all-targets"
 fix = "clippy --workspace --fix"
 
 # Documentation

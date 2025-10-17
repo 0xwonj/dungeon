@@ -1,6 +1,6 @@
 //! Hook that manages entity activation based on player proximity.
 
-use game_core::{Action, ActionKind, ActivationAction, ActorFields, EntityId};
+use game_core::{Action, ActivationAction, ActorFields, EntityId, SystemActionKind};
 
 use super::{HookContext, HookCriticality, PostExecutionHook};
 
@@ -39,7 +39,7 @@ impl PostExecutionHook for ActivationHook {
 
     fn should_trigger(&self, ctx: &HookContext<'_>) -> bool {
         // Trigger only when player moves
-        ctx.delta.action.actor == EntityId::PLAYER
+        ctx.delta.action.actor() == EntityId::PLAYER
             && ctx
                 .delta
                 .entities
@@ -54,9 +54,8 @@ impl PostExecutionHook for ActivationHook {
         let player_position = ctx.state.entities.player.position;
 
         // Create activation system action
-        vec![Action::new(
-            EntityId::SYSTEM,
-            ActionKind::Activation(ActivationAction::new(player_position)),
-        )]
+        vec![Action::system(SystemActionKind::Activation(
+            ActivationAction::new(player_position),
+        ))]
     }
 }

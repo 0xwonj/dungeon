@@ -25,7 +25,8 @@ mod utils;
 mod workers;
 
 pub use api::{
-    ActionProvider, ProviderKind, Result, RuntimeError, RuntimeHandle, WaitActionProvider,
+    ActionProvider, ProviderKind, ProviderRegistry, Result, RuntimeError, RuntimeHandle,
+    WaitActionProvider,
 };
 pub use events::{Event, EventBus, GameStateEvent, ProofEvent, Topic};
 pub use hooks::{
@@ -40,6 +41,6 @@ pub use repository::{
     FileProofIndexRepository, FileStateRepository, InMemoryStateRepo, ProofEntry, ProofIndex,
     ProofIndexRepository, ProofReference, RepositoryError, StateReference, StateRepository,
 };
-pub use runtime::{Runtime, RuntimeBuilder, RuntimeConfig};
+pub use runtime::{PersistenceSettings, ProvingSettings, Runtime, RuntimeBuilder, RuntimeConfig};
 pub use types::{ByteOffset, DurationMs, Nonce, ProofSize, SessionId, StateHash, Timestamp};
 pub use workers::{CheckpointStrategy, PersistenceConfig, ProofMetrics};

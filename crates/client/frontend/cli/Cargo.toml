@@ -7,6 +7,14 @@ edition = "2024"
 name = "cli-client"
 path = "src/main.rs"
 
+[features]
+# ZK backend features (propagate to client-bootstrap)
+default = ["risc0"]
+risc0 = ["client-bootstrap/risc0"]
+stub = ["client-bootstrap/stub"]
+sp1 = ["client-bootstrap/sp1"]
+arkworks = ["client-bootstrap/arkworks"]
+
 [dependencies]
 # Core dependencies
 game-core = { workspace = true }

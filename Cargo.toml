@@ -7,6 +7,7 @@ members = [
     "crates/client/bootstrap",
     "crates/client/frontend/core",
     "crates/client/frontend/cli",
+    "crates/xtask",
 ]
 resolver = "2"
 
@@ -29,9 +30,9 @@ resolver = "2"
 # ----------------------------------------------------------------------------
 game-core = { path = "crates/game/core" }
 game-content = { path = "crates/game/content" }
-runtime = { path = "crates/runtime" }
-zk = { path = "crates/zk" }
-client-bootstrap = { path = "crates/client/bootstrap" }
+runtime = { path = "crates/runtime", default-features = false }
+zk = { path = "crates/zk", default-features = false }
+client-bootstrap = { path = "crates/client/bootstrap", default-features = false }
 frontend-core = { path = "crates/client/frontend/core" }
 
 # ----------------------------------------------------------------------------

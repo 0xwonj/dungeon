@@ -1,6 +1,6 @@
 //! Hook that applies action costs to actor ready_at timestamps.
 
-use game_core::{Action, ActionCostAction, ActionKind, EntityId};
+use game_core::{Action, ActionCostAction, SystemActionKind};
 
 use super::{HookContext, HookCriticality, PostExecutionHook};
 
@@ -38,11 +38,11 @@ impl PostExecutionHook for ActionCostHook {
 
     fn should_trigger(&self, ctx: &HookContext<'_>) -> bool {
         // Only apply cost to non-system actions
-        !ctx.delta.action.actor.is_system()
+        !ctx.delta.action.actor().is_system()
     }
 
     fn create_actions(&self, ctx: &HookContext<'_>) -> Vec<Action> {
-        let actor_id = ctx.delta.action.actor;
+        let actor_id = ctx.delta.action.actor();
 
         // Get actor stats for cost calculation
         let Some(actor) = ctx.state.entities.actor(actor_id) else {
@@ -54,9 +54,8 @@ impl PostExecutionHook for ActionCostHook {
         let cost = ctx.delta.action.cost(&snapshot);
 
         // Create system action to apply the cost
-        vec![Action::new(
-            EntityId::SYSTEM,
-            ActionKind::ActionCost(ActionCostAction::new(actor_id, cost)),
-        )]
+        vec![Action::system(SystemActionKind::ActionCost(
+            ActionCostAction::new(actor_id, cost),
+        ))]
     }
 }

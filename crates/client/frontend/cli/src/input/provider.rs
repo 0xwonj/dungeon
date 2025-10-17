@@ -28,10 +28,10 @@ impl ActionProvider for CliActionProvider {
 
         match rx.recv().await {
             Some(action) => {
-                if action.actor != entity {
+                if action.actor() != entity {
                     tracing::warn!(
                         "Received action for entity {:?}, but expected {:?}",
-                        action.actor,
+                        action.actor(),
                         entity
                     );
                 }

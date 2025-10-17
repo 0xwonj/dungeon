@@ -87,13 +87,16 @@ pub trait Prover: Send + Sync {
 ///
 /// **Warning**: Provides no cryptographic guarantees - do not use in production.
 #[cfg(feature = "stub")]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct StubProver;
+#[derive(Debug, Clone)]
+pub struct StubProver {
+    #[allow(dead_code)]
+    oracle_snapshot: crate::OracleSnapshot,
+}
 
 #[cfg(feature = "stub")]
 impl StubProver {
-    pub fn new() -> Self {
-        Self
+    pub fn new(oracle_snapshot: crate::OracleSnapshot) -> Self {
+        Self { oracle_snapshot }
     }
 }
 

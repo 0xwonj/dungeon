@@ -11,9 +11,9 @@ pub mod env;
 pub mod state;
 pub mod stats;
 pub use action::{
-    Action, ActionCostAction, ActionKind, ActionTransition, ActivationAction, AttackAction,
-    AttackStyle, CardinalDirection, InteractAction, InventorySlot, ItemTarget, MoveAction,
-    MoveError, PrepareTurnAction, TurnError, UseItemAction,
+    Action, ActionCostAction, ActionTransition, ActivationAction, AttackAction, AttackStyle,
+    CardinalDirection, CharacterActionKind, InteractAction, InventorySlot, ItemTarget, MoveAction,
+    MoveError, PrepareTurnAction, SystemActionKind, TurnError, UseItemAction,
 };
 pub use config::GameConfig;
 pub use engine::{ExecuteError, GameEngine, TransitionPhase, TransitionPhaseError};

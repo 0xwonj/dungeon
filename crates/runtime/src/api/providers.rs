@@ -3,7 +3,7 @@
 //! Runtime users plug in [`ActionProvider`] implementations so the simulation
 //! can run with human input, scripted fixtures, or AI policies.
 use async_trait::async_trait;
-use game_core::{Action, EntityId, GameState};
+use game_core::{Action, CharacterActionKind, EntityId, GameState};
 
 use super::errors::Result;
 
@@ -34,6 +34,6 @@ pub struct WaitActionProvider;
 #[async_trait]
 impl ActionProvider for WaitActionProvider {
     async fn provide_action(&self, entity: EntityId, _state: &GameState) -> Result<Action> {
-        Ok(Action::new(entity, game_core::ActionKind::Wait))
+        Ok(Action::character(entity, CharacterActionKind::Wait))
     }
 }

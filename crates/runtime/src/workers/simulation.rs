@@ -6,7 +6,9 @@
 use tokio::sync::{mpsc, oneshot};
 
 use game_core::engine::{ExecuteError, TransitionPhase};
-use game_core::{Action, ActionKind, EntityId, GameEngine, GameState, PrepareTurnAction, Tick};
+use game_core::{
+    Action, EntityId, GameEngine, GameState, PrepareTurnAction, SystemActionKind, Tick,
+};
 use tracing::{debug, error};
 
 use crate::api::{Result, RuntimeError};
@@ -96,8 +98,7 @@ impl SimulationWorker {
     /// Executes PrepareTurn system action and publishes Turn event.
     fn handle_turn_preparation(&mut self) -> Result<(EntityId, GameState)> {
         // Create system action for turn preparation
-        let prepare_action =
-            Action::new(EntityId::SYSTEM, ActionKind::PrepareTurn(PrepareTurnAction));
+        let prepare_action = Action::system(SystemActionKind::PrepareTurn(PrepareTurnAction));
 
         // Execute turn preparation through unified execute_action_impl
         let _delta = Self::execute_action_impl(
@@ -184,14 +185,14 @@ impl SimulationWorker {
     }
 
     /// Handles player/NPC action with full workflow:
-    /// validation → execute → hooks → commit
+    /// execute → hooks → commit
+    ///
+    /// Actor validation is performed by GameEngine::execute (game-core).
     fn handle_player_action(&mut self, action: Action) -> Result<()> {
-        // Validate that action is from current actor
-        self.validate_current_actor(&action)?;
-
         let clock = self.state.turn.clock;
 
         // Execute primary action on staging state
+        // GameEngine::execute validates actor before execution
         let mut working_state = self.state.clone();
         let delta = match self.execute_action(&action, &mut working_state) {
             Ok(delta) => delta,
@@ -210,20 +211,6 @@ impl SimulationWorker {
 
         // Commit the final state
         self.state = working_state;
-
-        Ok(())
-    }
-
-    /// Validates that the action actor matches the current turn actor.
-    fn validate_current_actor(&self, action: &Action) -> Result<()> {
-        let current_actor = self.state.turn.current_actor;
-
-        if action.actor != current_actor {
-            return Err(RuntimeError::InvalidActionActor {
-                expected: current_actor,
-                provided: action.actor,
-            });
-        }
 
         Ok(())
     }
@@ -398,7 +385,26 @@ impl SimulationWorker {
                     depth = %depth,
                     "Hook chain exceeded maximum depth"
                 );
-                // For hook chain errors, return a dummy phase since this doesn't fit the normal pattern
+                return;
+            }
+            ExecuteError::SystemActionNotFromSystem { actor } => {
+                error!(
+                    target: "runtime::worker",
+                    actor = ?actor,
+                    "System action attempted by non-system actor"
+                );
+                return;
+            }
+            ExecuteError::ActorNotCurrent {
+                actor,
+                current_actor,
+            } => {
+                error!(
+                    target: "runtime::worker",
+                    actor = ?actor,
+                    current_actor = ?current_actor,
+                    "Action attempted by wrong actor"
+                );
                 return;
             }
         };

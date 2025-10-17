@@ -49,126 +49,150 @@ pub trait ActionTransition {
     }
 }
 
-/// Describes a single intent issued by an entity for the current turn.
+/// Action variants for characters (player/NPC).
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Action {
-    pub actor: EntityId,
-    pub kind: ActionKind,
-}
-
-impl Action {
-    pub fn new(actor: EntityId, kind: ActionKind) -> Self {
-        debug_assert!(match &kind {
-            ActionKind::Move(move_action) => move_action.actor == actor,
-            ActionKind::Attack(attack_action) => attack_action.actor == actor,
-            ActionKind::UseItem(use_item_action) => use_item_action.actor == actor,
-            ActionKind::Interact(interact_action) => interact_action.actor == actor,
-            // System actions must be executed by SYSTEM actor
-            ActionKind::PrepareTurn(_) | ActionKind::ActionCost(_) | ActionKind::Activation(_) => {
-                actor.is_system()
-            }
-            _ => true,
-        });
-        Self { actor, kind }
-    }
-
-    /// Returns the time cost (in ticks) for this action.
-    /// This determines how much the entity's ready_at advances after execution.
-    /// Cost is scaled by the actor's speed stat (from snapshot).
-    pub fn cost(&self, snapshot: &crate::stats::StatsSnapshot) -> Tick {
-        use crate::action::ActionTransition;
-
-        // Get base cost
-        let base_cost = match &self.kind {
-            ActionKind::Move(action) => action.cost(),
-            ActionKind::Attack(action) => action.cost(),
-            ActionKind::UseItem(action) => action.cost(),
-            ActionKind::Interact(action) => action.cost(),
-            ActionKind::Wait => 100,
-            // System actions have no time cost
-            ActionKind::PrepareTurn(action) => action.cost(),
-            ActionKind::ActionCost(action) => action.cost(),
-            ActionKind::Activation(action) => action.cost(),
-        };
-
-        // Scale by speed (100 = baseline)
-        // Use physical speed for all actions (for now)
-        let speed = snapshot.speed.physical.max(1) as u64;
-        base_cost * 100 / speed
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ActionKind {
-    // Player/NPC actions
+pub enum CharacterActionKind {
     Move(MoveAction),
     Attack(AttackAction),
     UseItem(UseItemAction),
     Interact(InteractAction),
     Wait,
+}
 
-    // System actions (executed by EntityId::SYSTEM)
+/// Action variants for system operations.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum SystemActionKind {
     PrepareTurn(PrepareTurnAction),
     ActionCost(ActionCostAction),
     Activation(ActivationAction),
 }
 
-impl ActionKind {
-    /// Returns the snake_case string representation of the action variant.
-    /// Useful for logging, metrics, and file naming.
+/// Describes a single action executed during gameplay.
+///
+/// Type-level separation ensures characters and system are distinct:
+/// - Character actions: executed by player/NPC characters
+/// - System actions: executed by the game engine (not a character)
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Action {
+    Character {
+        actor: EntityId,
+        kind: CharacterActionKind,
+    },
+    System {
+        kind: SystemActionKind,
+    },
+}
+
+impl Action {
+    /// Creates a new character action.
+    pub fn character(actor: EntityId, kind: CharacterActionKind) -> Self {
+        debug_assert!(match &kind {
+            CharacterActionKind::Move(move_action) => move_action.actor == actor,
+            CharacterActionKind::Attack(attack_action) => attack_action.actor == actor,
+            CharacterActionKind::UseItem(use_item_action) => use_item_action.actor == actor,
+            CharacterActionKind::Interact(interact_action) => interact_action.actor == actor,
+            _ => true,
+        });
+        Self::Character { actor, kind }
+    }
+
+    /// Creates a new system action.
+    pub fn system(kind: SystemActionKind) -> Self {
+        Self::System { kind }
+    }
+
+    /// Returns the entity ID performing this action.
+    /// For system actions, returns EntityId::SYSTEM.
+    pub fn actor(&self) -> EntityId {
+        match self {
+            Action::Character { actor, .. } => *actor,
+            Action::System { .. } => EntityId::SYSTEM,
+        }
+    }
+
+    /// Returns the time cost (in ticks) for this action.
+    /// Cost is scaled by the actor's speed stat (from snapshot).
+    pub fn cost(&self, snapshot: &crate::stats::StatsSnapshot) -> Tick {
+        use crate::action::ActionTransition;
+
+        let base_cost = match self {
+            Action::Character { kind, .. } => match kind {
+                CharacterActionKind::Move(action) => action.cost(),
+                CharacterActionKind::Attack(action) => action.cost(),
+                CharacterActionKind::UseItem(action) => action.cost(),
+                CharacterActionKind::Interact(action) => action.cost(),
+                CharacterActionKind::Wait => 100,
+            },
+            Action::System { kind } => match kind {
+                SystemActionKind::PrepareTurn(action) => action.cost(),
+                SystemActionKind::ActionCost(action) => action.cost(),
+                SystemActionKind::Activation(action) => action.cost(),
+            },
+        };
+
+        let speed = snapshot.speed.physical.max(1) as u64;
+        base_cost * 100 / speed
+    }
+
+    /// Returns the snake_case string representation of the action.
     pub fn as_snake_case(&self) -> &'static str {
         match self {
-            ActionKind::Move(_) => "move",
-            ActionKind::Attack(_) => "attack",
-            ActionKind::UseItem(_) => "use_item",
-            ActionKind::Interact(_) => "interact",
-            ActionKind::Wait => "wait",
-            ActionKind::PrepareTurn(_) => "prepare_turn",
-            ActionKind::ActionCost(_) => "action_cost",
-            ActionKind::Activation(_) => "activation",
+            Action::Character { kind, .. } => match kind {
+                CharacterActionKind::Move(_) => "move",
+                CharacterActionKind::Attack(_) => "attack",
+                CharacterActionKind::UseItem(_) => "use_item",
+                CharacterActionKind::Interact(_) => "interact",
+                CharacterActionKind::Wait => "wait",
+            },
+            Action::System { kind } => match kind {
+                SystemActionKind::PrepareTurn(_) => "prepare_turn",
+                SystemActionKind::ActionCost(_) => "action_cost",
+                SystemActionKind::Activation(_) => "activation",
+            },
         }
     }
 }
 
-impl From<MoveAction> for ActionKind {
+impl From<MoveAction> for CharacterActionKind {
     fn from(action: MoveAction) -> Self {
         Self::Move(action)
     }
 }
 
-impl From<AttackAction> for ActionKind {
+impl From<AttackAction> for CharacterActionKind {
     fn from(action: AttackAction) -> Self {
         Self::Attack(action)
     }
 }
 
-impl From<UseItemAction> for ActionKind {
+impl From<UseItemAction> for CharacterActionKind {
     fn from(action: UseItemAction) -> Self {
         Self::UseItem(action)
     }
 }
 
-impl From<InteractAction> for ActionKind {
+impl From<InteractAction> for CharacterActionKind {
     fn from(action: InteractAction) -> Self {
         Self::Interact(action)
     }
 }
 
-impl From<PrepareTurnAction> for ActionKind {
+impl From<PrepareTurnAction> for SystemActionKind {
     fn from(action: PrepareTurnAction) -> Self {
         Self::PrepareTurn(action)
     }
 }
 
-impl From<ActionCostAction> for ActionKind {
+impl From<ActionCostAction> for SystemActionKind {
     fn from(action: ActionCostAction) -> Self {
         Self::ActionCost(action)
     }
 }
 
-impl From<ActivationAction> for ActionKind {
+impl From<ActivationAction> for SystemActionKind {
     fn from(action: ActivationAction) -> Self {
         Self::Activation(action)
     }

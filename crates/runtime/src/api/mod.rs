@@ -6,7 +6,9 @@
 pub mod errors;
 pub mod handle;
 pub mod providers;
+pub mod registry;
 
 pub use errors::{ProviderKind, Result, RuntimeError};
 pub use handle::RuntimeHandle;
 pub use providers::{ActionProvider, WaitActionProvider};
+pub use registry::ProviderRegistry;

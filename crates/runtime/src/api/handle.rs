@@ -11,6 +11,12 @@ use crate::events::{Event, EventBus, Topic};
 use crate::workers::Command;
 
 /// Client-facing handle to interact with the runtime
+///
+/// # Concurrency Safety
+///
+/// Multiple clients can safely call methods concurrently. The underlying
+/// [`SimulationWorker`] processes commands sequentially via a FIFO channel,
+/// ensuring game state consistency without requiring explicit locks.
 #[derive(Clone)]
 pub struct RuntimeHandle {
     command_tx: mpsc::Sender<Command>,
@@ -58,18 +64,6 @@ impl RuntimeHandle {
     ///
     /// - `Topic::GameState` - Action execution and failures
     /// - `Topic::Proof` - ZK proof generation events
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use runtime::Topic;
-    ///
-    /// // Only subscribe to game state events
-    /// let mut game_rx = handle.subscribe(Topic::GameState);
-    /// while let Ok(event) = game_rx.recv().await {
-    ///     // Handle game state events
-    /// }
-    /// ```
     pub fn subscribe(&self, topic: Topic) -> broadcast::Receiver<Event> {
         self.event_bus.subscribe(topic)
     }

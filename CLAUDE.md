@@ -8,29 +8,82 @@ A deterministic, ZK-provable, turn-based 2D dungeon RPG built with Rust. The gam
 
 ## Build & Test Commands
 
-- Run game: `cargo run -p cli-client`
-- Build: `cargo build --workspace`
-- Tests: `cargo test --workspace`
-- Format: `cargo fmt`
-- Lint: `cargo clippy --workspace --all-targets --all-features`
-- Docs: `cargo doc --no-deps --open`
+**Recommended: Use Just command runner for multi-backend workflows**
 
-### Cargo Aliases
+Install Just: `cargo install just`
 
-- `cargo qt` - Quick tests (`test --workspace`)
-- `cargo lint` - Clippy check
+### Quick Start with Just
 
-### ZK Modes
+```bash
+# Fast development (stub backend - instant, no real proofs)
+just build stub
+just run stub
+just test stub
 
-- Development (stub prover): `cargo run -p cli-client` (default)
-- ZK dev mode (fast proofs): `RISC0_DEV_MODE=1 cargo run -p cli-client`
-- Production (real proofs): Set `ENABLE_ZK_PROVING=true` in `.env`
-- Build guest only: `./scripts/build-guest.sh` or `cargo build -p zk`
+# RISC0 backend (production, but skip guest builds for speed)
+just build risc0-fast
+just run risc0-fast
+
+# RISC0 backend (full production build with real proofs)
+just build risc0
+
+# Set default backend via environment variable
+export ZK_BACKEND=stub
+just build   # automatically uses stub
+just run
+just test
+
+# See all available commands
+just --list
+just help
+```
+
+### Common Just Commands
+
+- `just build [backend]` - Build workspace with specified backend
+- `just run [backend]` - Run CLI client
+- `just test [backend]` - Run all tests
+- `just lint [backend]` - Run clippy lints
+- `just fmt` - Format all code
+- `just check [backend]` - Run format check + lint + tests
+- `just dev` - Fast development loop (format + lint + test with stub)
+- `just pre-commit` - Pre-commit checks (recommended before committing)
+- `just check-all` - Verify all backends compile
+- `just tail-logs [session]` - Monitor client logs in real-time
+- `just clean-data` - Clean save data and logs (with confirmation)
+
+### Available ZK Backends
+
+- `risc0` - RISC0 zkVM (production, real proofs, slow guest compilation)
+- `risc0-fast` - RISC0 with `RISC0_SKIP_BUILD=1` (fast iteration, skip guest builds)
+- `stub` - Stub prover (instant, no real proofs, testing only)
+- `sp1` - SP1 zkVM (not implemented yet)
+- `arkworks` - Arkworks circuits (not implemented yet)
+
+### Direct Cargo Commands (without Just)
+
+If you prefer not to use Just, you can use cargo directly:
+
+```bash
+# Stub backend (fast development)
+cargo build --workspace --no-default-features --features stub
+cargo run -p cli-client --no-default-features --features stub
+cargo test --workspace --no-default-features --features stub
+
+# RISC0 backend (default)
+cargo build --workspace
+RISC0_SKIP_BUILD=1 cargo build --workspace  # skip guest builds
+
+# Lint and format
+cargo lint  # uses default backend (risc0)
+cargo fmt --all
+```
 
 ### Environment Variables
 
+- `ZK_BACKEND` - Set default backend for Just commands (risc0, risc0-fast, stub, sp1, arkworks)
 - `RISC0_SKIP_BUILD=1` - Skip guest builds during cargo build (use for fast iteration)
-- `RISC0_DEV_MODE=1` - Fast dev proofs
+- `RISC0_DEV_MODE=1` - Fast dev proofs (when running with real RISC0 backend)
 - `RUST_LOG=info` - Logging level
 
 ## Architecture
@@ -44,10 +97,11 @@ crates/
 │   └── content/     # Static content and fixtures exposed through oracle adapters
 ├── runtime/         # Public API (RuntimeHandle), orchestrator, workers, oracles, repositories
 ├── zk/              # Proving utilities reused by prover worker and off-chain services
-└── client/
-    ├── bootstrap/   # Bootstrap utilities: configuration, oracle factories, runtime setup (crate: client-bootstrap)
-    └── frontend/
-        └── cli/     # Async terminal application, event loop, action provider
+├── client/
+│   ├── bootstrap/   # Bootstrap utilities: configuration, oracle factories, runtime setup (crate: client-bootstrap)
+│   └── frontend/
+│       └── cli/     # Async terminal application, event loop, action provider
+└── xtask/           # Development tools (cargo xtask pattern): tail-logs, clean-data
 ```
 
 **Dependency flow**: `client`, `runtime`, `zk` → depend on `game/core` only. Never the reverse.
