@@ -1,0 +1,17 @@
+{
+  "session_id": "session_1760660092",
+  "timestamp": 1760660118,
+  "label": null,
+  "nonce": 601,
+  "state_ref": {
+    "state_hash": "state_1179",
+    "is_persisted": true
+  },
+  "event_ref": {
+    "topic_offsets": {
+      "GameState": 0
+    },
+    "action_count": 601
+  },
+  "proof_ref": null
+}

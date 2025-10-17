@@ -1,0 +1,35 @@
+{
+  "session_id": "session_1760660092",
+  "proven_up_to_nonce": 2,
+  "total_proofs": 3,
+  "updated_at": 1760660248,
+  "proofs": {
+    "0": {
+      "nonce": 0,
+      "timestamp": 1760660144,
+      "generation_time_ms": 51918,
+      "is_persisted": true,
+      "is_verified": true,
+      "proof_file": "proof_#4294967295_prepare_turn_0.bin",
+      "proof_size_bytes": 269786
+    },
+    "1": {
+      "nonce": 1,
+      "timestamp": 1760660196,
+      "generation_time_ms": 51915,
+      "is_persisted": true,
+      "is_verified": true,
+      "proof_file": "proof_#0_move_0.bin",
+      "proof_size_bytes": 269810
+    },
+    "2": {
+      "nonce": 2,
+      "timestamp": 1760660248,
+      "generation_time_ms": 51547,
+      "is_persisted": true,
+      "is_verified": true,
+      "proof_file": "proof_#4294967295_action_cost_0.bin",
+      "proof_size_bytes": 269810
+    }
+  }
+}
