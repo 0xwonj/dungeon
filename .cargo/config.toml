@@ -9,6 +9,6 @@ fix = "clippy --workspace --fix"
 # Documentation
 doc = "doc --workspace --no-deps --open"
 
-[env]
-# Skip RISC0 guest builds by default (override with RISC0_SKIP_BUILD=0)
-RISC0_SKIP_BUILD = "1"
+# [env]
+# Note: Do not set RISC0_SKIP_BUILD here as it will interfere with risc0_build
+# To skip RISC0 builds during development, use: RISC0_SKIP_BUILD=1 cargo build
