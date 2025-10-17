@@ -3,8 +3,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-use game_core::Action;
-use runtime::{Runtime, Topic};
+use game_core::{Action, EntityId};
+use runtime::{AiKind, InteractiveKind, ProviderKind, Runtime, Topic, WaitActionProvider};
 
 use crate::input::CliActionProvider;
 use crate::presentation::{CliEventConsumer, EventLoop, terminal};
@@ -48,11 +48,10 @@ impl CliApp {
         let RuntimeSetup {
             config,
             oracles,
-            mut runtime,
+            runtime,
         } = setup;
 
         let (tx_action, rx_action) = mpsc::channel::<Action>(config.channels.action_buffer);
-        runtime.set_player_provider(CliActionProvider::new(rx_action));
 
         Self {
             config,
@@ -62,8 +61,32 @@ impl CliApp {
         }
     }
 
-    pub async fn execute(self) -> Result<()> {
+    pub async fn execute(mut self) -> Result<()> {
         tracing::info!("CLI client starting...");
+
+        // Setup providers before starting
+        let (tx_action_new, rx_action) = mpsc::channel::<Action>(self.config.channels.action_buffer);
+        self.tx_action = tx_action_new;
+
+        let handle = self.runtime.handle();
+        let cli_kind = ProviderKind::Interactive(InteractiveKind::CliInput);
+        let wait_kind = ProviderKind::Ai(AiKind::Wait);
+
+        // Register provider instances
+        handle
+            .register_provider(cli_kind, CliActionProvider::new(rx_action))
+            .await?;
+        handle
+            .register_provider(wait_kind, WaitActionProvider)
+            .await?;
+
+        // Bind player to CLI input
+        handle
+            .bind_entity_provider(EntityId::PLAYER, cli_kind)
+            .await?;
+
+        // Set default to Wait for unmapped entities (NPCs)
+        handle.set_default_provider(wait_kind).await?;
 
         let mut terminal = terminal::init()?;
         let _guard = terminal::TerminalGuard;

@@ -25,8 +25,8 @@ mod utils;
 mod workers;
 
 pub use api::{
-    ActionProvider, ProviderKind, ProviderRegistry, Result, RuntimeError, RuntimeHandle,
-    WaitActionProvider,
+    ActionProvider, AiKind, InteractiveKind, ProviderKind, ProviderRegistry, Result, RuntimeError,
+    RuntimeHandle, WaitActionProvider,
 };
 pub use events::{Event, EventBus, GameStateEvent, ProofEvent, Topic};
 pub use hooks::{

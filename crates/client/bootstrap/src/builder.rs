@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use runtime::{Runtime, WaitActionProvider};
+use runtime::{AiKind, ProviderKind, Runtime, WaitActionProvider};
 
 use crate::config::CliConfig;
 use crate::oracles::{OracleBundle, OracleFactory, TestOracleFactory};
@@ -56,8 +56,19 @@ impl RuntimeBuilder {
         }
 
         // Build the runtime
-        let mut runtime = builder.build().await?;
-        runtime.set_npc_provider(WaitActionProvider);
+        let runtime = builder.build().await?;
+
+        // Register default NPC provider (Wait AI) before returning
+        let wait_kind = ProviderKind::Ai(AiKind::Wait);
+        let handle = runtime.handle();
+
+        // Register wait provider
+        handle
+            .register_provider(wait_kind, WaitActionProvider)
+            .await?;
+
+        // Set as default for unmapped entities
+        handle.set_default_provider(wait_kind).await?;
 
         Ok(RuntimeSetup {
             config: self.config,

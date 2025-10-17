@@ -6,7 +6,7 @@
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use game_core::{GameConfig, GameState};
+use game_core::{EntityId, GameConfig, GameState};
 
 use crate::api::{
     ActionProvider, ProviderKind, ProviderRegistry, Result, RuntimeError, RuntimeHandle,
@@ -127,12 +127,15 @@ impl WorkerHandles {
 ///
 /// Design: Runtime owns workers and coordinates execution.
 /// [`RuntimeHandle`] provides a cloneable façade for clients.
+///
+/// # Provider Management
+///
+/// Providers are now managed by the SimulationWorker and accessed via
+/// RuntimeHandle commands. This ensures thread-safe access and allows
+/// runtime modification of entity AI without locking.
 pub struct Runtime {
     // Shared handle (can be cloned for clients)
     handle: RuntimeHandle,
-
-    // Action providers registry (Registry pattern)
-    providers: ProviderRegistry,
 
     // Background workers (managed as a group)
     workers: WorkerHandles,
@@ -163,46 +166,59 @@ impl Runtime {
         self.proof_metrics.as_ref().map(std::sync::Arc::clone)
     }
 
-    /// Execute a single turn step
+    /// Execute a single turn step.
     ///
-    /// Requires both player and NPC providers to be configured.
+    /// This is a high-level game loop helper that:
+    /// 1. Prepares the next turn (determines which entity acts)
+    /// 2. Queries the entity's provider for an action
+    /// 3. Executes the action
+    ///
+    /// # Design Note
+    ///
+    /// The entire turn cycle is executed by the SimulationWorker via a single
+    /// command. This ensures atomicity and thread-safe access to providers.
+    ///
+    /// For more control, use `RuntimeHandle` methods directly:
+    /// - `prepare_next_turn()` - Get next entity to act
+    /// - `get_entity_provider_kind()` - Check provider assignment
+    /// - `execute_action()` - Execute a specific action
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - No active entities are available
+    /// - The entity's provider kind is not registered
+    /// - Provider fails to generate an action
+    /// - Action execution fails
     pub async fn step(&mut self) -> Result<()> {
-        let (entity, snapshot) = self.handle.prepare_next_turn().await?;
-
-        // Get the appropriate provider for this entity
-        let provider = self.providers.get_for_entity(entity)?;
-        let action = provider.provide_action(entity, &snapshot).await?;
-
-        self.handle.execute_action(action).await?;
-
-        Ok(())
+        self.handle.execute_turn_step().await
     }
 
-    /// Run the game loop continuously
+    /// Run the game loop continuously.
+    ///
+    /// This calls `step()` in a loop, automatically handling turn progression
+    /// and action execution for all entities via their registered providers.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut runtime = Runtime::builder()
+    ///     .oracles(oracles)
+    ///     .build()?;
+    ///
+    /// // Register providers first
+    /// runtime.handle().register_provider(
+    ///     ProviderKind::Interactive(InteractiveKind::CliInput),
+    ///     CliActionProvider::new(rx)
+    /// ).await?;
+    ///
+    /// // Start game loop
+    /// runtime.run().await?;
+    /// ```
     pub async fn run(&mut self) -> Result<()> {
         loop {
             self.step().await?;
         }
-    }
-
-    /// Set the player action provider
-    pub fn set_player_provider(&mut self, provider: impl ActionProvider + 'static) {
-        self.providers.register(ProviderKind::Player, provider);
-    }
-
-    /// Set the NPC action provider
-    pub fn set_npc_provider(&mut self, provider: impl ActionProvider + 'static) {
-        self.providers.register(ProviderKind::Npc, provider);
-    }
-
-    /// Get a reference to the provider registry
-    pub fn providers(&self) -> &ProviderRegistry {
-        &self.providers
-    }
-
-    /// Get a mutable reference to the provider registry
-    pub fn providers_mut(&mut self) -> &mut ProviderRegistry {
-        &mut self.providers
     }
 
     /// Shutdown the runtime gracefully
@@ -266,15 +282,21 @@ impl RuntimeBuilder {
         self
     }
 
-    /// Set player action provider (optional)
-    pub fn player_provider(mut self, provider: impl ActionProvider + 'static) -> Self {
-        self.providers.register(ProviderKind::Player, provider);
+    /// Register a provider for a specific kind.
+    pub fn provider(mut self, kind: ProviderKind, provider: impl ActionProvider + 'static) -> Self {
+        self.providers.register(kind, provider);
         self
     }
 
-    /// Set NPC action provider (optional)
-    pub fn npc_provider(mut self, provider: impl ActionProvider + 'static) -> Self {
-        self.providers.register(ProviderKind::Npc, provider);
+    /// Bind an entity to a specific provider kind.
+    pub fn entity_provider(mut self, entity: EntityId, kind: ProviderKind) -> Self {
+        self.providers.bind_entity(entity, kind);
+        self
+    }
+
+    /// Set the default provider kind for unmapped entities.
+    pub fn default_provider(mut self, kind: ProviderKind) -> Self {
+        self.providers.set_default(kind);
         self
     }
 
@@ -447,6 +469,7 @@ impl RuntimeBuilder {
         let sim_worker_handle = Self::create_simulation_worker(
             initial_state,
             oracles.clone(),
+            providers,
             command_rx,
             event_bus.clone(),
             hooks,
@@ -469,7 +492,6 @@ impl RuntimeBuilder {
 
         Ok(Runtime {
             handle,
-            providers,
             workers: WorkerHandles {
                 simulation: sim_worker_handle,
                 persistence: persistence_worker_handle,
@@ -483,12 +505,19 @@ impl RuntimeBuilder {
     fn create_simulation_worker(
         initial_state: GameState,
         oracles: OracleManager,
+        providers: ProviderRegistry,
         command_rx: mpsc::Receiver<Command>,
         event_bus: EventBus,
         hooks: HookRegistry,
     ) -> JoinHandle<()> {
-        let sim_worker =
-            SimulationWorker::new(initial_state, oracles, command_rx, event_bus, hooks);
+        let sim_worker = SimulationWorker::new(
+            initial_state,
+            oracles,
+            providers,
+            command_rx,
+            event_bus,
+            hooks,
+        );
 
         tokio::spawn(async move {
             sim_worker.run().await;
