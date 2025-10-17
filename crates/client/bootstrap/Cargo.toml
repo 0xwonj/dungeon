@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0"
-game-core = { path = "../../game/core" }
-runtime = { path = "../../runtime" }
-game-content = { path = "../../game/content" }
+anyhow = { workspace = true }
+game-core = { workspace = true }
+runtime = { workspace = true }
+game-content = { workspace = true }

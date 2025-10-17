@@ -8,14 +8,32 @@ A deterministic, ZK-provable, turn-based 2D dungeon RPG built with Rust. The gam
 
 ## Build & Test Commands
 
-- Full workspace build: `cargo build --workspace`
-- Run CLI client: `cargo run -p client-frontend-cli`
-- All tests: `cargo test --workspace`
-- Single test: `cargo test --workspace <test_name>`
-- Specific crate tests: `cargo test -p runtime`
-- Format code: `cargo fmt`
+- Run game: `cargo run -p cli-client`
+- Build: `cargo build --workspace`
+- Tests: `cargo test --workspace`
+- Format: `cargo fmt`
 - Lint: `cargo clippy --workspace --all-targets --all-features`
-- API documentation: `cargo doc --no-deps --open`
+- Docs: `cargo doc --no-deps --open`
+
+### Cargo Aliases (see `.cargo/config.toml`)
+
+- `cargo quick` / `cargo qb` - Quick build
+- `cargo qt` - Quick tests
+- `cargo lint` - Clippy check
+- `cargo qa` - Format + lint + test
+- `cargo docs` - Generate docs
+
+### ZK Modes
+
+- Development (stub prover): `cargo run -p cli-client` (default)
+- ZK dev mode (fast proofs): `RISC0_DEV_MODE=1 cargo run -p cli-client`
+- Production (real proofs): `RISC0_SKIP_BUILD=0 cargo build --release`
+
+### Environment Variables
+
+- `RISC0_SKIP_BUILD=1` - Skip guest builds (default)
+- `RISC0_DEV_MODE=1` - Fast dev proofs
+- `RUST_LOG=info` - Logging level
 
 ## Architecture
 

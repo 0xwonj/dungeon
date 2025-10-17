@@ -3,10 +3,39 @@ name = "game-core"
 version = "0.1.0"
 edition = "2024"
 
+# ============================================================================
+# Feature Flags
+# ============================================================================
+# game-core is designed to work in multiple environments:
+# - Standard Rust applications (with std)
+# - zkVM guest programs (no_std, deterministic)
+# - With or without serialization support
+#
+# Usage Guidelines:
+# ─────────────────────────────────────────────────────────────────────────
+# Standard applications:
+#   game-core = { workspace = true, features = ["serde"] }
+#
+# zkVM guest programs (no_std):
+#   game-core = { workspace = true, default-features = false, features = ["zkvm", "serde"] }
+#
+# Minimal builds (no serialization):
+#   game-core = { workspace = true, default-features = false }
+# ============================================================================
+
 [features]
+# Default: Standard library support (for normal applications)
 default = ["std"]
+
+# Standard library support (mutually exclusive with zkvm)
 std = []
+
+# zkVM environment (no_std, deterministic, no I/O)
+# Use this when compiling for RISC0 or other zkVM guests
 zkvm = []
+
+# Serialization support via serde
+# Enables bincode/JSON serialization for state persistence and proof generation
 serde = [
     "dep:serde",
     "bounded-vector/serde",
@@ -15,11 +44,10 @@ serde = [
 ]
 
 [dependencies]
-bounded-vector = { version = "0.3", default-features = false }
-arrayvec = { version = "0.7", default-features = false }
-thiserror = { version = "2", default-features = false }
-bitflags = { version = "2.9", default-features = false }
-serde = { version = "1.0", default-features = false, features = [
-    "derive",
-    "alloc",
-], optional = true }
+# All dependencies are no_std compatible by default
+bounded-vector = { workspace = true }
+arrayvec = { workspace = true }
+thiserror = { workspace = true }
+bitflags = { workspace = true }
+# serde from workspace already has default-features = false with derive + alloc
+serde = { workspace = true, optional = true }

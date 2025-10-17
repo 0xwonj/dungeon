@@ -9,27 +9,27 @@ path = "src/main.rs"
 
 [dependencies]
 # Core dependencies
-game-core = { path = "../../../game/core" }
-runtime = { path = "../../../runtime" }
-frontend-core = { path = "../core" }
-client-bootstrap = { path = "../../bootstrap" }
+game-core = { workspace = true }
+runtime = { workspace = true }
+frontend-core = { workspace = true }
+client-bootstrap = { workspace = true }
 
 # Async runtime
-tokio = { version = "1.41", features = ["full"] }
-async-trait = "0.1"
+tokio = { workspace = true }
+async-trait = { workspace = true }
 
 # Terminal UI
-ratatui = "0.29"
-crossterm = { version = "0.29", features = ["event-stream"] }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
 
 # Error handling
-anyhow = "1.0"
-thiserror = "2.0"
+anyhow = { workspace = true }
+thiserror = { workspace = true }
 
 # Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-appender = "0.2"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
 
 # Environment variables
-dotenvy = "0.15"
+dotenvy = { workspace = true }
