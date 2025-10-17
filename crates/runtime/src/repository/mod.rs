@@ -41,7 +41,8 @@ mod traits;
 // Re-export main types
 pub use error::RepositoryError;
 pub use traits::{
-    ActionRepository, CheckpointRepository, EventRepository, ProofIndexRepository, StateRepository,
+    ActionLogReader, ActionRepository, CheckpointRepository, EventRepository,
+    ProofIndexRepository, StateRepository,
 };
 
 // Re-export shared types
@@ -53,8 +54,11 @@ pub use types::{
 // Re-export file implementations
 pub use file::{
     FileActionLog, FileCheckpointRepository, FileEventLog, FileProofIndexRepository,
-    FileRepository, FileStateRepository,
+    FileRepository, FileStateRepository, MmapActionLogReader,
 };
 
 // Re-export memory implementations
-pub use memory::{InMemoryCheckpointRepository, InMemoryEventRepository, InMemoryStateRepo};
+pub use memory::{
+    InMemoryActionLogReader, InMemoryCheckpointRepository, InMemoryEventRepository,
+    InMemoryStateRepo,
+};

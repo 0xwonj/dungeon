@@ -22,4 +22,7 @@ pub enum RepositoryError {
 
     #[error("log already exists: {0}")]
     LogAlreadyExists(String),
+
+    #[error("invalid offset {offset} for file size {file_size}")]
+    InvalidOffset { offset: u64, file_size: u64 },
 }

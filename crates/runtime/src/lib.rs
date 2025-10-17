@@ -36,10 +36,11 @@ pub use oracle::{
     ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, NpcOracleImpl, OracleManager, TablesOracleImpl,
 };
 pub use repository::{
-    ActionLogEntry, ActionRepository, Checkpoint, CheckpointRepository, EventReference,
-    EventRepository, FileActionLog, FileCheckpointRepository, FileEventLog,
-    FileProofIndexRepository, FileStateRepository, InMemoryStateRepo, ProofEntry, ProofIndex,
-    ProofIndexRepository, ProofReference, RepositoryError, StateReference, StateRepository,
+    ActionLogEntry, ActionLogReader, ActionRepository, Checkpoint, CheckpointRepository,
+    EventReference, EventRepository, FileActionLog, FileCheckpointRepository, FileEventLog,
+    FileProofIndexRepository, FileStateRepository, InMemoryActionLogReader, InMemoryStateRepo, MmapActionLogReader,
+    ProofEntry, ProofIndex, ProofIndexRepository, ProofReference, RepositoryError,
+    StateReference, StateRepository,
 };
 pub use runtime::{PersistenceSettings, ProvingSettings, Runtime, RuntimeBuilder, RuntimeConfig};
 pub use types::{ByteOffset, DurationMs, Nonce, ProofSize, SessionId, StateHash, Timestamp};

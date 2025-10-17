@@ -150,3 +150,58 @@ pub trait ProofIndexRepository: Send + Sync {
     /// List all proof index sessions
     fn list_sessions(&self) -> Result<Vec<String>>;
 }
+
+/// Sequential action log reader for proof generation.
+///
+/// This trait abstracts the sequential reading of action log entries,
+/// allowing different implementations (memory-mapped files, in-memory, etc.)
+/// while providing a consistent interface for ProverWorker.
+///
+/// # Design
+///
+/// - Read-only sequential access (no random access needed)
+/// - Optimized for streaming consumption by ProverWorker
+/// - Supports file growth detection for continuous operation
+///
+/// # Implementations
+///
+/// - `MmapActionLogReader`: Zero-copy memory-mapped file reader (production)
+/// - `InMemoryActionLogReader`: In-memory reader for testing
+pub trait ActionLogReader: Send + Sync {
+    /// Read the next action log entry from the current position.
+    ///
+    /// Returns:
+    /// - `Ok(Some(entry))` - Successfully read next entry
+    /// - `Ok(None)` - Reached end of log (caught up with writer)
+    /// - `Err(_)` - Read error occurred
+    ///
+    /// This method advances the internal read position on success.
+    fn read_next(&self) -> Result<Option<ActionLogEntry>>;
+
+    /// Refresh the reader and check if new data is available.
+    ///
+    /// For file-based implementations, this checks if the file has grown
+    /// and updates internal state (e.g., remapping) if necessary.
+    ///
+    /// Returns:
+    /// - `Ok(true)` - New data is available
+    /// - `Ok(false)` - No new data
+    /// - `Err(_)` - Refresh failed
+    fn refresh(&self) -> Result<bool>;
+
+    /// Get the current read offset in bytes.
+    ///
+    /// Useful for checkpointing and resuming proof generation.
+    fn current_offset(&self) -> u64;
+
+    /// Get the session ID associated with this log.
+    fn session_id(&self) -> &str;
+
+    /// Check if there's more data available to read without actually reading.
+    ///
+    /// Returns `true` if `read_next()` would likely return `Some(_)`.
+    fn has_more(&self) -> bool {
+        // Default implementation - can be overridden for optimization
+        true
+    }
+}
