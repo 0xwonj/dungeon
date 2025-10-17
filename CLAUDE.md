@@ -24,11 +24,12 @@ A deterministic, ZK-provable, turn-based 2D dungeon RPG built with Rust. The gam
 
 - Development (stub prover): `cargo run -p cli-client` (default)
 - ZK dev mode (fast proofs): `RISC0_DEV_MODE=1 cargo run -p cli-client`
-- Production (real proofs): `RISC0_SKIP_BUILD=0 cargo build --release`
+- Production (real proofs): Set `ENABLE_ZK_PROVING=true` in `.env`
+- Build guest only: `./scripts/build-guest.sh` or `cargo build -p zk`
 
 ### Environment Variables
 
-- `RISC0_SKIP_BUILD=1` - Skip guest builds (default)
+- `RISC0_SKIP_BUILD=1` - Skip guest builds during cargo build (use for fast iteration)
 - `RISC0_DEV_MODE=1` - Fast dev proofs
 - `RUST_LOG=info` - Logging level
 
