@@ -12,7 +12,7 @@ path = "src/main.rs"
 game-core = { path = "../../../game/core" }
 runtime = { path = "../../../runtime" }
 frontend-core = { path = "../core" }
-client-core = { path = "../../core" }
+client-bootstrap = { path = "../../bootstrap" }
 
 # Async runtime
 tokio = { version = "1.41", features = ["full"] }

@@ -29,7 +29,7 @@ crates/
 ├── runtime/         # Public API (RuntimeHandle), orchestrator, workers, oracles, repositories
 ├── zk/              # Proving utilities reused by prover worker and off-chain services
 └── client/
-    ├── core/        # Shared UX glue: config, messages, view models, oracle factories
+    ├── bootstrap/   # Bootstrap utilities: configuration, oracle factories, runtime setup (crate: client-bootstrap)
     └── frontend/
         └── cli/     # Async terminal application, event loop, action provider
 ```
@@ -54,17 +54,21 @@ crates/
 - **Repositories**: All storage behind traits (`StateRepository`, etc.) with in-memory implementations for testing
 - **Message-driven**: Workers communicate via `tokio` channels, enabling concurrent pipelines
 
-### client/core: UX Glue
+### client/bootstrap: Runtime Setup & Configuration
 
-- **Responsibility**: Shared client logic for configuration, message passing, view models, and oracle factories
-- **Bootstrap**: Provides `RuntimeConfig` and `OracleBundle` construction for runtime initialization
-- **Providers**: Implements `ActionProvider` for human input, AI/NPC scripts, or deterministic replay
-- **Message-driven**: Translates front-end messages into runtime-facing actions
+- **Crate name**: `client-bootstrap` (located at `crates/client/bootstrap/`)
+- **Responsibility**: Bootstrap utilities for initializing runtime with proper configuration and oracles
+- **Modules**:
+  - `builder`: `RuntimeBuilder` builder pattern for assembling runtime with configuration
+  - `config`: `CliConfig` and environment variable loading for client configuration
+  - `oracles`: `OracleBundle`, `OracleFactory` trait, and `TestOracleFactory` implementation
+- **Purpose**: Reusable setup code shared across CLI, UI, and other front-end crates
+- **Exports**: `RuntimeBuilder`, `RuntimeSetup`, `CliConfig`, `OracleBundle`, `OracleFactory`
 
 ### client/frontend/cli: Terminal Interface
 
 - **Responsibility**: Async terminal application with event loops and action providers
-- **Architecture**: Consumes `client/core` abstractions, subscribes to runtime events, renders state
+- **Architecture**: Consumes `client-bootstrap` for setup, subscribes to runtime events, renders state
 - **Interaction**: Collects player commands, validates entity/turn alignment, forwards actions to runtime
 
 ## Code Organization Patterns
@@ -173,13 +177,13 @@ Keep commits scoped to single concerns. Include doc updates when behavior change
 - Proof generation coordination (ProverWorker - planned)
 - Blockchain submission coordination (SubmitWorker - planned)
 
-### What belongs in client/core
+### What belongs in client/bootstrap (crate: client-bootstrap)
 
-- Runtime configuration and bootstrap logic
-- Oracle factory implementations
-- `ActionProvider` implementations
-- Message types and view models
-- Client-side coordination logic
+- Runtime configuration and bootstrap logic (`RuntimeBuilder`, `RuntimeSetup`)
+- Configuration loading from environment variables (`CliConfig`)
+- Oracle factory trait and implementations (`OracleFactory`, `TestOracleFactory`)
+- Oracle bundle assembly (`OracleBundle`)
+- Reusable setup utilities for all client front-ends
 
 ### What belongs in client/frontend/cli
 

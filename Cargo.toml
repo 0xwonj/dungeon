@@ -4,7 +4,7 @@ members = [
     "crates/game/content",
     "crates/runtime",
     "crates/zk",
-    "crates/client/core",
+    "crates/client/bootstrap",
     "crates/client/frontend/core",
     "crates/client/frontend/cli",
 ]

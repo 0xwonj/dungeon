@@ -8,10 +8,10 @@ use runtime::{Runtime, Topic};
 
 use crate::input::CliActionProvider;
 use crate::presentation::{CliEventConsumer, EventLoop, terminal};
-use client_core::{
-    bootstrap::{ClientBootstrap, RuntimeSetup},
+use client_bootstrap::{
+    builder::{RuntimeBuilder, RuntimeSetup},
     config::CliConfig,
-    world::OracleBundle,
+    oracles::OracleBundle,
 };
 use frontend_core::{frontend::FrontendApp, message::MessageLog};
 
@@ -23,13 +23,13 @@ pub struct CliApp {
 }
 
 pub struct CliAppBuilder {
-    bootstrap: ClientBootstrap,
+    bootstrap: RuntimeBuilder,
 }
 
 impl CliAppBuilder {
     pub fn new(config: CliConfig) -> Self {
         Self {
-            bootstrap: ClientBootstrap::new(config),
+            bootstrap: RuntimeBuilder::new(config),
         }
     }
 

@@ -5,15 +5,15 @@ use anyhow::Result;
 use runtime::{Runtime, WaitActionProvider};
 
 use crate::config::CliConfig;
-use crate::world::{OracleBundle, OracleFactory, TestOracleFactory};
+use crate::oracles::{OracleBundle, OracleFactory, TestOracleFactory};
 
 /// Builder that assembles runtime state, oracles, and configuration for clients.
-pub struct ClientBootstrap {
+pub struct RuntimeBuilder {
     config: CliConfig,
     oracle_factory: Arc<dyn OracleFactory>,
 }
 
-impl ClientBootstrap {
+impl RuntimeBuilder {
     pub fn new(config: CliConfig) -> Self {
         let default_factory = TestOracleFactory::new(config.world.size);
         Self {

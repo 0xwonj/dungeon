@@ -3,3 +3,4 @@
 /.claude
 **/TODOs.md
 /save_data
+.env
