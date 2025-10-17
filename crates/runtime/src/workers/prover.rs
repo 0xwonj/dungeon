@@ -15,12 +15,12 @@ use std::sync::Arc;
 use tokio::time::{self, Duration};
 use tracing::{debug, error, info, warn};
 
-use game_core::{Action, GameState, Tick};
+use game_core::{Action, GameState};
 use zk::{ProofData, ProofError, Prover, ZkProver};
 
 use crate::events::{Event, EventBus, ProofEvent};
 use crate::oracle::OracleManager;
-use crate::repository::{ActionLogEntry, ActionRepository, FileActionLog};
+use crate::repository::{ActionLogEntry, FileActionLog};
 use crate::workers::ProofMetrics;
 
 /// Background worker for ZK proof generation.

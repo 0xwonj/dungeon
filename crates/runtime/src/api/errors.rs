@@ -45,6 +45,15 @@ pub enum RuntimeError {
         expected: game_core::EntityId,
         provided: game_core::EntityId,
     },
+
+    #[error("invalid configuration: {0}")]
+    InvalidConfig(String),
+
+    #[error("invalid entity ID: {0:?}")]
+    InvalidEntityId(game_core::EntityId),
+
+    #[error("missing action provider: {0}")]
+    MissingProvider(ProviderKind),
 }
 
 #[derive(Debug, Copy, Clone)]

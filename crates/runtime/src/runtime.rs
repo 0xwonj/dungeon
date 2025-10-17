@@ -155,6 +155,10 @@ impl Runtime {
             .await
             .map_err(RuntimeError::WorkerJoin)?;
 
+        if let Some(persistence_handle) = self.persistence_worker_handle {
+            persistence_handle.await.map_err(RuntimeError::WorkerJoin)?;
+        }
+
         if let Some(prover_handle) = self.prover_worker_handle {
             prover_handle.await.map_err(RuntimeError::WorkerJoin)?;
         }
@@ -335,18 +339,16 @@ impl RuntimeBuilder {
         let (command_tx, command_rx) = mpsc::channel::<Command>(self.config.command_buffer_size);
         let event_bus = EventBus::with_capacity(self.config.event_buffer_size);
 
-        let handle = RuntimeHandle::new(command_tx, event_bus.clone());
+        let handle = RuntimeHandle::new(command_tx.clone(), event_bus.clone());
+        let command_tx_for_persistence = command_tx.clone();
 
         // Use provided hooks or default registry
         let hooks = self.hooks.unwrap_or_default();
 
-        // Clone oracles for prover worker (if enabled)
-        let oracles_for_prover = oracles.clone();
-
         // Create simulation worker
         let sim_worker = SimulationWorker::new(
             initial_state.clone(),
-            oracles,
+            oracles.clone(),
             command_rx,
             event_bus.clone(),
             hooks,
@@ -356,12 +358,67 @@ impl RuntimeBuilder {
             sim_worker.run().await;
         });
 
-        // Create prover worker (if enabled)
-        // TODO: Integrate ProverWorker with action log
-        // ProverWorker now requires action_log instead of initial_state
-        let (prover_worker_handle, proof_metrics) = if false {
-            // Temporarily disabled until action_log is integrated from PersistenceWorker
-            (None, None)
+        // Create persistence worker (if enabled)
+        let persistence_worker_handle = if self.config.enable_persistence {
+            let persistence_config = PersistenceConfig::new(
+                self.config.session_id.clone(),
+                self.config.persistence_base_dir.clone(),
+            )
+            .with_strategy(CheckpointStrategy::EveryNActions(10));
+
+            let event_rx = event_bus.subscribe(crate::events::Topic::GameState);
+
+            // PersistenceWorker has its own Command type, but we don't expose it
+            // Create a dummy channel since we don't send commands to it yet
+            let (_persistence_cmd_tx, persistence_cmd_rx) = mpsc::channel(8);
+
+            let persistence_worker = PersistenceWorker::new(
+                persistence_config,
+                event_rx,
+                persistence_cmd_rx,
+                command_tx_for_persistence.clone(),
+            )
+            .map_err(RuntimeError::InvalidConfig)?;
+
+            Some(tokio::spawn(async move {
+                persistence_worker.run().await;
+            }))
+        } else {
+            None
+        };
+
+        // Create prover worker (if enabled and persistence is enabled)
+        let (prover_worker_handle, proof_metrics) = if self.config.enable_proving {
+            if !self.config.enable_persistence {
+                tracing::warn!(
+                    "ZK proving enabled but persistence disabled. Proving requires persistence."
+                );
+                (None, None)
+            } else {
+                use crate::repository::FileActionLog;
+
+                // Open the action log file that PersistenceWorker is writing to
+                let session_dir = self.config.persistence_base_dir.join(&self.config.session_id);
+                let action_filename = format!("actions_{}.log", self.config.session_id);
+                let action_log = FileActionLog::open(session_dir.join("actions"), &action_filename)
+                    .map_err(|e| RuntimeError::InvalidConfig(format!("Failed to open action log: {}", e)))?;
+
+                let prover_worker = ProverWorker::new(
+                    action_log,
+                    event_bus.clone(),
+                    oracles.clone(),
+                    self.config.save_proofs_dir.clone(),
+                    0, // start_offset
+                );
+
+                let prover_metrics = prover_worker.metrics();
+
+                let handle = tokio::spawn(async move {
+                    prover_worker.run().await;
+                });
+
+                (Some(handle), Some(prover_metrics))
+            }
         } else {
             (None, None)
         };
@@ -372,7 +429,7 @@ impl RuntimeBuilder {
             npc_provider: self.npc_provider,
             sim_worker_handle,
             prover_worker_handle,
-            persistence_worker_handle: None, // TODO: Integrate PersistenceWorker
+            persistence_worker_handle,
             proof_metrics,
         })
     }
