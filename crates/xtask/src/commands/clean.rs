@@ -75,7 +75,10 @@ impl Clean {
         }
 
         if targets.is_empty() {
-            println!("{}", style("Nothing to clean - directories don't exist yet").dim());
+            println!(
+                "{}",
+                style("Nothing to clean - directories don't exist yet").dim()
+            );
             return Ok(());
         }
 

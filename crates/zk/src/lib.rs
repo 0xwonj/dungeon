@@ -61,7 +61,10 @@ pub use prover::{ProofBackend, ProofData, ProofError, Prover};
 pub use prover::StubProver;
 
 // zkVM module - zkVM-based proving backend implementations
+#[cfg(any(feature = "risc0", feature = "sp1"))]
 pub mod zkvm;
+
+#[cfg(any(feature = "risc0", feature = "sp1"))]
 pub use zkvm::*;
 
 // Arkworks circuit module (optional, Phase 2+)

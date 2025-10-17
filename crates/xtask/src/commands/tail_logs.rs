@@ -47,8 +47,7 @@ impl TailLogs {
             let path = dirs::find_session_log(&log_dir, session)?;
             (session.clone(), path)
         } else {
-            dirs::find_latest_log(&log_dir)
-                .context("Failed to find latest log file")?
+            dirs::find_latest_log(&log_dir).context("Failed to find latest log file")?
         };
 
         // Display header
