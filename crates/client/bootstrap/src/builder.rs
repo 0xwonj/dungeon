@@ -62,13 +62,11 @@ impl RuntimeBuilder {
         let wait_kind = ProviderKind::Ai(AiKind::Wait);
         let handle = runtime.handle();
 
-        // Register wait provider
-        handle
-            .register_provider(wait_kind, WaitActionProvider)
-            .await?;
+        // Register wait provider (now synchronous)
+        handle.register_provider(wait_kind, WaitActionProvider)?;
 
-        // Set as default for unmapped entities
-        handle.set_default_provider(wait_kind).await?;
+        // Set as default for unmapped entities (now synchronous)
+        handle.set_default_provider(wait_kind)?;
 
         Ok(RuntimeSetup {
             config: self.config,

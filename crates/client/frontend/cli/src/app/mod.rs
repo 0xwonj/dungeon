@@ -51,7 +51,7 @@ impl CliApp {
             runtime,
         } = setup;
 
-        let (tx_action, rx_action) = mpsc::channel::<Action>(config.channels.action_buffer);
+        let (tx_action, _rx_action) = mpsc::channel::<Action>(config.channels.action_buffer);
 
         Self {
             config,
@@ -65,28 +65,23 @@ impl CliApp {
         tracing::info!("CLI client starting...");
 
         // Setup providers before starting
-        let (tx_action_new, rx_action) = mpsc::channel::<Action>(self.config.channels.action_buffer);
+        let (tx_action_new, rx_action) =
+            mpsc::channel::<Action>(self.config.channels.action_buffer);
         self.tx_action = tx_action_new;
 
         let handle = self.runtime.handle();
         let cli_kind = ProviderKind::Interactive(InteractiveKind::CliInput);
         let wait_kind = ProviderKind::Ai(AiKind::Wait);
 
-        // Register provider instances
-        handle
-            .register_provider(cli_kind, CliActionProvider::new(rx_action))
-            .await?;
-        handle
-            .register_provider(wait_kind, WaitActionProvider)
-            .await?;
+        // Register provider instances (now synchronous)
+        handle.register_provider(cli_kind, CliActionProvider::new(rx_action))?;
+        handle.register_provider(wait_kind, WaitActionProvider)?;
 
-        // Bind player to CLI input
-        handle
-            .bind_entity_provider(EntityId::PLAYER, cli_kind)
-            .await?;
+        // Bind player to CLI input (now synchronous)
+        handle.bind_entity_provider(EntityId::PLAYER, cli_kind)?;
 
-        // Set default to Wait for unmapped entities (NPCs)
-        handle.set_default_provider(wait_kind).await?;
+        // Set default to Wait for unmapped entities (NPCs, now synchronous)
+        handle.set_default_provider(wait_kind)?;
 
         let mut terminal = terminal::init()?;
         let _guard = terminal::TerminalGuard;

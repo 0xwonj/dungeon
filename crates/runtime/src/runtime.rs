@@ -3,6 +3,8 @@
 //! The runtime owns background workers, wires up command/event channels, and
 //! exposes a builder-based API for clients to drive the simulation.
 
+use std::sync::{Arc, RwLock};
+
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -127,12 +129,6 @@ impl WorkerHandles {
 ///
 /// Design: Runtime owns workers and coordinates execution.
 /// [`RuntimeHandle`] provides a cloneable façade for clients.
-///
-/// # Provider Management
-///
-/// Providers are now managed by the SimulationWorker and accessed via
-/// RuntimeHandle commands. This ensures thread-safe access and allows
-/// runtime modification of entity AI without locking.
 pub struct Runtime {
     // Shared handle (can be cloned for clients)
     handle: RuntimeHandle,
@@ -143,6 +139,9 @@ pub struct Runtime {
     // Proof metrics (shared with ProverWorker if enabled)
     // Uses atomics for lock-free access
     proof_metrics: Option<ProofMetricsArc>,
+
+    // Provider registry (shared with RuntimeHandle via Arc)
+    providers: Arc<RwLock<ProviderRegistry>>,
 }
 
 impl Runtime {
@@ -173,16 +172,6 @@ impl Runtime {
     /// 2. Queries the entity's provider for an action
     /// 3. Executes the action
     ///
-    /// # Design Note
-    ///
-    /// The entire turn cycle is executed by the SimulationWorker via a single
-    /// command. This ensures atomicity and thread-safe access to providers.
-    ///
-    /// For more control, use `RuntimeHandle` methods directly:
-    /// - `prepare_next_turn()` - Get next entity to act
-    /// - `get_entity_provider_kind()` - Check provider assignment
-    /// - `execute_action()` - Execute a specific action
-    ///
     /// # Errors
     ///
     /// Returns an error if:
@@ -191,30 +180,31 @@ impl Runtime {
     /// - Provider fails to generate an action
     /// - Action execution fails
     pub async fn step(&mut self) -> Result<()> {
-        self.handle.execute_turn_step().await
+        // 1. Prepare turn (SimulationWorker determines which entity acts)
+        let (entity, snapshot) = self.handle.prepare_next_turn().await?;
+
+        // 2. Get provider for this entity (from Runtime's registry)
+        let provider = {
+            let registry = self
+                .providers
+                .read()
+                .map_err(|_| RuntimeError::LockPoisoned)?;
+            registry.get_for_entity(entity)?
+        };
+
+        // 3. Query provider for action (I/O operation at Runtime layer)
+        let action = provider.provide_action(entity, &snapshot).await?;
+
+        // 4. Execute the action (SimulationWorker applies pure game logic)
+        self.handle.execute_action(action).await?;
+
+        Ok(())
     }
 
     /// Run the game loop continuously.
     ///
     /// This calls `step()` in a loop, automatically handling turn progression
     /// and action execution for all entities via their registered providers.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let mut runtime = Runtime::builder()
-    ///     .oracles(oracles)
-    ///     .build()?;
-    ///
-    /// // Register providers first
-    /// runtime.handle().register_provider(
-    ///     ProviderKind::Interactive(InteractiveKind::CliInput),
-    ///     CliActionProvider::new(rx)
-    /// ).await?;
-    ///
-    /// // Start game loop
-    /// runtime.run().await?;
-    /// ```
     pub async fn run(&mut self) -> Result<()> {
         loop {
             self.step().await?;
@@ -460,16 +450,19 @@ impl RuntimeBuilder {
         let (command_tx, command_rx) = mpsc::channel::<Command>(config.command_buffer_size);
         let event_bus = EventBus::with_capacity(config.event_buffer_size);
 
-        let handle = RuntimeHandle::new(command_tx.clone(), event_bus.clone());
+        // Wrap providers in Arc<RwLock> for shared access
+        let providers = Arc::new(RwLock::new(providers));
+
+        let handle = RuntimeHandle::new(command_tx.clone(), event_bus.clone(), providers.clone());
 
         // Use provided hooks or default registry
         let hooks = hooks.unwrap_or_default();
 
         // Create workers using factory methods
+        // NOTE: SimulationWorker no longer owns providers (moved to Runtime)
         let sim_worker_handle = Self::create_simulation_worker(
             initial_state,
             oracles.clone(),
-            providers,
             command_rx,
             event_bus.clone(),
             hooks,
@@ -498,6 +491,7 @@ impl RuntimeBuilder {
                 prover: prover_worker_handle,
             },
             proof_metrics,
+            providers,
         })
     }
 
@@ -505,19 +499,12 @@ impl RuntimeBuilder {
     fn create_simulation_worker(
         initial_state: GameState,
         oracles: OracleManager,
-        providers: ProviderRegistry,
         command_rx: mpsc::Receiver<Command>,
         event_bus: EventBus,
         hooks: HookRegistry,
     ) -> JoinHandle<()> {
-        let sim_worker = SimulationWorker::new(
-            initial_state,
-            oracles,
-            providers,
-            command_rx,
-            event_bus,
-            hooks,
-        );
+        let sim_worker =
+            SimulationWorker::new(initial_state, oracles, command_rx, event_bus, hooks);
 
         tokio::spawn(async move {
             sim_worker.run().await;

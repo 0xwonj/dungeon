@@ -48,6 +48,9 @@ pub enum RuntimeError {
 
     #[error("missing action provider: {0}")]
     MissingProvider(ProviderKind),
+
+    #[error("provider registry lock poisoned")]
+    LockPoisoned,
 }
 
 /// Provider category distinguishing interactive inputs from automated AI.
@@ -57,7 +60,6 @@ pub enum RuntimeError {
 /// - Automated AI decision makers (combat AI, passive behavior, etc.)
 /// - Custom extensibility slots for user-defined providers
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ProviderKind {
     /// Interactive input sources (human players, network clients, etc.)
     Interactive(InteractiveKind),
@@ -71,7 +73,6 @@ pub enum ProviderKind {
 
 /// Interactive input provider types.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum InteractiveKind {
     /// Local CLI keyboard input
     CliInput,
@@ -85,7 +86,6 @@ pub enum InteractiveKind {
 
 /// AI provider types for automated decision making.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AiKind {
     /// Simple wait-only AI (no-op, default for unmapped entities)
     Wait,

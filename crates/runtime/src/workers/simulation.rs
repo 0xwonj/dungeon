@@ -11,7 +11,7 @@ use game_core::{
 };
 use tracing::{debug, error};
 
-use crate::api::{ActionProvider, ProviderKind, ProviderRegistry, Result, RuntimeError};
+use crate::api::{Result, RuntimeError};
 use crate::events::{Event, EventBus, GameStateEvent};
 use crate::hooks::HookRegistry;
 use crate::oracle::OracleManager;
@@ -29,57 +29,19 @@ pub enum Command {
         reply: oneshot::Sender<Result<()>>,
     },
     /// Query the current game state (read-only).
-    QueryState {
-        reply: oneshot::Sender<GameState>,
-    },
-
-    // Game loop command
-    /// Execute a complete turn step: prepare turn, query provider, execute action.
-    /// This is a high-level command that encapsulates the entire game loop cycle.
-    ExecuteTurnStep {
-        reply: oneshot::Sender<Result<()>>,
-    },
-
-    // Provider management commands
-    /// Register a provider for a specific kind.
-    RegisterProvider {
-        kind: ProviderKind,
-        provider: Box<dyn ActionProvider>,
-        reply: oneshot::Sender<Result<()>>,
-    },
-    /// Bind an entity to a specific provider kind.
-    BindEntityProvider {
-        entity: EntityId,
-        kind: ProviderKind,
-        reply: oneshot::Sender<Result<()>>,
-    },
-    /// Unbind an entity (revert to default provider).
-    UnbindEntityProvider {
-        entity: EntityId,
-        reply: oneshot::Sender<Result<Option<ProviderKind>>>,
-    },
-    /// Set the default provider kind for unmapped entities.
-    SetDefaultProvider {
-        kind: ProviderKind,
-        reply: oneshot::Sender<Result<()>>,
-    },
-    /// Get the provider kind for an entity.
-    GetEntityProviderKind {
-        entity: EntityId,
-        reply: oneshot::Sender<Result<ProviderKind>>,
-    },
-    /// Check if a provider is registered for a specific kind.
-    IsProviderRegistered {
-        kind: ProviderKind,
-        reply: oneshot::Sender<Result<bool>>,
-    },
+    QueryState { reply: oneshot::Sender<GameState> },
 }
 
 /// Background task that processes gameplay commands.
+///
+/// # Design Note
+///
+/// SimulationWorker is now a pure game logic executor - it does not own
+/// providers or handle I/O. Provider orchestration is done by Runtime.
+/// This follows the "functional core, imperative shell" principle.
 pub struct SimulationWorker {
     state: GameState,
     oracles: OracleManager,
-    providers: ProviderRegistry,
     command_rx: mpsc::Receiver<Command>,
     event_bus: EventBus,
     hooks: HookRegistry,
@@ -90,7 +52,6 @@ impl SimulationWorker {
     pub fn new(
         state: GameState,
         oracles: OracleManager,
-        providers: ProviderRegistry,
         command_rx: mpsc::Receiver<Command>,
         event_bus: EventBus,
         hooks: HookRegistry,
@@ -98,7 +59,6 @@ impl SimulationWorker {
         Self {
             state,
             oracles,
-            providers,
             command_rx,
             event_bus,
             hooks,
@@ -136,90 +96,7 @@ impl SimulationWorker {
                     debug!("QueryState reply channel closed (caller dropped)");
                 }
             }
-            Command::ExecuteTurnStep { reply } => {
-                let result = self.handle_turn_step().await;
-                if reply.send(result).is_err() {
-                    debug!("ExecuteTurnStep reply channel closed (caller dropped)");
-                }
-            }
-            Command::RegisterProvider {
-                kind,
-                provider,
-                reply,
-            } => {
-                self.providers.register_boxed(kind, provider);
-                if reply.send(Ok(())).is_err() {
-                    debug!("RegisterProvider reply channel closed (caller dropped)");
-                }
-            }
-            Command::BindEntityProvider {
-                entity,
-                kind,
-                reply,
-            } => {
-                self.providers.bind_entity(entity, kind);
-                if reply.send(Ok(())).is_err() {
-                    debug!("BindEntityProvider reply channel closed (caller dropped)");
-                }
-            }
-            Command::UnbindEntityProvider { entity, reply } => {
-                let result = self.providers.unbind_entity(entity);
-                if reply.send(Ok(result)).is_err() {
-                    debug!("UnbindEntityProvider reply channel closed (caller dropped)");
-                }
-            }
-            Command::SetDefaultProvider { kind, reply } => {
-                self.providers.set_default(kind);
-                if reply.send(Ok(())).is_err() {
-                    debug!("SetDefaultProvider reply channel closed (caller dropped)");
-                }
-            }
-            Command::GetEntityProviderKind { entity, reply } => {
-                let kind = self.providers.get_entity_kind(entity);
-                if reply.send(Ok(kind)).is_err() {
-                    debug!("GetEntityProviderKind reply channel closed (caller dropped)");
-                }
-            }
-            Command::IsProviderRegistered { kind, reply } => {
-                let is_registered = self.providers.has(kind);
-                if reply.send(Ok(is_registered)).is_err() {
-                    debug!("IsProviderRegistered reply channel closed (caller dropped)");
-                }
-            }
         }
-    }
-
-    /// Handles a complete turn step: prepare, provide action, execute.
-    ///
-    /// This is a high-level method that encapsulates the entire game loop cycle:
-    /// 1. Prepare the next turn (determine which entity acts)
-    /// 2. Query the entity's provider for an action
-    /// 3. Execute the action
-    async fn handle_turn_step(&mut self) -> Result<()> {
-        // 1. Prepare turn
-        let (entity, snapshot) = self.handle_turn_preparation()?;
-
-        // 2. Get provider for this entity
-        let provider = self.providers.get_for_entity(entity)?;
-
-        // 3. Query provider for action
-        let action = provider
-            .provide_action(entity, &snapshot)
-            .await
-            .map_err(|e| {
-                error!(
-                    target: "runtime::worker",
-                    entity = ?entity,
-                    error = ?e,
-                    "Provider failed to provide action"
-                );
-                e
-            })?;
-
-        // 4. Execute the action
-        self.handle_player_action(action)?;
-
-        Ok(())
     }
 
     /// Handles turn preparation workflow.

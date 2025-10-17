@@ -11,6 +11,7 @@
 //! - **Runtime changes**: Entities can switch providers dynamically
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use game_core::EntityId;
 
@@ -26,15 +27,10 @@ use super::{ActionProvider, AiKind, ProviderKind, Result, RuntimeError};
 /// ├── entity_mappings: HashMap<EntityId, ProviderKind>  (entity bindings)
 /// └── default_kind: ProviderKind  (fallback)
 /// ```
-///
-/// # Memory Efficiency
-///
-/// Provider instances are shared across entities. 100 NPCs using the same AI
-/// will reference a single provider instance, using only ~20 bytes per NPC
-/// for the entity mapping entry.
 pub struct ProviderRegistry {
     /// Provider instances by kind (shared across entities)
-    providers: HashMap<ProviderKind, Box<dyn ActionProvider>>,
+    /// Uses Arc instead of Box to allow cloning providers for use outside locks
+    providers: HashMap<ProviderKind, Arc<dyn ActionProvider>>,
 
     /// Entity-to-provider mappings (sparse - only non-default entities)
     entity_mappings: HashMap<EntityId, ProviderKind>,
@@ -56,21 +52,15 @@ impl ProviderRegistry {
     /// Register a provider for a specific kind.
     ///
     /// If a provider already exists for this kind, it will be replaced.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// registry.register(ProviderKind::Ai(AiKind::Aggressive), AggressiveAI::new());
-    /// ```
     pub fn register(&mut self, kind: ProviderKind, provider: impl ActionProvider + 'static) {
-        self.providers.insert(kind, Box::new(provider));
+        self.providers.insert(kind, Arc::new(provider));
     }
 
     /// Register a boxed provider for a specific kind.
     ///
     /// This is useful when you already have a `Box<dyn ActionProvider>`.
     pub fn register_boxed(&mut self, kind: ProviderKind, provider: Box<dyn ActionProvider>) {
-        self.providers.insert(kind, provider);
+        self.providers.insert(kind, Arc::from(provider));
     }
 
     /// Bind an entity to a specific provider kind.
@@ -128,7 +118,12 @@ impl ProviderRegistry {
     ///
     /// Returns `RuntimeError::ProviderNotSet` if the resolved provider kind
     /// has no registered provider instance.
-    pub fn get_for_entity(&self, entity: EntityId) -> Result<&dyn ActionProvider> {
+    ///
+    /// # Returns
+    ///
+    /// Returns an Arc clone of the provider, allowing it to be used outside
+    /// of the registry's lock scope.
+    pub fn get_for_entity(&self, entity: EntityId) -> Result<Arc<dyn ActionProvider>> {
         let kind = self.get_entity_kind(entity);
         self.get(kind)
     }
@@ -138,10 +133,15 @@ impl ProviderRegistry {
     /// # Errors
     ///
     /// Returns `RuntimeError::ProviderNotSet` if no provider is registered for this kind.
-    pub fn get(&self, kind: ProviderKind) -> Result<&dyn ActionProvider> {
+    ///
+    /// # Returns
+    ///
+    /// Returns an Arc clone of the provider, allowing it to be used outside
+    /// of the registry's lock scope. This is cheap (just incrementing a reference count).
+    pub fn get(&self, kind: ProviderKind) -> Result<Arc<dyn ActionProvider>> {
         self.providers
             .get(&kind)
-            .map(|boxed| &**boxed)
+            .cloned()
             .ok_or_else(|| RuntimeError::ProviderNotSet { kind })
     }
 
@@ -174,7 +174,7 @@ impl ProviderRegistry {
     /// If entities are bound to this kind or it's the default, they will fail
     /// to resolve providers after removal. Ensure you rebind entities or change
     /// the default before removing.
-    pub fn unregister(&mut self, kind: ProviderKind) -> Option<Box<dyn ActionProvider>> {
+    pub fn unregister(&mut self, kind: ProviderKind) -> Option<Arc<dyn ActionProvider>> {
         self.providers.remove(&kind)
     }
 

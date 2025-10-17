@@ -2,12 +2,14 @@
 //!
 //! [`RuntimeHandle`] hides channel plumbing and offers async helpers for
 //! stepping the simulation or streaming events from specific topics.
+use std::sync::{Arc, RwLock};
+
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use game_core::{Action, EntityId, GameState};
 
 use super::errors::{Result, RuntimeError};
-use super::{ActionProvider, ProviderKind};
+use super::{ActionProvider, ProviderKind, ProviderRegistry};
 use crate::events::{Event, EventBus, Topic};
 use crate::workers::Command;
 
@@ -18,17 +20,26 @@ use crate::workers::Command;
 /// Multiple clients can safely call methods concurrently. The underlying
 /// [`SimulationWorker`] processes commands sequentially via a FIFO channel,
 /// ensuring game state consistency without requiring explicit locks.
+///
+/// Provider methods use Arc<RwLock> for thread-safe access from both
+/// Runtime::step() and external clients.
 #[derive(Clone)]
 pub struct RuntimeHandle {
     command_tx: mpsc::Sender<Command>,
     event_bus: EventBus,
+    providers: Arc<RwLock<ProviderRegistry>>,
 }
 
 impl RuntimeHandle {
-    pub(crate) fn new(command_tx: mpsc::Sender<Command>, event_bus: EventBus) -> Self {
+    pub(crate) fn new(
+        command_tx: mpsc::Sender<Command>,
+        event_bus: EventBus,
+        providers: Arc<RwLock<ProviderRegistry>>,
+    ) -> Self {
         Self {
             command_tx,
             event_bus,
+            providers,
         }
     }
 
@@ -96,175 +107,78 @@ impl RuntimeHandle {
         &self.event_bus
     }
 
-    // Provider management methods
+    // Provider management methods (synchronous - use Arc<RwLock>)
 
     /// Register a provider for a specific kind.
     ///
     /// The provider will be stored and can be used by entities bound to this kind.
     /// If a provider already exists for this kind, it will be replaced.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use runtime::{ProviderKind, AiKind};
-    ///
-    /// handle.register_provider(
-    ///     ProviderKind::Ai(AiKind::Aggressive),
-    ///     AggressiveAI::new()
-    /// ).await?;
-    /// ```
-    pub async fn register_provider(
+    pub fn register_provider(
         &self,
         kind: ProviderKind,
         provider: impl ActionProvider + 'static,
     ) -> Result<()> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-
-        self.command_tx
-            .send(Command::RegisterProvider {
-                kind,
-                provider: Box::new(provider),
-                reply: reply_tx,
-            })
-            .await
-            .map_err(|_| RuntimeError::CommandChannelClosed)?;
-
-        reply_rx.await.map_err(RuntimeError::ReplyChannelClosed)?
+        let mut registry = self
+            .providers
+            .write()
+            .map_err(|_| RuntimeError::LockPoisoned)?;
+        registry.register(kind, provider);
+        Ok(())
     }
 
     /// Bind an entity to a specific provider kind.
     ///
     /// The entity will use the provider registered for this kind.
     /// This can be called at runtime to switch an entity's AI or control method.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// // Switch NPC to aggressive AI
-    /// handle.bind_entity_provider(
-    ///     npc_id,
-    ///     ProviderKind::Ai(AiKind::Aggressive)
-    /// ).await?;
-    ///
-    /// // Enable auto-pilot for player
-    /// handle.bind_entity_provider(
-    ///     EntityId::PLAYER,
-    ///     ProviderKind::Ai(AiKind::Scripted)
-    /// ).await?;
-    /// ```
-    pub async fn bind_entity_provider(
-        &self,
-        entity: EntityId,
-        kind: ProviderKind,
-    ) -> Result<()> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-
-        self.command_tx
-            .send(Command::BindEntityProvider {
-                entity,
-                kind,
-                reply: reply_tx,
-            })
-            .await
-            .map_err(|_| RuntimeError::CommandChannelClosed)?;
-
-        reply_rx.await.map_err(RuntimeError::ReplyChannelClosed)?
+    pub fn bind_entity_provider(&self, entity: EntityId, kind: ProviderKind) -> Result<()> {
+        let mut registry = self
+            .providers
+            .write()
+            .map_err(|_| RuntimeError::LockPoisoned)?;
+        registry.bind_entity(entity, kind);
+        Ok(())
     }
 
     /// Unbind an entity, reverting it to the default provider.
     ///
     /// Returns the previous provider kind if the entity was explicitly bound.
-    pub async fn unbind_entity_provider(
-        &self,
-        entity: EntityId,
-    ) -> Result<Option<ProviderKind>> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-
-        self.command_tx
-            .send(Command::UnbindEntityProvider {
-                entity,
-                reply: reply_tx,
-            })
-            .await
-            .map_err(|_| RuntimeError::CommandChannelClosed)?;
-
-        reply_rx.await.map_err(RuntimeError::ReplyChannelClosed)?
+    pub fn unbind_entity_provider(&self, entity: EntityId) -> Result<Option<ProviderKind>> {
+        let mut registry = self
+            .providers
+            .write()
+            .map_err(|_| RuntimeError::LockPoisoned)?;
+        Ok(registry.unbind_entity(entity))
     }
 
     /// Set the default provider kind for unmapped entities.
     ///
     /// This is used as a fallback when an entity has no explicit binding.
-    pub async fn set_default_provider(&self, kind: ProviderKind) -> Result<()> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-
-        self.command_tx
-            .send(Command::SetDefaultProvider {
-                kind,
-                reply: reply_tx,
-            })
-            .await
-            .map_err(|_| RuntimeError::CommandChannelClosed)?;
-
-        reply_rx.await.map_err(RuntimeError::ReplyChannelClosed)?
+    pub fn set_default_provider(&self, kind: ProviderKind) -> Result<()> {
+        let mut registry = self
+            .providers
+            .write()
+            .map_err(|_| RuntimeError::LockPoisoned)?;
+        registry.set_default(kind);
+        Ok(())
     }
 
     /// Get the provider kind for an entity.
     ///
     /// Returns the explicitly bound kind, or the default if not bound.
-    pub async fn get_entity_provider_kind(&self, entity: EntityId) -> Result<ProviderKind> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-
-        self.command_tx
-            .send(Command::GetEntityProviderKind {
-                entity,
-                reply: reply_tx,
-            })
-            .await
-            .map_err(|_| RuntimeError::CommandChannelClosed)?;
-
-        reply_rx.await.map_err(RuntimeError::ReplyChannelClosed)?
+    pub fn get_entity_provider_kind(&self, entity: EntityId) -> Result<ProviderKind> {
+        let registry = self
+            .providers
+            .read()
+            .map_err(|_| RuntimeError::LockPoisoned)?;
+        Ok(registry.get_entity_kind(entity))
     }
 
     /// Check if a provider is registered for a specific kind.
-    pub async fn is_provider_registered(&self, kind: ProviderKind) -> Result<bool> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-
-        self.command_tx
-            .send(Command::IsProviderRegistered {
-                kind,
-                reply: reply_tx,
-            })
-            .await
-            .map_err(|_| RuntimeError::CommandChannelClosed)?;
-
-        reply_rx.await.map_err(RuntimeError::ReplyChannelClosed)?
-    }
-
-    /// Execute a complete turn step.
-    ///
-    /// This is a high-level helper that:
-    /// 1. Prepares the next turn (determines which entity acts)
-    /// 2. Queries the entity's provider for an action
-    /// 3. Executes the action
-    ///
-    /// This encapsulates the entire game loop cycle in a single command.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// // Simple game loop
-    /// loop {
-    ///     handle.execute_turn_step().await?;
-    /// }
-    /// ```
-    pub async fn execute_turn_step(&self) -> Result<()> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-
-        self.command_tx
-            .send(Command::ExecuteTurnStep { reply: reply_tx })
-            .await
-            .map_err(|_| RuntimeError::CommandChannelClosed)?;
-
-        reply_rx.await.map_err(RuntimeError::ReplyChannelClosed)?
+    pub fn is_provider_registered(&self, kind: ProviderKind) -> Result<bool> {
+        let registry = self
+            .providers
+            .read()
+            .map_err(|_| RuntimeError::LockPoisoned)?;
+        Ok(registry.has(kind))
     }
 }
