@@ -12,7 +12,10 @@ use crate::api::{ActionProvider, ProviderKind, Result, RuntimeError, RuntimeHand
 use crate::events::EventBus;
 use crate::hooks::{HookRegistry, PostExecutionHook};
 use crate::oracle::OracleManager;
-use crate::workers::{Command, ProofMetrics, ProverWorker, SimulationWorker};
+use crate::workers::{
+    CheckpointStrategy, Command, PersistenceConfig, PersistenceWorker, ProofMetrics, ProverWorker,
+    SimulationWorker,
+};
 
 /// Runtime configuration shared across the orchestrator and workers.
 #[derive(Debug, Clone)]
@@ -24,16 +27,32 @@ pub struct RuntimeConfig {
     pub enable_proving: bool,
     /// Optional directory to save generated proofs
     pub save_proofs_dir: Option<std::path::PathBuf>,
+    /// Enable persistence worker for state/event/proof persistence (default: false)
+    pub enable_persistence: bool,
+    /// Base directory for persistence files (default: ./save_data)
+    pub persistence_base_dir: std::path::PathBuf,
+    /// Session ID for this runtime instance
+    pub session_id: String,
 }
 
 impl Default for RuntimeConfig {
     fn default() -> Self {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
         Self {
             game_config: GameConfig::default(),
             event_buffer_size: 100,
             command_buffer_size: 32,
             enable_proving: false,
             save_proofs_dir: None,
+            enable_persistence: false,
+            persistence_base_dir: std::path::PathBuf::from("./save_data"),
+            session_id: format!("session_{}", timestamp),
         }
     }
 }
@@ -53,6 +72,7 @@ pub struct Runtime {
     // Background workers
     sim_worker_handle: JoinHandle<()>,
     prover_worker_handle: Option<JoinHandle<()>>,
+    persistence_worker_handle: Option<JoinHandle<()>>,
 
     // Proof metrics (shared with ProverWorker if enabled)
     // Uses atomics for lock-free access
@@ -201,6 +221,24 @@ impl RuntimeBuilder {
         self
     }
 
+    /// Enable persistence worker for state/event/proof persistence
+    pub fn enable_persistence(mut self, enable: bool) -> Self {
+        self.config.enable_persistence = enable;
+        self
+    }
+
+    /// Set session ID for persistence
+    pub fn session_id(mut self, id: impl Into<String>) -> Self {
+        self.config.session_id = id.into();
+        self
+    }
+
+    /// Set base directory for persistence files
+    pub fn persistence_dir(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        self.config.persistence_base_dir = dir.into();
+        self
+    }
+
     /// Set custom post-execution hooks.
     ///
     /// If not provided, the default hooks (ActionCost, Activation) are used.
@@ -334,6 +372,7 @@ impl RuntimeBuilder {
             npc_provider: self.npc_provider,
             sim_worker_handle,
             prover_worker_handle,
+            persistence_worker_handle: None, // TODO: Integrate PersistenceWorker
             proof_metrics,
         })
     }
