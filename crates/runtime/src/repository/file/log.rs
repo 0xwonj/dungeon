@@ -123,6 +123,40 @@ where
         })
     }
 
+    /// Open or create a file repository.
+    ///
+    /// Creates the directory and file if they don't exist, or opens existing file for appending.
+    pub fn open_or_create(base_dir: impl AsRef<Path>, filename: impl AsRef<str>) -> Result<Self> {
+        let base_dir = base_dir.as_ref();
+        std::fs::create_dir_all(base_dir).map_err(RepositoryError::Io)?;
+
+        let filename = filename.as_ref();
+        let path = base_dir.join(filename);
+
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(RepositoryError::Io)?;
+
+        let current_offset = file.metadata().map_err(RepositoryError::Io)?.len();
+        let writer = BufWriter::with_capacity(8 * 1024 * 1024, file);
+
+        tracing::debug!(
+            "Opened/created repository: {} at offset {}",
+            path.display(),
+            current_offset
+        );
+
+        Ok(Self {
+            session_id: filename.to_string(),
+            path,
+            writer,
+            current_offset,
+            _phantom: PhantomData,
+        })
+    }
+
     /// Append an item to the log.
     ///
     /// Returns the byte offset where the item was written.

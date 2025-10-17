@@ -1,39 +1,41 @@
 //! ZK proof generation worker.
 //!
-//! This worker subscribes to game events and generates zero-knowledge proofs
-//! for executed actions. It maintains its own copy of the game state and
-//! incremental Merkle trees (in Phase 4) to efficiently generate witnesses.
+//! This worker reads from the action log and generates zero-knowledge proofs
+//! for executed actions. It maintains a cursor into the action log and
+//! processes entries sequentially.
 //!
 //! Design principles:
-//! - Completely isolated from game logic (only processes deltas)
+//! - Reads from action log rather than subscribing to events
 //! - Runs asynchronously without blocking game execution
-//! - Maintains its own copy of state + Merkle trees
 //! - Emits proof events for clients/submitters to consume
+//! - Can resume from checkpoint to avoid re-proving
 
+use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::broadcast;
+use tokio::time::{self, Duration};
 use tracing::{debug, error, info, warn};
 
-use game_core::{Action, GameState, StateDelta, Tick};
+use game_core::{Action, GameState, Tick};
 use zk::{ProofData, ProofError, Prover, ZkProver};
 
-use crate::events::{Event, EventBus, GameStateEvent, ProofEvent, Topic};
+use crate::events::{Event, EventBus, ProofEvent};
 use crate::oracle::OracleManager;
+use crate::repository::{ActionLogEntry, ActionRepository, FileActionLog};
 use crate::workers::ProofMetrics;
 
 /// Background worker for ZK proof generation.
 ///
-/// Subscribes to ActionExecuted events, generates zero-knowledge proofs,
+/// Reads ActionLogEntry records from the action log, generates zero-knowledge proofs,
 /// and broadcasts ProofGenerated/ProofFailed events.
 pub struct ProverWorker {
-    /// Current game state (synchronized with simulation worker via events)
-    current_state: GameState,
-
     /// ZK prover instance
     prover: ZkProver,
 
-    /// Receives game state events (especially ActionExecuted)
-    event_rx: broadcast::Receiver<Event>,
+    /// Action log repository
+    action_log: FileActionLog,
+
+    /// Current byte offset in the action log
+    current_offset: u64,
 
     /// Event bus for publishing proof events
     event_bus: EventBus,
@@ -43,7 +45,10 @@ pub struct ProverWorker {
     metrics: Arc<ProofMetrics>,
 
     /// Optional directory path for saving proofs
-    save_proofs_dir: Option<std::path::PathBuf>,
+    save_proofs_dir: Option<PathBuf>,
+
+    /// Polling interval for checking new actions
+    poll_interval: Duration,
 }
 
 impl ProverWorker {
@@ -51,30 +56,30 @@ impl ProverWorker {
     ///
     /// # Arguments
     ///
-    /// * `initial_state` - Initial game state (synchronized with simulation worker)
-    /// * `event_bus` - Event bus for subscribing to GameState events and publishing Proof events
+    /// * `action_log` - Action log repository to read from
+    /// * `event_bus` - Event bus for publishing Proof events
     /// * `oracle_manager` - Oracle manager for creating snapshots
     /// * `save_proofs_dir` - Optional directory to save proof files
+    /// * `start_offset` - Byte offset to start reading from (0 for beginning, or checkpoint offset)
     pub fn new(
-        initial_state: GameState,
+        action_log: FileActionLog,
         event_bus: EventBus,
         oracle_manager: OracleManager,
-        save_proofs_dir: Option<std::path::PathBuf>,
+        save_proofs_dir: Option<PathBuf>,
+        start_offset: u64,
     ) -> Self {
-        // Subscribe to GameState topic only
-        let event_rx = event_bus.subscribe(Topic::GameState);
-
         // Create prover
         let oracle_snapshot = Self::create_oracle_snapshot(&oracle_manager);
         let prover = ZkProver::new(oracle_snapshot);
 
         Self {
-            current_state: initial_state,
             prover,
-            event_rx,
+            action_log,
+            current_offset: start_offset,
             event_bus,
             metrics: Arc::new(ProofMetrics::new()),
             save_proofs_dir,
+            poll_interval: Duration::from_millis(100),
         }
     }
 
@@ -110,68 +115,71 @@ impl ProverWorker {
 
     /// Main worker loop.
     ///
-    /// Processes game events until the channel is closed.
-    /// Handles lagged events gracefully by skipping them.
+    /// Polls the action log for new entries and generates proofs.
     pub async fn run(mut self) {
-        info!("ProverWorker started");
+        info!(
+            "ProverWorker started (offset: {}, session: {})",
+            self.current_offset,
+            self.action_log.session_id()
+        );
 
         loop {
-            match self.event_rx.recv().await {
-                Ok(event) => {
-                    self.handle_event(event).await;
+            // Try to read next entry from action log
+            match self.action_log.read_at_offset(self.current_offset) {
+                Ok(Some(entry)) => {
+                    // Process the entry
+                    self.handle_action_entry(entry).await;
+
+                    // Advance offset (we don't know exact size, so we'll retry from same offset if needed)
+                    // In practice, the action log implementation should track offsets properly
+                    match self.action_log.size() {
+                        Ok(size) if size > self.current_offset => {
+                            // There might be more entries, continue immediately
+                            continue;
+                        }
+                        _ => {
+                            // No more entries yet, sleep and poll again
+                            time::sleep(self.poll_interval).await;
+                        }
+                    }
                 }
-                Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    warn!(
-                        "ProverWorker lagged, skipped {} events - proofs may be missing",
-                        skipped
+                Ok(None) => {
+                    // No more entries available, sleep and poll again
+                    time::sleep(self.poll_interval).await;
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to read action log at offset {}: {}",
+                        self.current_offset, e
                     );
-                    // Continue processing (we might miss some proofs but that's ok)
-                }
-                Err(broadcast::error::RecvError::Closed) => {
-                    info!("ProverWorker shutting down (event channel closed)");
-                    break;
+                    time::sleep(self.poll_interval).await;
                 }
             }
         }
-
-        info!("ProverWorker stopped");
     }
 
-    /// Handles a single game event.
-    ///
-    /// Currently only processes ActionExecuted events.
-    /// Other event types are ignored.
-    async fn handle_event(&mut self, event: Event) {
-        if let Event::GameState(GameStateEvent::ActionExecuted {
-            action,
-            delta,
-            clock,
-            before_state,
-            after_state,
-        }) = event
-        {
-            self.handle_action_executed(action, *delta, clock, *before_state, *after_state)
-                .await;
-        }
-    }
-
-    /// Processes an executed action and generates a proof.
+    /// Processes a single action log entry and generates a proof.
     ///
     /// # Workflow
     ///
     /// 1. Announce proof generation started
-    /// 2. Generate proof (Phase 2: full rebuild, Phase 4: incremental)
+    /// 2. Generate proof
     /// 3. Broadcast ProofGenerated or ProofFailed event
-    /// 4. Update internal state reference
-    async fn handle_action_executed(
-        &mut self,
-        action: Action,
-        _delta: StateDelta,
-        clock: Tick,
-        before_state: GameState,
-        after_state: GameState,
-    ) {
-        debug!("ProverWorker processing action at tick {}", clock);
+    /// 4. Update offset
+    async fn handle_action_entry(&mut self, entry: ActionLogEntry) {
+        let ActionLogEntry {
+            nonce,
+            clock,
+            action,
+            before_state,
+            after_state,
+            delta: _,
+        } = entry;
+
+        debug!(
+            "ProverWorker processing action nonce={} tick={}",
+            nonce, clock
+        );
 
         // Update queue depth metric (incremented when starting) - lock-free
         let new_depth = self.metrics.queue_depth() + 1;
@@ -186,15 +194,15 @@ impl ProverWorker {
 
         // Generate proof
         match self
-            .generate_proof(&action, &before_state, &after_state)
+            .generate_proof(&action, &*before_state, &*after_state)
             .await
         {
             Ok((proof_data, proving_time)) => {
                 let generation_time_ms = proving_time.as_millis() as u64;
 
                 info!(
-                    "Proof generated for action at tick {} (proving: {}ms)",
-                    clock, generation_time_ms
+                    "Proof generated for nonce={} tick={} (proving: {}ms)",
+                    nonce, clock, generation_time_ms
                 );
 
                 // Update metrics - lock-free atomic operations
@@ -204,7 +212,7 @@ impl ProverWorker {
 
                 // Save proof to file if configured
                 if let Some(ref dir) = self.save_proofs_dir {
-                    self.save_proof_to_file(dir, &action, clock, &proof_data)
+                    self.save_proof_to_file(dir, &action, nonce, &proof_data)
                         .await;
                 }
 
@@ -224,12 +232,12 @@ impl ProverWorker {
                         // This is CRITICAL - indicates determinism bug
                         error!(
                             target: "runtime::prover",
-                            "🚨 CRITICAL: State inconsistency detected! zkVM and simulation computed different results. {}",
-                            error
+                            "🚨 CRITICAL: State inconsistency detected at nonce={}! zkVM and simulation computed different results. {}",
+                            nonce, error
                         );
                     }
                     _ => {
-                        error!("Proof generation failed: {}", error);
+                        error!("Proof generation failed at nonce={}: {}", nonce, error);
                     }
                 }
 
@@ -248,8 +256,10 @@ impl ProverWorker {
             }
         }
 
-        // Update our state reference for next iteration
-        self.current_state = after_state;
+        // Update offset to next entry
+        // Note: In the real implementation, we need to calculate the exact byte size
+        // For now, we increment by a placeholder (the action log should track this)
+        self.current_offset = self.action_log.size().unwrap_or(self.current_offset);
     }
 
     /// Saves proof to file if directory is configured.
@@ -257,7 +267,7 @@ impl ProverWorker {
         &self,
         dir: &std::path::Path,
         action: &Action,
-        clock: Tick,
+        nonce: u64,
         proof_data: &ProofData,
     ) {
         use tokio::fs;
@@ -268,9 +278,9 @@ impl ProverWorker {
             return;
         }
 
-        // Generate filename: proof_{actor}_{kind}_tick_{clock}.bin
+        // Generate filename: proof_#{actor}_{kind}_{nonce}.bin
         let kind_str = action.kind.as_snake_case();
-        let filename = format!("proof_{}_{}_{}.bin", action.actor, kind_str, clock);
+        let filename = format!("proof_#{}_{}_{}.bin", action.actor, kind_str, nonce);
         let filepath = dir.join(filename);
 
         // Save proof bytes

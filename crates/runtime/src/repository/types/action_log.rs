@@ -25,6 +25,7 @@ use game_core::{Action, GameState, StateDelta, Tick};
 ///
 /// ```rust,ignore
 /// let entry = ActionLogEntry {
+///     nonce: 5,
 ///     clock: 42,
 ///     action: player_move_action,
 ///     before_state: Box::new(state_before),
@@ -34,6 +35,9 @@ use game_core::{Action, GameState, StateDelta, Tick};
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionLogEntry {
+    /// Sequential action nonce
+    pub nonce: u64,
+
     /// Game clock (turn number) when this action was executed
     pub clock: Tick,
 
@@ -61,6 +65,7 @@ pub struct ActionLogEntry {
 impl ActionLogEntry {
     /// Create a new action log entry.
     pub fn new(
+        nonce: u64,
         clock: Tick,
         action: Action,
         before_state: GameState,
@@ -68,6 +73,7 @@ impl ActionLogEntry {
         delta: StateDelta,
     ) -> Self {
         Self {
+            nonce,
             clock,
             action,
             before_state: Box::new(before_state),
@@ -78,12 +84,14 @@ impl ActionLogEntry {
 
     /// Create an action log entry without delta (minimal version).
     pub fn without_delta(
+        nonce: u64,
         clock: Tick,
         action: Action,
         before_state: GameState,
         after_state: GameState,
     ) -> Self {
         Self {
+            nonce,
             clock,
             action,
             before_state: Box::new(before_state),

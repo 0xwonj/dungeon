@@ -319,22 +319,11 @@ impl RuntimeBuilder {
         });
 
         // Create prover worker (if enabled)
-        let (prover_worker_handle, proof_metrics) = if self.config.enable_proving {
-            let prover_worker = ProverWorker::new(
-                initial_state,
-                event_bus.clone(),
-                oracles_for_prover,
-                self.config.save_proofs_dir.clone(),
-            );
-
-            let prover_metrics = prover_worker.metrics();
-
-            (
-                Some(tokio::spawn(async move {
-                    prover_worker.run().await;
-                })),
-                Some(prover_metrics),
-            )
+        // TODO: Integrate ProverWorker with action log
+        // ProverWorker now requires action_log instead of initial_state
+        let (prover_worker_handle, proof_metrics) = if false {
+            // Temporarily disabled until action_log is integrated from PersistenceWorker
+            (None, None)
         } else {
             (None, None)
         };

@@ -2,9 +2,11 @@
 
 mod checkpoint;
 mod log;
+mod proof_index;
 mod state;
 
 pub use checkpoint::FileCheckpointRepository;
+pub use proof_index::FileProofIndexRepository;
 pub use state::FileStateRepository;
 
 // Append-only log repository (generic implementation)

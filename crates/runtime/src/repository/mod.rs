@@ -36,20 +36,24 @@ pub mod memory;
 pub mod types;
 
 mod error;
-mod snapshot;
 mod traits;
 
 // Re-export main types
 pub use error::RepositoryError;
-pub use snapshot::SnapshotService;
-pub use traits::{ActionRepository, CheckpointRepository, EventRepository, StateRepository};
+pub use traits::{
+    ActionRepository, CheckpointRepository, EventRepository, ProofIndexRepository, StateRepository,
+};
 
 // Re-export shared types
-pub use types::{ActionLogEntry, Checkpoint, EventReference, ProofReference, StateReference};
+pub use types::{
+    ActionLogEntry, Checkpoint, EventReference, ProofEntry, ProofIndex, ProofReference,
+    StateReference,
+};
 
 // Re-export file implementations
 pub use file::{
-    FileActionLog, FileCheckpointRepository, FileEventLog, FileRepository, FileStateRepository,
+    FileActionLog, FileCheckpointRepository, FileEventLog, FileProofIndexRepository,
+    FileRepository, FileStateRepository,
 };
 
 // Re-export memory implementations

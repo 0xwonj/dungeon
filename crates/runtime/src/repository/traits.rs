@@ -6,7 +6,7 @@ use crate::api::Result;
 use crate::events::Event;
 
 // Re-export shared types
-pub use super::types::{ActionLogEntry, Checkpoint};
+pub use super::types::{ActionLogEntry, Checkpoint, ProofIndex};
 
 /// Repository for game state persistence and loading
 ///
@@ -128,4 +128,23 @@ pub trait ActionRepository: Send + Sync {
 
     /// Get the session ID associated with this log
     fn session_id(&self) -> &str;
+}
+
+/// Repository for proof index persistence
+///
+/// Stores metadata about generated ZK proofs, indexed by session ID.
+/// This allows efficient lookup of proof status and metadata without
+/// loading the full proof files.
+pub trait ProofIndexRepository: Send + Sync {
+    /// Save the proof index
+    fn save(&self, index: &ProofIndex) -> Result<()>;
+
+    /// Load the proof index by session ID
+    fn load(&self, session_id: &str) -> Result<Option<ProofIndex>>;
+
+    /// Delete a proof index
+    fn delete(&self, session_id: &str) -> Result<()>;
+
+    /// List all proof index sessions
+    fn list_sessions(&self) -> Result<Vec<String>>;
 }
