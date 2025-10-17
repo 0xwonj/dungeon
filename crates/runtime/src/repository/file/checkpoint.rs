@@ -62,9 +62,9 @@ impl CheckpointRepository for FileCheckpointRepository {
             serde_json::from_str(&json).map_err(|e| RepositoryError::Json(e.to_string()))?;
 
         tracing::info!(
-            "Loaded checkpoint for session '{}' with {} topic offsets",
+            "Loaded checkpoint for session '{}' with event offset {}",
             checkpoint.session_id,
-            checkpoint.event_ref.topic_offsets.len()
+            checkpoint.event_ref.offset
         );
 
         Ok(Some(checkpoint))

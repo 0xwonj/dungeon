@@ -69,7 +69,6 @@ where
         // Extract receivers from subscriptions
         let mut game_rx = self.subscriptions.remove(&Topic::GameState);
         let mut proof_rx = self.subscriptions.remove(&Topic::Proof);
-        let mut turn_rx = self.subscriptions.remove(&Topic::Turn);
 
         loop {
             tokio::select! {
@@ -79,11 +78,6 @@ where
                     }
                 }
                 result = async { proof_rx.as_mut().unwrap().recv().await }, if proof_rx.is_some() => {
-                    if self.handle_runtime_event(result, terminal, map).await? {
-                        break;
-                    }
-                }
-                result = async { turn_rx.as_mut().unwrap().recv().await }, if turn_rx.is_some() => {
                     if self.handle_runtime_event(result, terminal, map).await? {
                         break;
                     }

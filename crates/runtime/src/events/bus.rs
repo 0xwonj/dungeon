@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
 
-use super::types::{ActionRef, GameStateEvent, ProofEvent, TurnEvent};
+use super::types::{ActionRef, GameStateEvent, ProofEvent};
 
 /// Topics for event routing
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
@@ -14,8 +14,6 @@ pub enum Topic {
     GameState,
     /// ZK proof events
     Proof,
-    /// Turn management events
-    Turn,
 }
 
 /// Event wrapper that carries the topic and typed event
@@ -23,7 +21,6 @@ pub enum Topic {
 pub enum Event {
     GameState(GameStateEvent),
     Proof(ProofEvent),
-    Turn(TurnEvent),
 
     /// Reference to an action in the actions.log file.
     ///
@@ -38,7 +35,6 @@ impl Event {
         match self {
             Event::GameState(_) => Topic::GameState,
             Event::Proof(_) => Topic::Proof,
-            Event::Turn(_) => Topic::Turn,
             Event::ActionRef(_) => Topic::GameState, // ActionRef belongs to GameState topic
         }
     }
@@ -65,7 +61,6 @@ impl EventBus {
         // Pre-create channels for each topic
         channels.insert(Topic::GameState, broadcast::channel(capacity).0);
         channels.insert(Topic::Proof, broadcast::channel(capacity).0);
-        channels.insert(Topic::Turn, broadcast::channel(capacity).0);
 
         Self {
             channels: Arc::new(RwLock::new(channels)),
@@ -130,6 +125,17 @@ impl EventBus {
                 (topic, rx)
             })
             .collect()
+    }
+
+    /// Subscribe to all topics
+    ///
+    /// Returns a single receiver that gets events from GameState topic.
+    /// This is useful for workers that need to see all game events.
+    ///
+    /// Note: Currently returns only GameState topic receiver since that contains
+    /// the primary action events. For full event coverage, use subscribe_multiple.
+    pub fn subscribe_all(&self) -> broadcast::Receiver<Event> {
+        self.subscribe(Topic::GameState)
     }
 }
 

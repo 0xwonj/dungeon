@@ -77,8 +77,7 @@ impl CliApp {
 
         // Subscribe to topics that CLI needs (GameState and Proof)
         let handle = runtime.handle();
-        let subscriptions =
-            handle.subscribe_multiple(&[Topic::GameState, Topic::Proof, Topic::Turn]);
+        let subscriptions = handle.subscribe_multiple(&[Topic::GameState, Topic::Proof]);
         let initial_state = handle.query_state().await?;
 
         let mut messages = MessageLog::new(config.messages.capacity);

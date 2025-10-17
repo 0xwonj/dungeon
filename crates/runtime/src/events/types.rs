@@ -13,17 +13,17 @@ pub use zk::{ProofBackend, ProofData};
 pub enum GameStateEvent {
     /// An action was executed with resulting state changes
     ActionExecuted {
+        nonce: u64,
         action: Action,
         delta: Box<StateDelta>,
         clock: Tick,
-        /// State before action execution (for ZK proof generation)
         before_state: Box<GameState>,
-        /// State after action execution (for ZK proof generation)
         after_state: Box<GameState>,
     },
 
     /// An action failed during execution pipeline
     ActionFailed {
+        nonce: u64,
         action: Action,
         phase: TransitionPhase,
         error: String,
@@ -51,15 +51,6 @@ pub enum ProofEvent {
         clock: Tick,
         error: String,
     },
-}
-
-/// Events related to turn management (lightweight)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TurnEvent {
-    /// Entity that will act in this turn
-    pub entity: EntityId,
-    /// Current game clock
-    pub clock: Tick,
 }
 
 /// Reference to an executed action in the actions.log file.

@@ -12,19 +12,22 @@
 //! - [`workers`] keeps background tasks internal to the crate
 //! - [`hooks`] provides post-execution hook system for runtime orchestration
 //! - [`oracle`] and [`repository`] provide data adapters reused by other crates
+//! - [`types`] provides common type aliases for semantic clarity
 pub mod api;
 pub mod events;
 pub mod hooks;
 pub mod oracle;
 pub mod repository;
 pub mod runtime;
+pub mod types;
 
+mod utils;
 mod workers;
 
 pub use api::{
     ActionProvider, ProviderKind, Result, RuntimeError, RuntimeHandle, WaitActionProvider,
 };
-pub use events::{Event, EventBus, GameStateEvent, ProofEvent, Topic, TurnEvent};
+pub use events::{Event, EventBus, GameStateEvent, ProofEvent, Topic};
 pub use hooks::{
     ActionCostHook, ActivationHook, HookContext, HookCriticality, HookRegistry, PostExecutionHook,
 };
@@ -33,9 +36,10 @@ pub use oracle::{
 };
 pub use repository::{
     ActionLogEntry, ActionRepository, Checkpoint, CheckpointRepository, EventReference,
-    EventRepository, FileActionLog, FileCheckpointRepository, FileEventLog, FileStateRepository,
-    InMemoryStateRepo, ProofReference, RepositoryError, SnapshotService, StateReference,
-    StateRepository,
+    EventRepository, FileActionLog, FileCheckpointRepository, FileEventLog,
+    FileProofIndexRepository, FileStateRepository, InMemoryStateRepo, ProofEntry, ProofIndex,
+    ProofIndexRepository, ProofReference, RepositoryError, StateReference, StateRepository,
 };
 pub use runtime::{Runtime, RuntimeBuilder, RuntimeConfig};
-pub use workers::ProofMetrics;
+pub use types::{ByteOffset, DurationMs, Nonce, ProofSize, SessionId, StateHash, Timestamp};
+pub use workers::{CheckpointStrategy, PersistenceConfig, ProofMetrics};

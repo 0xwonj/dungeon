@@ -1,6 +1,6 @@
 //! Maintains the CLI message log in response to runtime events.
 use game_core::{Action, ActionKind};
-use runtime::{Event, GameStateEvent, ProofEvent, TurnEvent};
+use runtime::{Event, GameStateEvent};
 
 use frontend_core::{
     event::{EventConsumer, EventImpact},
@@ -42,59 +42,37 @@ impl CliEventConsumer {
 impl EventConsumer for CliEventConsumer {
     fn on_event(&mut self, event: &Event) -> EventImpact {
         match event {
-            Event::Turn(TurnEvent { .. }) => EventImpact::redraw(),
             Event::GameState(GameStateEvent::ActionExecuted {
+                nonce: _,
                 action,
                 delta: _,
                 clock,
                 before_state: _,
                 after_state: _,
             }) => {
-                self.push_action(action, *clock);
+                // Filter out system actions from message log
+                if !action.actor.is_system() {
+                    self.push_action(action, *clock);
+                }
                 // TODO: Use delta for more detailed feedback (e.g., "HP -5", "Item acquired")
                 EventImpact::redraw()
             }
             Event::GameState(GameStateEvent::ActionFailed {
+                nonce: _,
                 action,
                 phase,
                 error,
                 clock,
             }) => {
-                self.push_failure(action, phase.as_str(), error, *clock);
+                // Filter out system actions from message log
+                if !action.actor.is_system() {
+                    self.push_failure(action, phase.as_str(), error, *clock);
+                }
                 EventImpact::redraw()
             }
-            Event::Proof(ProofEvent::ProofStarted { action, clock }) => {
-                let text = format!("🔐 Generating proof for {} at tick {}", action.actor, clock);
-                self.log
-                    .push(MessageEntry::new(text, Some(*clock), MessageLevel::Info));
-                EventImpact::redraw()
-            }
-            Event::Proof(ProofEvent::ProofGenerated {
-                action,
-                clock,
-                generation_time_ms,
-                ..
-            }) => {
-                let text = format!(
-                    "✅ Proof generated for {} at tick {} ({}ms)",
-                    action.actor, clock, generation_time_ms
-                );
-                self.log
-                    .push(MessageEntry::new(text, Some(*clock), MessageLevel::Info));
-                EventImpact::redraw()
-            }
-            Event::Proof(ProofEvent::ProofFailed {
-                action,
-                clock,
-                error,
-            }) => {
-                let text = format!(
-                    "❌ Proof failed for {} at tick {}: {}",
-                    action.actor, clock, error
-                );
-                self.log
-                    .push(MessageEntry::new(text, Some(*clock), MessageLevel::Error));
-                EventImpact::redraw()
+            Event::Proof(_) => {
+                // Proof events are not displayed in CLI to keep focus on gameplay
+                EventImpact::none()
             }
             Event::ActionRef(_) => {
                 // ActionRef is for internal persistence only, not displayed to user

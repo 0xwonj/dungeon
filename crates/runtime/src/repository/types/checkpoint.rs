@@ -3,11 +3,9 @@
 //! Provides lightweight index structures that reference full game states
 //! stored separately. Enables crash recovery, proof resumption, and game save/load.
 
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 
-use crate::events::Topic;
+use crate::types::{ByteOffset, Nonce, SessionId, StateHash, Timestamp};
 
 /// Lightweight checkpoint with references to external data.
 ///
@@ -27,17 +25,17 @@ use crate::events::Topic;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Checkpoint {
     /// Session ID this checkpoint belongs to
-    pub session_id: String,
+    pub session_id: SessionId,
 
     /// Unix timestamp when this checkpoint was created
-    pub timestamp: u64,
+    pub timestamp: Timestamp,
 
     /// Optional human-readable label ("Boss defeated", "Before dungeon")
     pub label: Option<String>,
 
     /// Current state index - canonical index for all references
     /// State[nonce], Proof[nonce], and events up to Action[nonce-1]
-    pub nonce: u64,
+    pub nonce: Nonce,
 
     /// Reference to game state at State[nonce]
     pub state_ref: StateReference,
@@ -53,23 +51,22 @@ pub struct Checkpoint {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StateReference {
     /// Hash of State[nonce] for verification
-    pub state_hash: String,
+    pub state_hash: StateHash,
 
     /// Whether full GameState is saved to disk (state_{nonce}.json exists)
     pub is_persisted: bool,
 }
 
-/// Reference to event logs with byte offsets.
+/// Reference to event logs with byte offset.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventReference {
-    /// Byte offsets per topic (next event to read from each log)
-    /// These point to the next unprocessed event after Action[nonce-1]
-    #[serde(default)]
-    pub topic_offsets: HashMap<Topic, u64>,
+    /// Byte offset in events.log (next event to read)
+    /// Points to the next unprocessed event after Action[nonce-1]
+    pub offset: ByteOffset,
 
     /// Total number of actions executed to reach State[nonce]
     /// This should equal nonce (Action[0..nonce-1] have been processed)
-    pub action_count: u64,
+    pub action_count: Nonce,
 }
 
 /// Reference to a ZK proof.
@@ -98,7 +95,7 @@ impl Checkpoint {
                 is_persisted: false,
             },
             event_ref: EventReference {
-                topic_offsets: HashMap::new(),
+                offset: 0,
                 action_count: 0,
             },
             proof_ref: None,
@@ -107,11 +104,11 @@ impl Checkpoint {
 
     /// Create a checkpoint with state and event references.
     pub fn with_state(
-        session_id: String,
-        nonce: u64,
-        state_hash: String,
+        session_id: SessionId,
+        nonce: Nonce,
+        state_hash: StateHash,
         is_persisted: bool,
-        action_count: u64,
+        action_count: Nonce,
     ) -> Self {
         Self {
             session_id,
@@ -126,36 +123,32 @@ impl Checkpoint {
                 is_persisted,
             },
             event_ref: EventReference {
-                topic_offsets: HashMap::new(),
+                offset: 0,
                 action_count,
             },
             proof_ref: None,
         }
     }
 
-    /// Get the byte offset for resuming a specific topic's log (0 if not set).
-    pub fn topic_offset(&self, topic: Topic) -> u64 {
-        self.event_ref
-            .topic_offsets
-            .get(&topic)
-            .copied()
-            .unwrap_or(0)
+    /// Get the byte offset for resuming events.log.
+    pub fn event_offset(&self) -> ByteOffset {
+        self.event_ref.offset
     }
 
-    /// Update byte offset for a specific topic's log.
-    pub fn set_topic_offset(&mut self, topic: Topic, offset: u64) {
-        self.event_ref.topic_offsets.insert(topic, offset);
+    /// Update byte offset for events.log.
+    pub fn set_event_offset(&mut self, offset: ByteOffset) {
+        self.event_ref.offset = offset;
     }
 
     /// Returns the current state index (State[n]).
-    pub fn state_index(&self) -> u64 {
+    pub fn state_index(&self) -> Nonce {
         self.nonce
     }
 
     /// Returns the nonce for the next action to process (Action[n+1]).
     ///
     /// The next action will transition State[n] → State[n+1].
-    pub fn next_action_nonce(&self) -> u64 {
+    pub fn next_action_nonce(&self) -> Nonce {
         self.nonce + 1
     }
 
@@ -177,7 +170,7 @@ impl Checkpoint {
 
 impl StateReference {
     /// Create a new state reference.
-    pub fn new(state_hash: String, is_persisted: bool) -> Self {
+    pub fn new(state_hash: StateHash, is_persisted: bool) -> Self {
         Self {
             state_hash,
             is_persisted,
@@ -187,9 +180,9 @@ impl StateReference {
 
 impl EventReference {
     /// Create a new event reference.
-    pub fn new(action_count: u64) -> Self {
+    pub fn new(action_count: Nonce) -> Self {
         Self {
-            topic_offsets: HashMap::new(),
+            offset: 0,
             action_count,
         }
     }

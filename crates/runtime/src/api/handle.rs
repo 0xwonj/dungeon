@@ -58,7 +58,6 @@ impl RuntimeHandle {
     ///
     /// - `Topic::GameState` - Action execution and failures
     /// - `Topic::Proof` - ZK proof generation events
-    /// - `Topic::Turn` - Turn management events
     ///
     /// # Example
     ///

@@ -10,7 +10,7 @@ use game_core::{Action, ActionKind, EntityId, GameEngine, GameState, PrepareTurn
 use tracing::{debug, error};
 
 use crate::api::{Result, RuntimeError};
-use crate::events::{Event, EventBus, GameStateEvent, TurnEvent};
+use crate::events::{Event, EventBus, GameStateEvent};
 use crate::hooks::HookRegistry;
 use crate::oracle::OracleManager;
 
@@ -122,11 +122,6 @@ impl SimulationWorker {
         // Clone the current state for action decision-making
         let state_clone = self.state.clone();
 
-        // Publish Turn event to Turn topic
-        let clock = self.state.turn.clock;
-        self.event_bus
-            .publish(Event::Turn(TurnEvent { entity, clock }));
-
         Ok((entity, state_clone))
     }
 
@@ -169,13 +164,15 @@ impl SimulationWorker {
         let mut engine = GameEngine::new(state);
         let delta = engine.execute(env, action)?;
 
-        // Capture state after execution
+        // Capture state after execution (nonce is already incremented by engine)
         let after_state = state.clone();
+        let nonce = after_state.turn.nonce - 1; // Get the nonce that was just used
         let clock = state.turn.clock;
 
         // Publish ActionExecuted event for ALL actions (player, NPC, system)
         // This ensures ProverWorker can generate proofs for every state transition
         event_bus.publish(Event::GameState(GameStateEvent::ActionExecuted {
+            nonce,
             action: action.clone(),
             delta: Box::new(delta.clone()),
             clock,
@@ -425,8 +422,10 @@ impl SimulationWorker {
         }
 
         // Publish ActionFailed event to GameState topic
+        let nonce = self.state.turn.nonce;
         self.event_bus
             .publish(Event::GameState(GameStateEvent::ActionFailed {
+                nonce,
                 action: action.clone(),
                 phase,
                 error: message,
