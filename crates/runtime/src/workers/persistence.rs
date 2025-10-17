@@ -225,6 +225,11 @@ impl PersistenceWorker {
                         .append(&entry)
                         .map_err(|e| format!("Failed to append action log: {}", e))?;
 
+                    // Flush immediately so ProverWorker can read it
+                    self.action_repo
+                        .flush()
+                        .map_err(|e| format!("Failed to flush action log: {}", e))?;
+
                     self.actions_since_checkpoint += 1;
 
                     debug!(
@@ -245,6 +250,11 @@ impl PersistenceWorker {
                 self.event_repo
                     .append(&event)
                     .map_err(|e| format!("Failed to append event: {}", e))?;
+
+                // Flush for consistency (less critical than action log)
+                self.event_repo
+                    .flush()
+                    .map_err(|e| format!("Failed to flush event log: {}", e))?;
             }
         }
 
@@ -312,7 +322,7 @@ impl PersistenceWorker {
 
     /// Compute a hash of the game state for verification
     fn compute_state_hash(&self, state: &GameState) -> String {
-        // Placeholder: In production, use blake3 or similar
-        format!("state_{}", state.turn.clock)
+        use crate::utils::hash::hash_game_state;
+        hash_game_state(state)
     }
 }

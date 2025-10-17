@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use super::{EntityId, Tick};
 
@@ -17,7 +17,8 @@ pub struct TurnState {
 
     /// Set of entities that are currently active (scheduled to act).
     /// This is the authoritative source for ZK proofs to verify all active actors were considered.
-    pub active_actors: HashSet<EntityId>,
+    /// Using BTreeSet instead of HashSet ensures deterministic serialization order for hash consistency.
+    pub active_actors: BTreeSet<EntityId>,
 
     /// The entity currently taking their turn.
     /// Updated by prepare_next_turn() before each action.
@@ -30,7 +31,7 @@ impl TurnState {
         Self {
             nonce: 0,
             clock: 0,
-            active_actors: HashSet::new(),
+            active_actors: BTreeSet::new(),
             current_actor: EntityId::PLAYER,
         }
     }

@@ -19,6 +19,7 @@ pub fn hash_game_state(state: &GameState) -> String {
 /// Compute a hash of proof data bytes.
 ///
 /// Returns the first 8 bytes of the hash as a hex string for compact logging.
+#[allow(dead_code)]
 pub fn hash_proof_data(proof: &ProofData) -> String {
     let hash = hash_bytes(&proof.bytes);
     format!("{:016x}", hash)

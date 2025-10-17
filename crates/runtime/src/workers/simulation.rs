@@ -158,16 +158,16 @@ impl SimulationWorker {
     ) -> std::result::Result<game_core::StateDelta, ExecuteError> {
         // Capture state before execution
         let before_state = state.clone();
+        let nonce = before_state.turn.nonce; // The nonce for this action
+        let clock = before_state.turn.clock;
         let env = oracles.as_game_env();
 
-        // Execute action through GameEngine
+        // Execute action through GameEngine (this will increment nonce)
         let mut engine = GameEngine::new(state);
         let delta = engine.execute(env, action)?;
 
-        // Capture state after execution (nonce is already incremented by engine)
+        // Capture state after execution
         let after_state = state.clone();
-        let nonce = after_state.turn.nonce - 1; // Get the nonce that was just used
-        let clock = state.turn.clock;
 
         // Publish ActionExecuted event for ALL actions (player, NPC, system)
         // This ensures ProverWorker can generate proofs for every state transition

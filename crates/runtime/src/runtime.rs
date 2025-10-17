@@ -33,6 +33,8 @@ pub struct RuntimeConfig {
     pub persistence_base_dir: std::path::PathBuf,
     /// Session ID for this runtime instance
     pub session_id: String,
+    /// Number of actions between automatic checkpoints (default: 10)
+    pub checkpoint_interval: u64,
 }
 
 impl Default for RuntimeConfig {
@@ -51,9 +53,25 @@ impl Default for RuntimeConfig {
             enable_proving: false,
             save_proofs_dir: None,
             enable_persistence: false,
-            persistence_base_dir: std::path::PathBuf::from("./save_data"),
+            persistence_base_dir: Self::default_save_dir(),
             session_id: format!("session_{}", timestamp),
+            checkpoint_interval: 10,
         }
+    }
+}
+
+impl RuntimeConfig {
+    /// Get the default system directory for save data
+    ///
+    /// Uses platform-specific directories via the `directories` crate:
+    /// - macOS: `~/Library/Application Support/dungeon`
+    /// - Linux: `~/.local/share/dungeon` (or `$XDG_DATA_HOME/dungeon`)
+    /// - Windows: `%APPDATA%\dungeon`
+    /// - Fallback: `./save_data` (current directory)
+    fn default_save_dir() -> std::path::PathBuf {
+        directories::ProjectDirs::from("", "", "dungeon")
+            .map(|dirs| dirs.data_dir().to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from("./save_data"))
     }
 }
 
@@ -243,6 +261,12 @@ impl RuntimeBuilder {
         self
     }
 
+    /// Set checkpoint interval (number of actions between checkpoints)
+    pub fn checkpoint_interval(mut self, interval: u64) -> Self {
+        self.config.checkpoint_interval = interval;
+        self
+    }
+
     /// Set custom post-execution hooks.
     ///
     /// If not provided, the default hooks (ActionCost, Activation) are used.
@@ -364,7 +388,9 @@ impl RuntimeBuilder {
                 self.config.session_id.clone(),
                 self.config.persistence_base_dir.clone(),
             )
-            .with_strategy(CheckpointStrategy::EveryNActions(10));
+            .with_strategy(CheckpointStrategy::EveryNActions(
+                self.config.checkpoint_interval,
+            ));
 
             let event_rx = event_bus.subscribe(crate::events::Topic::GameState);
 
@@ -390,26 +416,43 @@ impl RuntimeBuilder {
         // Create prover worker (if enabled and persistence is enabled)
         let (prover_worker_handle, proof_metrics) = if self.config.enable_proving {
             if !self.config.enable_persistence {
-                tracing::warn!(
-                    "ZK proving enabled but persistence disabled. Proving requires persistence."
-                );
-                (None, None)
+                return Err(RuntimeError::InvalidConfig(
+                    "ZK proving requires persistence to be enabled. \
+                     Set enable_persistence(true) before enable_proving(true)."
+                        .to_string(),
+                ));
             } else {
                 use crate::repository::FileActionLog;
 
                 // Open the action log file that PersistenceWorker is writing to
-                let session_dir = self.config.persistence_base_dir.join(&self.config.session_id);
+                let session_dir = self
+                    .config
+                    .persistence_base_dir
+                    .join(&self.config.session_id);
                 let action_filename = format!("actions_{}.log", self.config.session_id);
                 let action_log = FileActionLog::open(session_dir.join("actions"), &action_filename)
-                    .map_err(|e| RuntimeError::InvalidConfig(format!("Failed to open action log: {}", e)))?;
+                    .map_err(|e| {
+                        RuntimeError::InvalidConfig(format!("Failed to open action log: {}", e))
+                    })?;
+
+                // Proof index directory (dedicated subdirectory)
+                let proof_index_dir = session_dir.join("proof_indices");
+
+                // Proofs directory (dedicated subdirectory)
+                let proofs_dir = session_dir.join("proofs");
 
                 let prover_worker = ProverWorker::new(
                     action_log,
                     event_bus.clone(),
                     oracles.clone(),
-                    self.config.save_proofs_dir.clone(),
+                    Some(proofs_dir),
+                    proof_index_dir,
+                    self.config.session_id.clone(),
                     0, // start_offset
-                );
+                )
+                .map_err(|e| {
+                    RuntimeError::InvalidConfig(format!("Failed to create ProverWorker: {}", e))
+                })?;
 
                 let prover_metrics = prover_worker.metrics();
 

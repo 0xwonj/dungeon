@@ -46,14 +46,20 @@ impl EventRepository for InMemoryEventRepository {
         Ok(events.len() as u64)
     }
 
-    fn read_at_offset(&self, byte_offset: u64) -> Result<Option<Event>> {
+    fn read_at_offset(&self, byte_offset: u64) -> Result<Option<(Event, u64)>> {
         // For in-memory repository, we treat "offset" as an index for simplicity
         let events = self
             .events
             .read()
             .map_err(|_| RepositoryError::LockPoisoned)?;
 
-        Ok(events.get(byte_offset as usize).cloned())
+        match events.get(byte_offset as usize).cloned() {
+            Some(event) => {
+                let next_offset = byte_offset + 1; // Next index
+                Ok(Some((event, next_offset)))
+            }
+            None => Ok(None),
+        }
     }
 
     fn flush(&mut self) -> Result<()> {

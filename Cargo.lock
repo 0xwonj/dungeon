@@ -1936,6 +1936,7 @@ dependencies = [
  "async-trait",
  "client-core",
  "crossterm 0.29.0",
+ "dotenvy",
  "frontend-core",
  "game-core",
  "ratatui",
@@ -1943,6 +1944,7 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "tracing",
+ "tracing-appender",
  "tracing-subscriber 0.3.20",
 ]
 
@@ -2514,6 +2516,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "directories"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16f5094c54661b38d03bd7e50df373292118db60b585c08a411c6d840017fe7d"
+dependencies = [
+ "dirs-sys 0.5.0",
+]
+
+[[package]]
 name = "dirs"
 version = "5.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2586,6 +2597,12 @@ checksum = "95249b50c6c185bee49034bcb378a49dc2b5dff0be90ff6616d31d64febab05d"
 dependencies = [
  "litrs",
 ]
+
+[[package]]
+name = "dotenvy"
+version = "0.15.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "downcast-rs"
@@ -5709,6 +5726,7 @@ dependencies = [
  "async-trait",
  "bincode",
  "client-core",
+ "directories",
  "game-core",
  "serde",
  "serde_json",

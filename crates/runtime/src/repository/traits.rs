@@ -78,7 +78,8 @@ pub trait EventRepository: Send + Sync {
     /// Read an event at a specific byte offset
     ///
     /// Returns `None` if the offset is beyond the end of the log.
-    fn read_at_offset(&self, byte_offset: u64) -> Result<Option<Event>>;
+    /// Returns `Some((event, next_offset))` where next_offset is the byte position after this entry.
+    fn read_at_offset(&self, byte_offset: u64) -> Result<Option<(Event, u64)>>;
 
     /// Flush buffered writes to disk
     fn flush(&mut self) -> Result<()>;
@@ -118,7 +119,8 @@ pub trait ActionRepository: Send + Sync {
     /// Read an action log entry at a specific byte offset
     ///
     /// Returns `None` if the offset is beyond the end of the log.
-    fn read_at_offset(&self, byte_offset: u64) -> Result<Option<ActionLogEntry>>;
+    /// Returns `Some((entry, next_offset))` where next_offset is the byte position after this entry.
+    fn read_at_offset(&self, byte_offset: u64) -> Result<Option<(ActionLogEntry, u64)>>;
 
     /// Flush buffered writes to disk
     fn flush(&mut self) -> Result<()>;

@@ -182,7 +182,8 @@ where
     /// Read an item at a specific byte offset.
     ///
     /// Returns `None` if the offset is beyond the end of the file.
-    pub fn read_at_offset(&self, byte_offset: u64) -> Result<Option<T>> {
+    /// Returns `Some((item, next_offset))` where next_offset is the byte position after this entry.
+    pub fn read_at_offset(&self, byte_offset: u64) -> Result<Option<(T, u64)>> {
         // Open a separate reader (doesn't interfere with writer)
         let file = File::open(&self.path).map_err(RepositoryError::Io)?;
         let file_size = file.metadata().map_err(RepositoryError::Io)?.len();
@@ -214,7 +215,10 @@ where
         let item = bincode::deserialize(&data)
             .map_err(|e| RepositoryError::Serialization(e.to_string()))?;
 
-        Ok(Some(item))
+        // Calculate next offset: current + 4 bytes (length prefix) + data length
+        let next_offset = byte_offset + 4 + len as u64;
+
+        Ok(Some((item, next_offset)))
     }
 
     /// Flush buffered writes to disk.
@@ -260,7 +264,7 @@ impl EventRepository for FileRepository<Event> {
         self.append(event)
     }
 
-    fn read_at_offset(&self, byte_offset: u64) -> Result<Option<Event>> {
+    fn read_at_offset(&self, byte_offset: u64) -> Result<Option<(Event, u64)>> {
         self.read_at_offset(byte_offset)
     }
 
@@ -282,7 +286,7 @@ impl ActionRepository for FileRepository<ActionLogEntry> {
         self.append(entry)
     }
 
-    fn read_at_offset(&self, byte_offset: u64) -> Result<Option<ActionLogEntry>> {
+    fn read_at_offset(&self, byte_offset: u64) -> Result<Option<(ActionLogEntry, u64)>> {
         self.read_at_offset(byte_offset)
     }
 
@@ -357,11 +361,13 @@ mod tests {
         repo.flush().unwrap();
 
         // Read items back
-        let read1 = repo.read_at_offset(offset1).unwrap();
-        let read2 = repo.read_at_offset(offset2).unwrap();
+        let (read1, next_offset1) = repo.read_at_offset(offset1).unwrap().unwrap();
+        let (read2, next_offset2) = repo.read_at_offset(offset2).unwrap().unwrap();
 
-        assert_eq!(read1, Some(item1));
-        assert_eq!(read2, Some(item2));
+        assert_eq!(read1, item1);
+        assert_eq!(read2, item2);
+        assert_eq!(next_offset1, offset2);
+        assert!(next_offset2 > offset2);
 
         // Read beyond end
         let read_end = repo.read_at_offset(999999).unwrap();

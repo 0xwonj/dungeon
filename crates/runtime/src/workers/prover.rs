@@ -20,7 +20,10 @@ use zk::{ProofData, ProofError, Prover, ZkProver};
 
 use crate::events::{Event, EventBus, ProofEvent};
 use crate::oracle::OracleManager;
-use crate::repository::{ActionLogEntry, FileActionLog};
+use crate::repository::{
+    ActionLogEntry, FileActionLog, FileProofIndexRepository, ProofEntry, ProofIndex,
+    ProofIndexRepository,
+};
 use crate::workers::ProofMetrics;
 
 /// Background worker for ZK proof generation.
@@ -47,6 +50,12 @@ pub struct ProverWorker {
     /// Optional directory path for saving proofs
     save_proofs_dir: Option<PathBuf>,
 
+    /// Proof index repository for tracking which proofs have been generated
+    proof_index_repo: FileProofIndexRepository,
+
+    /// In-memory proof index (cached, periodically saved to disk)
+    proof_index: ProofIndex,
+
     /// Polling interval for checking new actions
     poll_interval: Duration,
 }
@@ -60,27 +69,56 @@ impl ProverWorker {
     /// * `event_bus` - Event bus for publishing Proof events
     /// * `oracle_manager` - Oracle manager for creating snapshots
     /// * `save_proofs_dir` - Optional directory to save proof files
+    /// * `proof_index_base_dir` - Directory for storing proof index
+    /// * `session_id` - Session ID for this runtime instance
     /// * `start_offset` - Byte offset to start reading from (0 for beginning, or checkpoint offset)
     pub fn new(
         action_log: FileActionLog,
         event_bus: EventBus,
         oracle_manager: OracleManager,
         save_proofs_dir: Option<PathBuf>,
+        proof_index_base_dir: PathBuf,
+        session_id: String,
         start_offset: u64,
-    ) -> Self {
+    ) -> Result<Self, String> {
         // Create prover
         let oracle_snapshot = Self::create_oracle_snapshot(&oracle_manager);
         let prover = ZkProver::new(oracle_snapshot);
 
-        Self {
+        // Setup proof index repository
+        let proof_index_repo = FileProofIndexRepository::new(&proof_index_base_dir)
+            .map_err(|e| format!("Failed to create proof index repository: {}", e))?;
+
+        // Load or create proof index
+        let proof_index = match proof_index_repo.load(&session_id) {
+            Ok(Some(index)) => {
+                info!(
+                    "Loaded existing proof index: session={}, proven_up_to={}",
+                    session_id, index.proven_up_to_nonce
+                );
+                index
+            }
+            Ok(None) => {
+                info!("Creating new proof index: session={}", session_id);
+                ProofIndex::new(session_id.clone())
+            }
+            Err(e) => {
+                warn!("Failed to load proof index, creating new: {}", e);
+                ProofIndex::new(session_id.clone())
+            }
+        };
+
+        Ok(Self {
             prover,
             action_log,
             current_offset: start_offset,
             event_bus,
             metrics: Arc::new(ProofMetrics::new()),
             save_proofs_dir,
+            proof_index_repo,
+            proof_index,
             poll_interval: Duration::from_millis(100),
-        }
+        })
     }
 
     /// Returns a clone of the metrics Arc for external querying.
@@ -126,12 +164,14 @@ impl ProverWorker {
         loop {
             // Try to read next entry from action log
             match self.action_log.read_at_offset(self.current_offset) {
-                Ok(Some(entry)) => {
+                Ok(Some((entry, next_offset))) => {
                     // Process the entry
                     self.handle_action_entry(entry).await;
 
-                    // Advance offset (we don't know exact size, so we'll retry from same offset if needed)
-                    // In practice, the action log implementation should track offsets properly
+                    // Update offset to point to the next entry
+                    self.current_offset = next_offset;
+
+                    // Check if there might be more entries immediately available
                     match self.action_log.size() {
                         Ok(size) if size > self.current_offset => {
                             // There might be more entries, continue immediately
@@ -194,15 +234,24 @@ impl ProverWorker {
 
         // Generate proof
         match self
-            .generate_proof(&action, &*before_state, &*after_state)
+            .generate_proof(&action, &before_state, &after_state)
             .await
         {
             Ok((proof_data, proving_time)) => {
                 let generation_time_ms = proving_time.as_millis() as u64;
 
+                // Compute state hashes for logging
+                use crate::utils::hash::hash_game_state;
+                let before_hash = hash_game_state(&before_state);
+                let after_hash = hash_game_state(&after_state);
+
                 info!(
-                    "Proof generated for nonce={} tick={} (proving: {}ms)",
-                    nonce, clock, generation_time_ms
+                    "Proof generated for nonce={} tick={} (proving: {}ms) | before={} after={}",
+                    nonce,
+                    clock,
+                    generation_time_ms,
+                    &before_hash[..8],
+                    &after_hash[..8]
                 );
 
                 // Update metrics - lock-free atomic operations
@@ -210,10 +259,24 @@ impl ProverWorker {
                 let new_depth = self.metrics.queue_depth().saturating_sub(1);
                 self.metrics.set_queue_depth(new_depth);
 
+                // Create proof entry
+                let mut proof_entry = ProofEntry::new(nonce, generation_time_ms);
+
                 // Save proof to file if configured
-                if let Some(ref dir) = self.save_proofs_dir {
-                    self.save_proof_to_file(dir, &action, nonce, &proof_data)
-                        .await;
+                if let Some(ref dir) = self.save_proofs_dir
+                    && let Some((filename, size)) = self
+                        .save_proof_to_file(dir, &action, nonce, &proof_data)
+                        .await
+                {
+                    proof_entry = proof_entry.with_file(filename, size);
+                }
+
+                // Update proof index
+                self.proof_index.add_proof(proof_entry);
+
+                // Save proof index to disk (every proof for now, could batch later)
+                if let Err(e) = self.proof_index_repo.save(&self.proof_index) {
+                    error!("Failed to save proof index: {}", e);
                 }
 
                 // Publish proof generated event to Proof topic
@@ -256,32 +319,33 @@ impl ProverWorker {
             }
         }
 
-        // Update offset to next entry
-        // Note: In the real implementation, we need to calculate the exact byte size
-        // For now, we increment by a placeholder (the action log should track this)
-        self.current_offset = self.action_log.size().unwrap_or(self.current_offset);
+        // Offset is already updated in the main loop after read_at_offset returns next_offset
     }
 
     /// Saves proof to file if directory is configured.
+    ///
+    /// Returns Some((filename, size_bytes)) on success, None on failure.
     async fn save_proof_to_file(
         &self,
         dir: &std::path::Path,
         action: &Action,
         nonce: u64,
         proof_data: &ProofData,
-    ) {
+    ) -> Option<(String, u64)> {
         use tokio::fs;
 
         // Create directory if it doesn't exist
         if let Err(e) = fs::create_dir_all(dir).await {
             warn!("Failed to create proof directory {:?}: {}", dir, e);
-            return;
+            return None;
         }
 
-        // Generate filename: proof_#{actor}_{kind}_{nonce}.bin
+        // Generate filename: proof_{nonce}_{actor}_{kind}.bin
         let kind_str = action.kind.as_snake_case();
-        let filename = format!("proof_#{}_{}_{}.bin", action.actor, kind_str, nonce);
-        let filepath = dir.join(filename);
+        let filename = format!("proof_{}_{}_{}.bin", nonce, action.actor, kind_str);
+        let filepath = dir.join(&filename);
+
+        let size_bytes = proof_data.bytes.len() as u64;
 
         // Save proof bytes
         match fs::write(&filepath, &proof_data.bytes).await {
@@ -289,12 +353,14 @@ impl ProverWorker {
                 info!(
                     "💾 Proof saved: {} ({} bytes, backend: {:?})",
                     filepath.display(),
-                    proof_data.bytes.len(),
+                    size_bytes,
                     proof_data.backend
                 );
+                Some((filename, size_bytes))
             }
             Err(e) => {
                 warn!("Failed to save proof to {:?}: {}", filepath, e);
+                None
             }
         }
     }

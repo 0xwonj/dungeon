@@ -10,14 +10,14 @@ use crate::repository::{RepositoryError, StateRepository};
 
 /// File-based implementation of StateRepository.
 ///
-/// Stores game states as individual JSON files indexed by nonce.
+/// Stores game states as individual bincode files indexed by nonce.
 ///
 /// # File Format
 ///
-/// States are stored as `state_{nonce}.json` in JSON format for:
-/// - Human readability (debugging)
-/// - Easy inspection and modification
-/// - Cross-platform compatibility
+/// States are stored as `state_{nonce}.bin` in bincode format for:
+/// - Compact size
+/// - Fast serialization/deserialization
+/// - Support for complex types (HashMap with non-string keys)
 pub struct FileStateRepository {
     base_dir: PathBuf,
 }
@@ -32,21 +32,21 @@ impl FileStateRepository {
 
     /// Get the path to a state file.
     fn state_path(&self, nonce: u64) -> PathBuf {
-        self.base_dir.join(format!("state_{}.json", nonce))
+        self.base_dir.join(format!("state_{}.bin", nonce))
     }
 }
 
 impl StateRepository for FileStateRepository {
     fn save(&self, nonce: u64, state: &GameState) -> Result<()> {
         let path = self.state_path(nonce);
-        let temp_path = path.with_extension("json.tmp");
+        let temp_path = path.with_extension("bin.tmp");
 
-        // Serialize to JSON
-        let json = serde_json::to_string_pretty(state)
-            .map_err(|e| RepositoryError::Json(e.to_string()))?;
+        // Serialize to bincode
+        let bytes =
+            bincode::serialize(state).map_err(|e| RepositoryError::Serialization(e.to_string()))?;
 
         // Write to temp file
-        fs::write(&temp_path, json).map_err(RepositoryError::Io)?;
+        fs::write(&temp_path, bytes).map_err(RepositoryError::Io)?;
 
         // Atomic rename
         fs::rename(&temp_path, &path).map_err(RepositoryError::Io)?;
@@ -63,9 +63,9 @@ impl StateRepository for FileStateRepository {
             return Ok(None);
         }
 
-        let json = fs::read_to_string(&path).map_err(RepositoryError::Io)?;
-        let state: GameState =
-            serde_json::from_str(&json).map_err(|e| RepositoryError::Json(e.to_string()))?;
+        let bytes = fs::read(&path).map_err(RepositoryError::Io)?;
+        let state: GameState = bincode::deserialize(&bytes)
+            .map_err(|e| RepositoryError::Serialization(e.to_string()))?;
 
         tracing::debug!("Loaded state[{}] from {}", nonce, path.display());
 
@@ -99,7 +99,7 @@ impl StateRepository for FileStateRepository {
             if let Some(filename) = path.file_name().and_then(|s| s.to_str())
                 && let Some(nonce_str) = filename
                     .strip_prefix("state_")
-                    .and_then(|s| s.strip_suffix(".json"))
+                    .and_then(|s| s.strip_suffix(".bin"))
                 && let Ok(nonce) = nonce_str.parse::<u64>()
             {
                 nonces.push(nonce);
