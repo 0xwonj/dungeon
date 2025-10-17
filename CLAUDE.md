@@ -15,13 +15,10 @@ A deterministic, ZK-provable, turn-based 2D dungeon RPG built with Rust. The gam
 - Lint: `cargo clippy --workspace --all-targets --all-features`
 - Docs: `cargo doc --no-deps --open`
 
-### Cargo Aliases (see `.cargo/config.toml`)
+### Cargo Aliases
 
-- `cargo quick` / `cargo qb` - Quick build
-- `cargo qt` - Quick tests
+- `cargo qt` - Quick tests (`test --workspace`)
 - `cargo lint` - Clippy check
-- `cargo qa` - Format + lint + test
-- `cargo docs` - Generate docs
 
 ### ZK Modes
 

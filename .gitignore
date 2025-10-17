@@ -1,6 +1,36 @@
+# Rust
+/target
 **/target
+**/*.rs.bk
+*.pdb
+
+# IDE / Editor
 /.vscode
+/.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment & Config
+.env
+.env.local
+.env.*.local
+
+# Project specific
+/save_data
 /.claude
 **/TODOs.md
-/save_data
-.env
+
+# Logs
+*.log
+/logs
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.so
+*.dylib
+*.dll

@@ -1,96 +1,14 @@
 # Cargo configuration for dungeon project
-# See: https://doc.rust-lang.org/cargo/reference/config.html
-
-[build]
-# Treat warnings as errors in CI (can be overridden with RUSTFLAGS)
-# rustflags = ["-D", "warnings"]
 
 [alias]
-# ============================================================================
-# Development Aliases
-# ============================================================================
+# Lint and format
+lint = "clippy --workspace --all-targets --all-features"
+fmt = "fmt --all"
+fix = "clippy --workspace --fix"
 
-# Quick builds (skip RISC0 guest builds)
-quick = "build --workspace"
-qb = "build --workspace"
-
-# Quick tests (skip RISC0 guest builds)
-quick-test = "test --workspace"
-qt = "test --workspace"
-
-# Fast test with stub prover (no real proving)
-fast-test = "test --workspace -p zk --no-default-features --features stub"
-ft = "test --workspace -p zk --no-default-features --features stub"
-
-# Check all code without building
-check-all = "check --workspace --all-targets"
-ca = "check --workspace --all-targets"
-
-# ============================================================================
-# Quality Assurance Aliases
-# ============================================================================
-
-# Lint with clippy (all features)
-lint = "clippy --workspace --all-targets --all-features -- -D warnings"
-lint-fix = "clippy --workspace --all-targets --all-features --fix"
-
-# Format code
-fmt-check = "fmt --all -- --check"
-fmt-all = "fmt --all"
-
-# Full quality check (format + lint + test)
-qa = "fmt --all -- --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo test --workspace"
-
-# ============================================================================
-# Production Aliases
-# ============================================================================
-
-# Production build (all optimizations)
-prod = "build --workspace --release"
-prod-cli = "build --release -p cli-client"
-
-# ============================================================================
-# Documentation Aliases
-# ============================================================================
-
-# Generate and open docs
-docs = "doc --workspace --no-deps --open"
-docs-all = "doc --workspace --open"
-
-# ============================================================================
-# Dependency Management
-# ============================================================================
-
-# Check outdated dependencies
-outdated = "outdated --workspace"
-
-# Show dependency tree
-tree-features = "tree -e features"
-tree-dupes = "tree --duplicates"
-
-# ============================================================================
-# Environment Variables (Development defaults)
-# ============================================================================
+# Documentation
+doc = "doc --workspace --no-deps --open"
 
 [env]
-# Skip RISC0 guest builds during development (significantly faster)
-# Override with: RISC0_SKIP_BUILD=0 cargo build
+# Skip RISC0 guest builds by default (override with RISC0_SKIP_BUILD=0)
 RISC0_SKIP_BUILD = "1"
-
-# Logging level (override with: RUST_LOG=debug cargo run)
-# RUST_LOG = "info"
-
-# RISC0 development mode (fast but insecure proofs)
-# Uncomment for even faster development iteration:
-# RISC0_DEV_MODE = "1"
-
-# ============================================================================
-# Target-specific Configuration
-# ============================================================================
-
-# Optimize for local CPU (faster runtime, slower compile)
-# [target.x86_64-unknown-linux-gnu]
-# rustflags = ["-C", "target-cpu=native"]
-
-# [target.aarch64-apple-darwin]
-# rustflags = ["-C", "target-cpu=native"]
