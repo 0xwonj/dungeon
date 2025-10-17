@@ -2,9 +2,10 @@
 //!
 //! Provides configuration loading, oracle assembly, and runtime setup that can
 //! be reused by CLI, UI, or other front-end crates.
-pub mod bootstrap;
+pub mod builder;
 pub mod config;
-pub mod world;
+pub mod oracles;
 
-pub use bootstrap::{ClientBootstrap, RuntimeSetup};
+pub use builder::{RuntimeBuilder, RuntimeSetup};
 pub use config::CliConfig;
+pub use oracles::{OracleBundle, OracleFactory, TestOracleFactory};

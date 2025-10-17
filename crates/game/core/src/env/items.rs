@@ -5,6 +5,7 @@ pub trait ItemOracle {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ItemDefinition {
     pub handle: ItemHandle,
     pub category: ItemCategory,
@@ -29,6 +30,7 @@ impl ItemDefinition {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ItemCategory {
     Consumable,
     Key,

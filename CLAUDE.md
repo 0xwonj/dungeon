@@ -8,14 +8,83 @@ A deterministic, ZK-provable, turn-based 2D dungeon RPG built with Rust. The gam
 
 ## Build & Test Commands
 
-- Full workspace build: `cargo build --workspace`
-- Run CLI client: `cargo run -p client-frontend-cli`
-- All tests: `cargo test --workspace`
-- Single test: `cargo test --workspace <test_name>`
-- Specific crate tests: `cargo test -p runtime`
-- Format code: `cargo fmt`
-- Lint: `cargo clippy --workspace --all-targets --all-features`
-- API documentation: `cargo doc --no-deps --open`
+**Recommended: Use Just command runner for multi-backend workflows**
+
+Install Just: `cargo install just`
+
+### Quick Start with Just
+
+```bash
+# Fast development (stub backend - instant, no real proofs)
+just build stub
+just run stub
+just test stub
+
+# RISC0 backend (production, but skip guest builds for speed)
+just build risc0-fast
+just run risc0-fast
+
+# RISC0 backend (full production build with real proofs)
+just build risc0
+
+# Set default backend via environment variable
+export ZK_BACKEND=stub
+just build   # automatically uses stub
+just run
+just test
+
+# See all available commands
+just --list
+just help
+```
+
+### Common Just Commands
+
+- `just build [backend]` - Build workspace with specified backend
+- `just run [backend]` - Run CLI client
+- `just test [backend]` - Run all tests
+- `just lint [backend]` - Run clippy lints
+- `just fmt` - Format all code
+- `just check [backend]` - Run format check + lint + tests
+- `just dev` - Fast development loop (format + lint + test with stub)
+- `just pre-commit` - Pre-commit checks (recommended before committing)
+- `just check-all` - Verify all backends compile
+- `just tail-logs [session]` - Monitor client logs in real-time
+- `just clean-data` - Clean save data and logs (with confirmation)
+
+### Available ZK Backends
+
+- `risc0` - RISC0 zkVM (production, real proofs, slow guest compilation)
+- `risc0-fast` - RISC0 with `RISC0_SKIP_BUILD=1` (fast iteration, skip guest builds)
+- `stub` - Stub prover (instant, no real proofs, testing only)
+- `sp1` - SP1 zkVM (not implemented yet)
+- `arkworks` - Arkworks circuits (not implemented yet)
+
+### Direct Cargo Commands (without Just)
+
+If you prefer not to use Just, you can use cargo directly:
+
+```bash
+# Stub backend (fast development)
+cargo build --workspace --no-default-features --features stub
+cargo run -p cli-client --no-default-features --features stub
+cargo test --workspace --no-default-features --features stub
+
+# RISC0 backend (default)
+cargo build --workspace
+RISC0_SKIP_BUILD=1 cargo build --workspace  # skip guest builds
+
+# Lint and format
+cargo lint  # uses default backend (risc0)
+cargo fmt --all
+```
+
+### Environment Variables
+
+- `ZK_BACKEND` - Set default backend for Just commands (risc0, risc0-fast, stub, sp1, arkworks)
+- `RISC0_SKIP_BUILD=1` - Skip guest builds during cargo build (use for fast iteration)
+- `RISC0_DEV_MODE=1` - Fast dev proofs (when running with real RISC0 backend)
+- `RUST_LOG=info` - Logging level
 
 ## Architecture
 
@@ -28,10 +97,11 @@ crates/
 │   └── content/     # Static content and fixtures exposed through oracle adapters
 ├── runtime/         # Public API (RuntimeHandle), orchestrator, workers, oracles, repositories
 ├── zk/              # Proving utilities reused by prover worker and off-chain services
-└── client/
-    ├── core/        # Shared UX glue: config, messages, view models, oracle factories
-    └── frontend/
-        └── cli/     # Async terminal application, event loop, action provider
+├── client/
+│   ├── bootstrap/   # Bootstrap utilities: configuration, oracle factories, runtime setup (crate: client-bootstrap)
+│   └── frontend/
+│       └── cli/     # Async terminal application, event loop, action provider
+└── xtask/           # Development tools (cargo xtask pattern): tail-logs, clean-data
 ```
 
 **Dependency flow**: `client`, `runtime`, `zk` → depend on `game/core` only. Never the reverse.
@@ -54,17 +124,21 @@ crates/
 - **Repositories**: All storage behind traits (`StateRepository`, etc.) with in-memory implementations for testing
 - **Message-driven**: Workers communicate via `tokio` channels, enabling concurrent pipelines
 
-### client/core: UX Glue
+### client/bootstrap: Runtime Setup & Configuration
 
-- **Responsibility**: Shared client logic for configuration, message passing, view models, and oracle factories
-- **Bootstrap**: Provides `RuntimeConfig` and `OracleBundle` construction for runtime initialization
-- **Providers**: Implements `ActionProvider` for human input, AI/NPC scripts, or deterministic replay
-- **Message-driven**: Translates front-end messages into runtime-facing actions
+- **Crate name**: `client-bootstrap` (located at `crates/client/bootstrap/`)
+- **Responsibility**: Bootstrap utilities for initializing runtime with proper configuration and oracles
+- **Modules**:
+  - `builder`: `RuntimeBuilder` builder pattern for assembling runtime with configuration
+  - `config`: `CliConfig` and environment variable loading for client configuration
+  - `oracles`: `OracleBundle`, `OracleFactory` trait, and `TestOracleFactory` implementation
+- **Purpose**: Reusable setup code shared across CLI, UI, and other front-end crates
+- **Exports**: `RuntimeBuilder`, `RuntimeSetup`, `CliConfig`, `OracleBundle`, `OracleFactory`
 
 ### client/frontend/cli: Terminal Interface
 
 - **Responsibility**: Async terminal application with event loops and action providers
-- **Architecture**: Consumes `client/core` abstractions, subscribes to runtime events, renders state
+- **Architecture**: Consumes `client-bootstrap` for setup, subscribes to runtime events, renders state
 - **Interaction**: Collects player commands, validates entity/turn alignment, forwards actions to runtime
 
 ## Code Organization Patterns
@@ -173,13 +247,13 @@ Keep commits scoped to single concerns. Include doc updates when behavior change
 - Proof generation coordination (ProverWorker - planned)
 - Blockchain submission coordination (SubmitWorker - planned)
 
-### What belongs in client/core
+### What belongs in client/bootstrap (crate: client-bootstrap)
 
-- Runtime configuration and bootstrap logic
-- Oracle factory implementations
-- `ActionProvider` implementations
-- Message types and view models
-- Client-side coordination logic
+- Runtime configuration and bootstrap logic (`RuntimeBuilder`, `RuntimeSetup`)
+- Configuration loading from environment variables (`CliConfig`)
+- Oracle factory trait and implementations (`OracleFactory`, `TestOracleFactory`)
+- Oracle bundle assembly (`OracleBundle`)
+- Reusable setup utilities for all client front-ends
 
 ### What belongs in client/frontend/cli
 

@@ -7,6 +7,7 @@ mod config;
 mod items;
 mod map;
 mod npc;
+mod snapshot;
 mod tables;
 
 pub use config::ConfigOracle;
@@ -15,6 +16,11 @@ pub use map::{
     InitialEntityKind, InitialEntitySpec, MapDimensions, MapOracle, StaticTile, TerrainKind,
 };
 pub use npc::{NpcOracle, NpcTemplate};
+pub use snapshot::{
+    ConfigSnapshot, ItemsSnapshot, MapSnapshot, NpcsSnapshot, OracleSnapshot, SnapshotConfigOracle,
+    SnapshotItemOracle, SnapshotMapOracle, SnapshotNpcOracle, SnapshotOracleBundle,
+    SnapshotTablesOracle, TablesSnapshot,
+};
 pub use tables::{AttackProfile, MovementRules, TablesOracle};
 
 /// Aggregates read-only oracles required by the reducer and action pipeline.

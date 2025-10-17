@@ -46,21 +46,78 @@ To see how these pieces interact end-to-end, read the workspace and runtime diag
 
 - Rust toolchain (1.85+ recommended). Install via [rustup](https://rustup.rs/) if you have not already.
 - `cargo` (bundled with the Rust toolchain).
+- [`just`](https://github.com/casey/just) command runner (recommended): `cargo install just`
 
 Some crates use async runtimes (`tokio`) and expect a POSIX-like environment. All commands below assume you are in the repository root.
 
-## Common Commands
+## Quick Start
+
+**Recommended:** Use `just` for easier multi-backend development:
+
+```bash
+# Install just (one-time setup)
+cargo install just
+
+# Fast development with stub backend (no real proofs)
+just build stub
+just run stub
+just test stub
+
+# Set default backend via environment
+export ZK_BACKEND=stub
+just build  # uses stub automatically
+just run
+
+# RISC0 backend (skip guest builds for speed)
+just build risc0-fast
+just run risc0-fast
+
+# See all available commands
+just --list
+just help
+```
+
+### Available ZK Backends
+
+- `risc0` - RISC0 zkVM (production, real proofs, slow)
+- `risc0-fast` - RISC0 with guest build skip (fast iteration)
+- `stub` - Stub prover (instant, no proofs, testing only)
+- `sp1` - SP1 zkVM (not implemented yet)
+- `arkworks` - Arkworks circuits (not implemented yet)
+
+### Common Just Commands
 
 | Task | Command |
 |------|---------|
-| Build everything | `cargo build --workspace` |
-| Launch CLI client | `cargo run -p client-frontend-cli` |
-| Run all tests | `cargo test --workspace` |
-| Run specific crate tests | `cargo test -p runtime` or `cargo test -p game-core` |
-| Run single test | `cargo test --workspace <test_name>` |
-| Format code | `cargo fmt` |
-| Lint with Clippy | `cargo clippy --workspace --all-targets --all-features` |
-| Generate API docs | `cargo doc --no-deps --open` |
+| Build with backend | `just build [backend]` |
+| Run CLI client | `just run [backend]` |
+| Run all tests | `just test [backend]` |
+| Lint code | `just lint [backend]` |
+| Format code | `just fmt` |
+| Pre-commit checks | `just pre-commit` |
+| Verify all backends | `just check-all` |
+| Fast dev loop | `just dev` (format + lint + test stub) |
+| Monitor logs | `just tail-logs [session]` |
+| Clean data | `just clean-data` |
+
+### Direct Cargo Commands (without Just)
+
+If you prefer not to use `just`, you can use cargo directly:
+
+```bash
+# Stub backend (fast development)
+cargo build --workspace --no-default-features --features stub
+cargo run -p cli-client --no-default-features --features stub
+cargo test --workspace --no-default-features --features stub
+
+# RISC0 backend (default)
+cargo build --workspace
+RISC0_SKIP_BUILD=1 cargo build --workspace  # skip guest builds
+
+# Format and lint
+cargo fmt --all
+cargo clippy --workspace --all-targets
+```
 
 ## Contributing
 

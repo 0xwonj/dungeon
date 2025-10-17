@@ -1,0 +1,18 @@
+[package]
+name = "client-bootstrap"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+# ZK backend features (propagate to runtime)
+default = ["risc0"]
+risc0 = ["runtime/risc0"]
+stub = ["runtime/stub"]
+sp1 = ["runtime/sp1"]
+arkworks = ["runtime/arkworks"]
+
+[dependencies]
+anyhow = { workspace = true }
+game-core = { workspace = true }
+runtime = { workspace = true }
+game-content = { workspace = true }

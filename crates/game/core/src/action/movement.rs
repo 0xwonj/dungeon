@@ -3,6 +3,7 @@ use crate::env::GameEnv;
 use crate::state::{EntityId, GameState, Position, Tick};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MoveError {
     #[error("map oracle not available")]
     MissingMap,
@@ -37,6 +38,7 @@ pub enum MoveError {
 
 /// High-level movement intent materialised into a canonical action.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoveAction {
     pub actor: EntityId,
     pub direction: CardinalDirection,
@@ -66,6 +68,7 @@ impl MoveAction {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CardinalDirection {
     North,
     South,

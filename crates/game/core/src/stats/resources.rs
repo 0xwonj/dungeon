@@ -16,6 +16,7 @@ use super::core::CoreEffective;
 ///
 /// These are NOT stored - always recomputed from CoreEffective.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ResourceMaximums {
     pub hp_max: u32,
     pub mp_max: u32,
@@ -89,6 +90,7 @@ impl ResourceMaximums {
 ///
 /// Sources: equipment (+HP armor), buffs (+30% Max MP), class features, etc.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ResourceBonuses {
     pub hp_max: BonusStack,
     pub mp_max: BonusStack,
@@ -146,6 +148,7 @@ impl StatLayer for ResourceMaximums {
 ///
 /// This is the only part of the resource system that is persisted.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ResourceCurrent {
     pub hp: u32,
     pub mp: u32,

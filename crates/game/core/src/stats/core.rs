@@ -17,6 +17,7 @@ use super::bonus::{Bonus, BonusStack, StatBounds, StatLayer};
 /// - **WIL** (Willpower): Mental fortitude, spellcasting, focus
 /// - **EGO** (Ego): Force of personality, ritual power, critical strikes
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CoreStats {
     pub str: i32,
     pub con: i32,
@@ -62,6 +63,7 @@ impl Default for CoreStats {
 /// These are NOT stored - they are computed from the game state
 /// (equipped items, active buffs, environmental effects, etc.)
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CoreStatBonuses {
     pub str_bonuses: BonusStack,
     pub con_bonuses: BonusStack,
@@ -115,6 +117,7 @@ impl CoreStatBonuses {
 ///
 /// Formula: CoreEffective = (Base + Flat) × (1 + %Inc) × More × Less × Clamp
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CoreEffective {
     pub str: i32,
     pub con: i32,

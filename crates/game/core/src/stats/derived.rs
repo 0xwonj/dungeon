@@ -13,6 +13,7 @@ use super::core::CoreEffective;
 /// These are pure functions of CoreEffective + equipment/buff bonuses.
 /// NOT stored - recomputed at action initiation.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DerivedStats {
     /// Physical attack power (damage scaling)
     pub attack: i32,
@@ -59,6 +60,7 @@ impl DerivedStats {
 ///
 /// Sources: equipment, buffs, environmental effects, etc.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DerivedBonuses {
     pub attack: BonusStack,
     pub accuracy: BonusStack,

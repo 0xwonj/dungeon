@@ -9,6 +9,7 @@ use crate::stats::{
 
 /// Aggregate state for every entity in the map.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EntitiesState {
     pub player: ActorState,
     pub npcs: BoundedVec<ActorState, 0, { GameConfig::MAX_NPCS }>,
@@ -72,6 +73,7 @@ impl EntitiesState {
 /// - Update `bonuses` whenever `inventory` changes
 /// - Never expose mutable `inventory` without recomputing `bonuses`
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ActorState {
     pub id: EntityId,
     pub position: Position,
@@ -164,6 +166,7 @@ impl Default for ActorState {
 
 /// Simplified inventory snapshot; expand as item systems mature.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct InventoryState {
     pub items: ArrayVec<ItemHandle, { GameConfig::MAX_INVENTORY_SLOTS }>,
 }
@@ -176,6 +179,7 @@ impl InventoryState {
 
 /// Non-actor entities such as doors, switches, or hazards.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PropState {
     pub id: EntityId,
     pub position: Position,
@@ -196,6 +200,7 @@ impl PropState {
 
 /// Enumerates the basic prop categories. Extend as needed by gameplay.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PropKind {
     Door,
     Switch,
@@ -205,6 +210,7 @@ pub enum PropKind {
 
 /// Items that exist on the ground (not inside inventories).
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ItemState {
     pub id: EntityId,
     pub position: Position,
@@ -223,4 +229,5 @@ impl ItemState {
 
 /// Reference to an item definition stored outside the core (lookup via Env).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ItemHandle(pub u32);

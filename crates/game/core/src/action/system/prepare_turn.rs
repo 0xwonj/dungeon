@@ -20,6 +20,7 @@ use crate::state::{EntityId, GameState, Tick};
 /// - The selected entity's `ready_at` must not be before the current clock
 /// - Tie-breaking uses entity ID (lower ID acts first)
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PrepareTurnAction;
 
 impl ActionTransition for PrepareTurnAction {
@@ -106,6 +107,7 @@ impl ActionTransition for PrepareTurnAction {
 
 /// Errors that can occur during turn operations
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TurnError {
     #[error("prepare turn action must be executed by SYSTEM actor")]
     NotSystemActor,

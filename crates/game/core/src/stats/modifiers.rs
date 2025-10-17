@@ -13,6 +13,7 @@ use super::core::CoreEffective;
 /// These represent situational bonuses (skill ranks, equipment, etc.)
 /// that don't come from core stats.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ModifierBonuses {
     pub str_bonuses: BonusStack,
     pub con_bonuses: BonusStack,
@@ -64,6 +65,7 @@ impl ModifierBonuses {
 /// These are the actual values added to rolls.
 /// Used in d20-style rolls: `d20 + modifier vs DC`
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StatModifiers {
     pub str_mod: i32,
     pub con_mod: i32,

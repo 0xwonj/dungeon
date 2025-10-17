@@ -18,6 +18,7 @@
 /// Bonuses are immutable and composable. Multiple bonuses are combined
 /// via `BonusStack` which applies them in the correct order.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Bonus {
     /// Flat additive bonus (applied first)
     Flat(i32),
@@ -84,6 +85,7 @@ impl Bonus {
 /// assert_eq!(result, 27);
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BonusStack {
     bonuses: Vec<Bonus>,
 }
@@ -445,6 +447,7 @@ impl StatBounds {
 ///
 /// This amortizes the cost of `compute_actor_bonuses()` across many actions.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ActorBonuses {
     pub core: super::core::CoreStatBonuses,
     pub derived: super::derived::DerivedBonuses,

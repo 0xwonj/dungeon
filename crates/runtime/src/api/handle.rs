@@ -1,30 +1,33 @@
 //! Cloneable façade for issuing commands to the runtime.
 //!
 //! [`RuntimeHandle`] hides channel plumbing and offers async helpers for
-//! stepping the simulation or streaming events.
+//! stepping the simulation or streaming events from specific topics.
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use game_core::{Action, EntityId, GameState};
 
 use super::errors::{Result, RuntimeError};
-use super::events::GameEvent;
+use crate::events::{Event, EventBus, Topic};
 use crate::workers::Command;
 
 /// Client-facing handle to interact with the runtime
+///
+/// # Concurrency Safety
+///
+/// Multiple clients can safely call methods concurrently. The underlying
+/// [`SimulationWorker`] processes commands sequentially via a FIFO channel,
+/// ensuring game state consistency without requiring explicit locks.
 #[derive(Clone)]
 pub struct RuntimeHandle {
     command_tx: mpsc::Sender<Command>,
-    event_tx: broadcast::Sender<GameEvent>,
+    event_bus: EventBus,
 }
 
 impl RuntimeHandle {
-    pub(crate) fn new(
-        command_tx: mpsc::Sender<Command>,
-        event_tx: broadcast::Sender<GameEvent>,
-    ) -> Self {
+    pub(crate) fn new(command_tx: mpsc::Sender<Command>, event_bus: EventBus) -> Self {
         Self {
             command_tx,
-            event_tx,
+            event_bus,
         }
     }
 
@@ -55,9 +58,24 @@ impl RuntimeHandle {
         reply_rx.await.map_err(RuntimeError::ReplyChannelClosed)?
     }
 
-    /// Subscribe to game events
-    pub fn subscribe_events(&self) -> broadcast::Receiver<GameEvent> {
-        self.event_tx.subscribe()
+    /// Subscribe to events from a specific topic
+    ///
+    /// # Topics
+    ///
+    /// - `Topic::GameState` - Action execution and failures
+    /// - `Topic::Proof` - ZK proof generation events
+    pub fn subscribe(&self, topic: Topic) -> broadcast::Receiver<Event> {
+        self.event_bus.subscribe(topic)
+    }
+
+    /// Subscribe to multiple topics at once
+    ///
+    /// Returns a map of topic to receiver for each requested topic.
+    pub fn subscribe_multiple(
+        &self,
+        topics: &[Topic],
+    ) -> std::collections::HashMap<Topic, broadcast::Receiver<Event>> {
+        self.event_bus.subscribe_multiple(topics)
     }
 
     /// Query the current game state (read-only snapshot)
@@ -70,5 +88,10 @@ impl RuntimeHandle {
             .map_err(|_| RuntimeError::CommandChannelClosed)?;
 
         reply_rx.await.map_err(RuntimeError::ReplyChannelClosed)
+    }
+
+    /// Get a reference to the event bus for advanced usage
+    pub fn event_bus(&self) -> &EventBus {
+        &self.event_bus
     }
 }

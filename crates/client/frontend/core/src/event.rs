@@ -1,5 +1,5 @@
 //! Utilities for reacting to runtime events inside UI layers.
-use runtime::GameEvent;
+use runtime::Event;
 
 use crate::message::MessageLog;
 
@@ -29,7 +29,7 @@ impl EventImpact {
 }
 
 pub trait EventConsumer {
-    fn on_event(&mut self, event: &GameEvent) -> EventImpact;
+    fn on_event(&mut self, event: &Event) -> EventImpact;
     fn message_log(&self) -> &MessageLog;
     fn message_log_mut(&mut self) -> &mut MessageLog;
     fn take_message_log(self) -> MessageLog

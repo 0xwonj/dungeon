@@ -3,9 +3,26 @@ name = "runtime"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+# ZK backend features (mutually exclusive - inherit from zk crate)
+default = ["risc0"]
+risc0 = ["zk/risc0"]
+stub = ["zk/stub"]
+sp1 = ["zk/sp1"]
+arkworks = ["zk/arkworks"]
+
 [dependencies]
-game-core = { path = "../game/core" }
-tokio = { version = "1", features = ["full"] }
-async-trait = "0.1"
-tracing = "0.1"
-thiserror = "1"
+game-core = { workspace = true, features = ["serde"] }
+zk = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+bincode = { workspace = true }
+directories = { workspace = true }
+
+[dev-dependencies]
+client-bootstrap = { workspace = true }
+tempfile = { workspace = true }

@@ -1,30 +1,152 @@
 //! Repository contracts for saving and loading mutable runtime state.
+
 use game_core::GameState;
 
 use crate::api::Result;
+use crate::events::Event;
+
+// Re-export shared types
+pub use super::types::{ActionLogEntry, Checkpoint, ProofIndex};
 
 /// Repository for game state persistence and loading
 ///
 /// This is for DYNAMIC data that changes during gameplay:
-/// - Save/Load game
-/// - Checkpoints for replay
+/// - Save/Load game state indexed by nonce
 /// - State snapshots for rollback
-///
-/// Note: Sync for MVP (in-memory). Can be made async later for DB.
 pub trait StateRepository: Send + Sync {
-    /// Load the current game state
-    fn load(&self) -> Result<GameState>;
+    /// Save a game state indexed by nonce
+    fn save(&self, nonce: u64, state: &GameState) -> Result<()>;
 
-    /// Save the game state
-    fn save(&self, state: &GameState) -> Result<()>;
+    /// Load a game state by nonce
+    fn load(&self, nonce: u64) -> Result<Option<GameState>>;
 
-    /// Save a checkpoint (optional)
-    fn save_checkpoint(&self, _turn: u64, _state: &GameState) -> Result<()> {
-        Ok(())
+    /// Check if a state exists
+    fn exists(&self, nonce: u64) -> bool;
+
+    /// Delete a state
+    fn delete(&self, nonce: u64) -> Result<()>;
+
+    /// List all available state nonces
+    fn list_nonces(&self) -> Result<Vec<u64>> {
+        Ok(vec![])
     }
 
-    /// Load a checkpoint (optional)
-    fn load_checkpoint(&self, _turn: u64) -> Result<Option<GameState>> {
-        Ok(None)
+    /// Delete all states in a range [start, end]
+    fn delete_range(&self, start: u64, end: u64) -> Result<usize> {
+        let mut deleted = 0;
+        for nonce in start..=end {
+            if self.exists(nonce) {
+                self.delete(nonce)?;
+                deleted += 1;
+            }
+        }
+        Ok(deleted)
     }
+}
+
+/// Repository for checkpoint persistence
+///
+/// Checkpoints store lightweight metadata + indices to external data:
+/// - State references
+/// - Event log offsets
+/// - Proof references (optional)
+pub trait CheckpointRepository: Send + Sync {
+    /// Save a checkpoint
+    fn save(&self, checkpoint: &Checkpoint) -> Result<()>;
+
+    /// Load a checkpoint by session ID
+    fn load(&self, session_id: &str) -> Result<Option<Checkpoint>>;
+
+    /// Delete a checkpoint
+    fn delete(&self, session_id: &str) -> Result<()>;
+
+    /// List all checkpoint sessions
+    fn list_sessions(&self) -> Result<Vec<String>>;
+}
+
+/// Repository for event log persistence
+///
+/// Provides append-only event logging for the complete event timeline.
+/// This includes ActionRef entries (references to actions.log) as well as
+/// other events like Turn, Proof, etc.
+pub trait EventRepository: Send + Sync {
+    /// Append an event to the log
+    ///
+    /// Returns the byte offset where the event was written.
+    fn append(&mut self, event: &Event) -> Result<u64>;
+
+    /// Read an event at a specific byte offset
+    ///
+    /// Returns `None` if the offset is beyond the end of the log.
+    /// Returns `Some((event, next_offset))` where next_offset is the byte position after this entry.
+    fn read_at_offset(&self, byte_offset: u64) -> Result<Option<(Event, u64)>>;
+
+    /// Flush buffered writes to disk
+    fn flush(&mut self) -> Result<()>;
+
+    /// Get the current size of the log in bytes
+    fn size(&self) -> Result<u64>;
+
+    /// Get the session ID associated with this log
+    fn session_id(&self) -> &str;
+}
+
+/// Repository for action log persistence
+///
+/// Provides append-only logging specifically for executed actions.
+/// This stores the full ActionLogEntry data needed for proof generation,
+/// separate from the general event timeline.
+///
+/// # Purpose
+///
+/// The action log is optimized for proof generation:
+/// - Sequential access by ProverWorker
+/// - Contains all data needed for zkVM (before_state, after_state, action)
+/// - No filtering required (only ActionExecuted entries)
+///
+/// # File Format
+///
+/// Each entry is stored as:
+/// ```text
+/// [u32 length][bincode serialized ActionLogEntry]
+/// ```
+pub trait ActionRepository: Send + Sync {
+    /// Append an action log entry
+    ///
+    /// Returns the byte offset where the entry was written.
+    fn append(&mut self, entry: &ActionLogEntry) -> Result<u64>;
+
+    /// Read an action log entry at a specific byte offset
+    ///
+    /// Returns `None` if the offset is beyond the end of the log.
+    /// Returns `Some((entry, next_offset))` where next_offset is the byte position after this entry.
+    fn read_at_offset(&self, byte_offset: u64) -> Result<Option<(ActionLogEntry, u64)>>;
+
+    /// Flush buffered writes to disk
+    fn flush(&mut self) -> Result<()>;
+
+    /// Get the current size of the log in bytes
+    fn size(&self) -> Result<u64>;
+
+    /// Get the session ID associated with this log
+    fn session_id(&self) -> &str;
+}
+
+/// Repository for proof index persistence
+///
+/// Stores metadata about generated ZK proofs, indexed by session ID.
+/// This allows efficient lookup of proof status and metadata without
+/// loading the full proof files.
+pub trait ProofIndexRepository: Send + Sync {
+    /// Save the proof index
+    fn save(&self, index: &ProofIndex) -> Result<()>;
+
+    /// Load the proof index by session ID
+    fn load(&self, session_id: &str) -> Result<Option<ProofIndex>>;
+
+    /// Delete a proof index
+    fn delete(&self, session_id: &str) -> Result<()>;
+
+    /// List all proof index sessions
+    fn list_sessions(&self) -> Result<Vec<String>>;
 }

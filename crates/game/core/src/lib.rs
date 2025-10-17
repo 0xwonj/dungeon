@@ -11,22 +11,26 @@ pub mod env;
 pub mod state;
 pub mod stats;
 pub use action::{
-    Action, ActionCostAction, ActionKind, ActionTransition, ActivationAction, AttackAction,
-    AttackStyle, CardinalDirection, InteractAction, InventorySlot, ItemTarget, MoveAction,
-    MoveError, PrepareTurnAction, TurnError, UseItemAction,
+    Action, ActionCostAction, ActionTransition, ActivationAction, AttackAction, AttackStyle,
+    CardinalDirection, CharacterActionKind, InteractAction, InventorySlot, ItemTarget, MoveAction,
+    MoveError, PrepareTurnAction, SystemActionKind, TurnError, UseItemAction,
 };
 pub use config::GameConfig;
 pub use engine::{ExecuteError, GameEngine, TransitionPhase, TransitionPhaseError};
 pub use env::{
-    AttackProfile, Env, GameEnv, InitialEntityKind, InitialEntitySpec, ItemCategory,
-    ItemDefinition, ItemOracle, MapDimensions, MapOracle, MovementRules, NpcOracle, NpcTemplate,
-    StaticTile, TablesOracle, TerrainKind,
+    AttackProfile, ConfigOracle, ConfigSnapshot, Env, GameEnv, InitialEntityKind,
+    InitialEntitySpec, ItemCategory, ItemDefinition, ItemOracle, ItemsSnapshot, MapDimensions,
+    MapOracle, MapSnapshot, MovementRules, NpcOracle, NpcTemplate, NpcsSnapshot, OracleSnapshot,
+    SnapshotConfigOracle, SnapshotItemOracle, SnapshotMapOracle, SnapshotNpcOracle,
+    SnapshotOracleBundle, SnapshotTablesOracle, StaticTile, TablesOracle, TablesSnapshot,
+    TerrainKind,
 };
 pub use state::{
-    ActorPatch, ActorState, CollectionDelta, EntitiesDelta, EntitiesState, EntityId, GameState,
-    InitializationError, InventoryState, ItemHandle, ItemPatch, ItemState, OccupancyPatch,
-    Position, PropKind, PropPatch, PropState, StateDelta, Tick, TileMap, TileView, TurnDelta,
-    TurnState, WorldDelta, WorldState,
+    ActorChanges, ActorFields, ActorState, CollectionChanges, EntitiesChanges, EntitiesState,
+    EntityId, GameState, InitializationError, InventoryState, ItemChanges, ItemFields, ItemHandle,
+    ItemState, OccupancyChanges, Position, PropChanges, PropFields, PropKind, PropState,
+    StateDelta, Tick, TileMap, TileView, TurnChanges, TurnFields, TurnState, WorldChanges,
+    WorldState,
 };
 pub use stats::{
     ActorBonuses, Bonus, BonusStack, CoreEffective, CoreStatBonuses, CoreStats, DerivedBonuses,

@@ -40,14 +40,17 @@ pub enum RuntimeError {
     #[error("failed to initialize game state from oracles")]
     InitialState(#[source] game_core::state::InitializationError),
 
-    #[error("action actor {provided:?} does not match current entity {expected:?}")]
-    InvalidActionActor {
-        expected: game_core::EntityId,
-        provided: game_core::EntityId,
-    },
+    #[error("invalid configuration: {0}")]
+    InvalidConfig(String),
+
+    #[error("invalid entity ID: {0:?}")]
+    InvalidEntityId(game_core::EntityId),
+
+    #[error("missing action provider: {0}")]
+    MissingProvider(ProviderKind),
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ProviderKind {
     Player,
     Npc,

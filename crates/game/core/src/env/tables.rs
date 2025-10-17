@@ -11,6 +11,7 @@ pub trait TablesOracle {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MovementRules {
     pub max_step_distance: u8,
     pub base_action_cost: u8,
@@ -26,6 +27,7 @@ impl MovementRules {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AttackProfile {
     pub damage: u16,
     pub energy_cost: u8,

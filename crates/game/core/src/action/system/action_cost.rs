@@ -19,6 +19,7 @@ use crate::state::{EntityId, GameState, Tick};
 /// - Target actor must have a `ready_at` timestamp (be in active set)
 /// - The cost is non-negative
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ActionCostAction {
     /// The actor whose ready_at should be updated
     pub target_actor: EntityId,
@@ -101,6 +102,7 @@ impl ActionTransition for ActionCostAction {
 
 /// Errors that can occur during action cost application.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ActionCostError {
     #[error("action cost action must be executed by SYSTEM actor")]
     NotSystemActor,

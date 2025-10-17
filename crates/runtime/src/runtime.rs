@@ -3,31 +3,123 @@
 //! The runtime owns background workers, wires up command/event channels, and
 //! exposes a builder-based API for clients to drive the simulation.
 
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use game_core::{EntityId, GameConfig, GameState};
+use game_core::{GameConfig, GameState};
 
-use crate::api::{ActionProvider, GameEvent, ProviderKind, Result, RuntimeError, RuntimeHandle};
+use crate::api::{
+    ActionProvider, ProviderKind, ProviderRegistry, Result, RuntimeError, RuntimeHandle,
+};
+use crate::events::EventBus;
 use crate::hooks::{HookRegistry, PostExecutionHook};
 use crate::oracle::OracleManager;
-use crate::workers::{Command, SimulationWorker};
+use crate::workers::{
+    CheckpointStrategy, Command, PersistenceConfig, PersistenceWorker, ProofMetrics, ProverWorker,
+    SimulationWorker,
+};
 
-/// Runtime configuration shared across the orchestrator and workers.
+/// Shared reference to proof generation metrics (thread-safe, lock-free)
+type ProofMetricsArc = std::sync::Arc<ProofMetrics>;
+
+/// Core runtime configuration for channels and buffers.
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
     pub game_config: GameConfig,
     pub event_buffer_size: usize,
     pub command_buffer_size: usize,
+    pub session_id: String,
+}
+
+/// Persistence worker configuration.
+#[derive(Debug, Clone)]
+pub struct PersistenceSettings {
+    /// Enable persistence worker for state/event/proof persistence (default: false)
+    pub enabled: bool,
+    /// Base directory for persistence files (default: ./save_data)
+    pub base_dir: std::path::PathBuf,
+    /// Number of actions between automatic checkpoints (default: 10)
+    pub checkpoint_interval: u64,
+}
+
+/// ZK proving worker configuration.
+#[derive(Debug, Clone, Default)]
+pub struct ProvingSettings {
+    /// Enable ZK proof generation worker (default: false)
+    pub enabled: bool,
+    /// Optional directory to save generated proofs
+    pub save_proofs_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for RuntimeConfig {
     fn default() -> Self {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
         Self {
             game_config: GameConfig::default(),
             event_buffer_size: 100,
             command_buffer_size: 32,
+            session_id: format!("session_{}", timestamp),
         }
+    }
+}
+
+impl Default for PersistenceSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            base_dir: Self::default_save_dir(),
+            checkpoint_interval: 10,
+        }
+    }
+}
+
+impl PersistenceSettings {
+    /// Get the default system directory for save data
+    ///
+    /// Uses platform-specific directories via the `directories` crate:
+    /// - macOS: `~/Library/Application Support/dungeon`
+    /// - Linux: `~/.local/share/dungeon` (or `$XDG_DATA_HOME/dungeon`)
+    /// - Windows: `%APPDATA%\dungeon`
+    /// - Fallback: `./save_data` (current directory)
+    fn default_save_dir() -> std::path::PathBuf {
+        directories::ProjectDirs::from("", "", "dungeon")
+            .map(|dirs| dirs.data_dir().to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from("./save_data"))
+    }
+}
+
+/// Container for all background worker handles.
+struct WorkerHandles {
+    simulation: JoinHandle<()>,
+    persistence: Option<JoinHandle<()>>,
+    prover: Option<JoinHandle<()>>,
+}
+
+impl WorkerHandles {
+    /// Shutdown all workers gracefully.
+    ///
+    /// Workers are shut down in order: simulation, persistence, then prover.
+    async fn shutdown_all(self) -> Result<()> {
+        // Simulation worker must be shut down first
+        self.simulation.await.map_err(RuntimeError::WorkerJoin)?;
+
+        // Then persistence worker
+        if let Some(persistence_handle) = self.persistence {
+            persistence_handle.await.map_err(RuntimeError::WorkerJoin)?;
+        }
+
+        // Finally prover worker
+        if let Some(prover_handle) = self.prover {
+            prover_handle.await.map_err(RuntimeError::WorkerJoin)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -39,13 +131,15 @@ pub struct Runtime {
     // Shared handle (can be cloned for clients)
     handle: RuntimeHandle,
 
-    // Action providers (injected by user)
-    player_provider: Option<Box<dyn ActionProvider>>,
-    npc_provider: Option<Box<dyn ActionProvider>>,
+    // Action providers registry (Registry pattern)
+    providers: ProviderRegistry,
 
-    // Background workers
-    sim_worker_handle: JoinHandle<()>,
-    // Future: proof_worker_handle, submit_worker_handle
+    // Background workers (managed as a group)
+    workers: WorkerHandles,
+
+    // Proof metrics (shared with ProverWorker if enabled)
+    // Uses atomics for lock-free access
+    proof_metrics: Option<ProofMetricsArc>,
 }
 
 impl Runtime {
@@ -61,35 +155,23 @@ impl Runtime {
         self.handle.clone()
     }
 
-    /// Subscribe to game events
-    pub fn subscribe_events(&self) -> broadcast::Receiver<GameEvent> {
-        self.handle.subscribe_events()
+    /// Get proof generation metrics Arc (if proving is enabled).
+    ///
+    /// Returns `None` if proving is not enabled.
+    /// The returned Arc can be used to query metrics without locking.
+    pub fn proof_metrics(&self) -> Option<ProofMetricsArc> {
+        self.proof_metrics.as_ref().map(std::sync::Arc::clone)
     }
 
     /// Execute a single turn step
     ///
     /// Requires both player and NPC providers to be configured.
     pub async fn step(&mut self) -> Result<()> {
-        let player_provider =
-            self.player_provider
-                .as_ref()
-                .ok_or_else(|| RuntimeError::ProviderNotSet {
-                    kind: ProviderKind::Player,
-                })?;
-        let npc_provider =
-            self.npc_provider
-                .as_ref()
-                .ok_or_else(|| RuntimeError::ProviderNotSet {
-                    kind: ProviderKind::Npc,
-                })?;
-
         let (entity, snapshot) = self.handle.prepare_next_turn().await?;
 
-        let action = if entity == EntityId::PLAYER {
-            player_provider.provide_action(entity, &snapshot).await?
-        } else {
-            npc_provider.provide_action(entity, &snapshot).await?
-        };
+        // Get the appropriate provider for this entity
+        let provider = self.providers.get_for_entity(entity)?;
+        let action = provider.provide_action(entity, &snapshot).await?;
 
         self.handle.execute_action(action).await?;
 
@@ -105,33 +187,39 @@ impl Runtime {
 
     /// Set the player action provider
     pub fn set_player_provider(&mut self, provider: impl ActionProvider + 'static) {
-        self.player_provider = Some(Box::new(provider));
+        self.providers.register(ProviderKind::Player, provider);
     }
 
     /// Set the NPC action provider
     pub fn set_npc_provider(&mut self, provider: impl ActionProvider + 'static) {
-        self.npc_provider = Some(Box::new(provider));
+        self.providers.register(ProviderKind::Npc, provider);
+    }
+
+    /// Get a reference to the provider registry
+    pub fn providers(&self) -> &ProviderRegistry {
+        &self.providers
+    }
+
+    /// Get a mutable reference to the provider registry
+    pub fn providers_mut(&mut self) -> &mut ProviderRegistry {
+        &mut self.providers
     }
 
     /// Shutdown the runtime gracefully
     pub async fn shutdown(self) -> Result<()> {
         drop(self.handle);
-
-        self.sim_worker_handle
-            .await
-            .map_err(RuntimeError::WorkerJoin)?;
-
-        Ok(())
+        self.workers.shutdown_all().await
     }
 }
 
 /// Builder for [`Runtime`] with flexible configuration.
 pub struct RuntimeBuilder {
     config: RuntimeConfig,
+    persistence: PersistenceSettings,
+    proving: ProvingSettings,
     state: Option<GameState>,
     oracles: Option<OracleManager>,
-    player_provider: Option<Box<dyn ActionProvider>>,
-    npc_provider: Option<Box<dyn ActionProvider>>,
+    providers: ProviderRegistry,
     hooks: Option<HookRegistry>,
 }
 
@@ -139,10 +227,11 @@ impl RuntimeBuilder {
     fn new() -> Self {
         Self {
             config: RuntimeConfig::default(),
+            persistence: PersistenceSettings::default(),
+            proving: ProvingSettings::default(),
             state: None,
             oracles: None,
-            player_provider: None,
-            npc_provider: None,
+            providers: ProviderRegistry::new(),
             hooks: None,
         }
     }
@@ -150,6 +239,18 @@ impl RuntimeBuilder {
     /// Override runtime configuration
     pub fn config(mut self, config: RuntimeConfig) -> Self {
         self.config = config;
+        self
+    }
+
+    /// Override persistence settings
+    pub fn persistence(mut self, settings: PersistenceSettings) -> Self {
+        self.persistence = settings;
+        self
+    }
+
+    /// Override proving settings
+    pub fn proving(mut self, settings: ProvingSettings) -> Self {
+        self.proving = settings;
         self
     }
 
@@ -167,13 +268,43 @@ impl RuntimeBuilder {
 
     /// Set player action provider (optional)
     pub fn player_provider(mut self, provider: impl ActionProvider + 'static) -> Self {
-        self.player_provider = Some(Box::new(provider));
+        self.providers.register(ProviderKind::Player, provider);
         self
     }
 
     /// Set NPC action provider (optional)
     pub fn npc_provider(mut self, provider: impl ActionProvider + 'static) -> Self {
-        self.npc_provider = Some(Box::new(provider));
+        self.providers.register(ProviderKind::Npc, provider);
+        self
+    }
+
+    /// Enable ZK proof generation worker
+    pub fn enable_proving(mut self, enable: bool) -> Self {
+        self.proving.enabled = enable;
+        self
+    }
+
+    /// Enable persistence worker for state/event/proof persistence
+    pub fn enable_persistence(mut self, enable: bool) -> Self {
+        self.persistence.enabled = enable;
+        self
+    }
+
+    /// Set session ID for persistence
+    pub fn session_id(mut self, id: impl Into<String>) -> Self {
+        self.config.session_id = id.into();
+        self
+    }
+
+    /// Set base directory for persistence files
+    pub fn persistence_dir(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        self.persistence.base_dir = dir.into();
+        self
+    }
+
+    /// Set checkpoint interval (number of actions between checkpoints)
+    pub fn checkpoint_interval(mut self, interval: u64) -> Self {
+        self.persistence.checkpoint_interval = interval;
         self
     }
 
@@ -181,30 +312,6 @@ impl RuntimeBuilder {
     ///
     /// If not provided, the default hooks (ActionCost, Activation) are used.
     /// Use this to add custom hooks or replace the default set entirely.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use std::sync::Arc;
-    ///
-    /// let root_hooks = vec![
-    ///     Arc::new(ActionCostHook) as Arc<dyn PostExecutionHook>,
-    ///     Arc::new(ActivationHook) as Arc<dyn PostExecutionHook>,
-    ///     Arc::new(DamageHook) as Arc<dyn PostExecutionHook>,
-    /// ];
-    ///
-    /// let all_hooks = vec![
-    ///     Arc::new(ActionCostHook) as Arc<dyn PostExecutionHook>,
-    ///     Arc::new(ActivationHook) as Arc<dyn PostExecutionHook>,
-    ///     Arc::new(DamageHook) as Arc<dyn PostExecutionHook>,
-    ///     Arc::new(DeathCheckHook) as Arc<dyn PostExecutionHook>, // Lookup only
-    /// ];
-    ///
-    /// let runtime = Runtime::builder()
-    ///     .with_hooks(HookRegistry::new(root_hooks, all_hooks))
-    ///     .build()
-    ///     .await?;
-    /// ```
     pub fn with_hooks(mut self, hooks: HookRegistry) -> Self {
         self.hooks = Some(hooks);
         self
@@ -222,20 +329,6 @@ impl RuntimeBuilder {
     ///
     /// Note: If you've already called `with_hooks()`, calling this will discard
     /// those hooks and rebuild from the default set plus your new hooks.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use std::sync::Arc;
-    ///
-    /// let runtime = Runtime::builder()
-    ///     .add_hooks(
-    ///         vec![Arc::new(DamageHook)],  // Root: execute every action
-    ///         vec![Arc::new(DeathCheckHook)],  // Lookup: only when chained
-    ///     )
-    ///     .build()
-    ///     .await?;
-    /// ```
     pub fn add_hooks(
         mut self,
         additional_root_hooks: Vec<std::sync::Arc<dyn PostExecutionHook>>,
@@ -259,37 +352,238 @@ impl RuntimeBuilder {
         self
     }
 
+    /// Validate the builder configuration.
+    ///
+    /// # Validation Rules
+    ///
+    /// - ZK proving requires persistence to be enabled
+    /// - Session ID must not be empty
+    /// - Buffer sizes must be greater than zero
+    /// - Oracles must be provided
+    fn validate(&self) -> Result<()> {
+        // Proving requires persistence
+        if self.proving.enabled && !self.persistence.enabled {
+            return Err(RuntimeError::InvalidConfig(
+                "ZK proving requires persistence to be enabled. \
+                 Set enable_persistence(true) before enable_proving(true)."
+                    .to_string(),
+            ));
+        }
+
+        // Session ID validation
+        if self.config.session_id.is_empty() {
+            return Err(RuntimeError::InvalidConfig(
+                "Session ID cannot be empty".to_string(),
+            ));
+        }
+
+        // Buffer size validation
+        if self.config.command_buffer_size == 0 {
+            return Err(RuntimeError::InvalidConfig(
+                "Command buffer size must be greater than 0".to_string(),
+            ));
+        }
+
+        if self.config.event_buffer_size == 0 {
+            return Err(RuntimeError::InvalidConfig(
+                "Event buffer size must be greater than 0".to_string(),
+            ));
+        }
+
+        // Persistence directory validation
+        if self.persistence.enabled && !self.persistence.base_dir.as_os_str().is_empty() {
+            // Basic check that the path is valid
+            if self.persistence.base_dir.to_str().is_none() {
+                return Err(RuntimeError::InvalidConfig(
+                    "Persistence base directory contains invalid UTF-8".to_string(),
+                ));
+            }
+        }
+
+        // Checkpoint interval validation
+        if self.persistence.enabled && self.persistence.checkpoint_interval == 0 {
+            return Err(RuntimeError::InvalidConfig(
+                "Checkpoint interval must be greater than 0".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Build the runtime
     pub async fn build(self) -> Result<Runtime> {
-        let oracles = self.oracles.ok_or_else(|| RuntimeError::MissingOracles)?;
+        // Validate configuration before proceeding
+        self.validate()?;
 
-        let initial_state = if let Some(state) = self.state {
+        // Extract all fields from self first to avoid partial move issues
+        let RuntimeBuilder {
+            config,
+            persistence,
+            proving,
+            state,
+            oracles,
+            providers,
+            hooks,
+        } = self;
+
+        let oracles = oracles.ok_or_else(|| RuntimeError::MissingOracles)?;
+
+        let initial_state = if let Some(state) = state {
             state
         } else {
             let env = oracles.as_game_env();
             GameState::from_initial_entities(&env).map_err(RuntimeError::InitialState)?
         };
 
-        let (command_tx, command_rx) = mpsc::channel::<Command>(self.config.command_buffer_size);
-        let (event_tx, _event_rx) = broadcast::channel::<GameEvent>(self.config.event_buffer_size);
+        let (command_tx, command_rx) = mpsc::channel::<Command>(config.command_buffer_size);
+        let event_bus = EventBus::with_capacity(config.event_buffer_size);
 
-        let handle = RuntimeHandle::new(command_tx, event_tx.clone());
+        let handle = RuntimeHandle::new(command_tx.clone(), event_bus.clone());
 
         // Use provided hooks or default registry
-        let hooks = self.hooks.unwrap_or_default();
+        let hooks = hooks.unwrap_or_default();
 
-        let worker =
-            SimulationWorker::new(initial_state, oracles, command_rx, event_tx.clone(), hooks);
+        // Create workers using factory methods
+        let sim_worker_handle = Self::create_simulation_worker(
+            initial_state,
+            oracles.clone(),
+            command_rx,
+            event_bus.clone(),
+            hooks,
+        );
 
-        let sim_worker_handle = tokio::spawn(async move {
-            worker.run().await;
-        });
+        let persistence_worker_handle = Self::create_persistence_worker(
+            &config,
+            &persistence,
+            command_tx.clone(),
+            event_bus.clone(),
+        )?;
+
+        let (prover_worker_handle, proof_metrics) = Self::create_prover_worker(
+            &config,
+            &persistence,
+            &proving,
+            event_bus.clone(),
+            oracles.clone(),
+        )?;
 
         Ok(Runtime {
             handle,
-            player_provider: self.player_provider,
-            npc_provider: self.npc_provider,
-            sim_worker_handle,
+            providers,
+            workers: WorkerHandles {
+                simulation: sim_worker_handle,
+                persistence: persistence_worker_handle,
+                prover: prover_worker_handle,
+            },
+            proof_metrics,
         })
+    }
+
+    /// Create and spawn the simulation worker.
+    fn create_simulation_worker(
+        initial_state: GameState,
+        oracles: OracleManager,
+        command_rx: mpsc::Receiver<Command>,
+        event_bus: EventBus,
+        hooks: HookRegistry,
+    ) -> JoinHandle<()> {
+        let sim_worker =
+            SimulationWorker::new(initial_state, oracles, command_rx, event_bus, hooks);
+
+        tokio::spawn(async move {
+            sim_worker.run().await;
+        })
+    }
+
+    /// Create and spawn the persistence worker (if enabled).
+    fn create_persistence_worker(
+        config: &RuntimeConfig,
+        persistence: &PersistenceSettings,
+        sim_command_tx: mpsc::Sender<Command>,
+        event_bus: EventBus,
+    ) -> Result<Option<JoinHandle<()>>> {
+        if !persistence.enabled {
+            return Ok(None);
+        }
+
+        let persistence_config =
+            PersistenceConfig::new(config.session_id.clone(), persistence.base_dir.clone())
+                .with_strategy(CheckpointStrategy::EveryNActions(
+                    persistence.checkpoint_interval,
+                ));
+
+        let event_rx = event_bus.subscribe(crate::events::Topic::GameState);
+
+        // PersistenceWorker has its own Command type, but we don't expose it
+        // Create a dummy channel since we don't send commands to it yet
+        let (_persistence_cmd_tx, persistence_cmd_rx) = mpsc::channel(8);
+
+        let persistence_worker = PersistenceWorker::new(
+            persistence_config,
+            event_rx,
+            persistence_cmd_rx,
+            sim_command_tx,
+        )
+        .map_err(RuntimeError::InvalidConfig)?;
+
+        let handle = tokio::spawn(async move {
+            persistence_worker.run().await;
+        });
+
+        Ok(Some(handle))
+    }
+
+    /// Create and spawn the prover worker (if enabled).
+    ///
+    /// Returns the worker handle and metrics Arc, or None if proving is disabled.
+    ///
+    /// # Preconditions
+    ///
+    /// - Persistence must be enabled (validated in `RuntimeBuilder::validate()`)
+    fn create_prover_worker(
+        config: &RuntimeConfig,
+        persistence: &PersistenceSettings,
+        proving: &ProvingSettings,
+        event_bus: EventBus,
+        oracles: OracleManager,
+    ) -> Result<(Option<JoinHandle<()>>, Option<ProofMetricsArc>)> {
+        if !proving.enabled {
+            return Ok((None, None));
+        }
+
+        // Persistence is guaranteed to be enabled by validate()
+        debug_assert!(
+            persistence.enabled,
+            "Proving requires persistence - should be caught by validate()"
+        );
+
+        // Construct session directory path
+        let session_dir = persistence.base_dir.join(&config.session_id);
+
+        // Build ProverWorker using its builder
+        let mut builder = ProverWorker::builder()
+            .session_id(config.session_id.clone())
+            .persistence_dir(&persistence.base_dir)
+            .event_bus(event_bus)
+            .oracles(oracles)
+            .start_offset(0);
+
+        // Optionally save proofs to disk
+        if proving.save_proofs_dir.is_some() || persistence.enabled {
+            let proofs_dir = session_dir.join("proofs");
+            builder = builder.save_proofs_to(proofs_dir);
+        }
+
+        let prover_worker = builder.build().map_err(|e| {
+            RuntimeError::InvalidConfig(format!("Failed to create ProverWorker: {}", e))
+        })?;
+
+        let prover_metrics = prover_worker.metrics();
+
+        let handle = tokio::spawn(async move {
+            prover_worker.run().await;
+        });
+
+        Ok((Some(handle), Some(prover_metrics)))
     }
 }

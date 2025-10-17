@@ -1,6 +1,6 @@
 //! Hook that reacts to entities taking damage and triggers follow-up effects.
 
-use game_core::{Action, ActionKind};
+use game_core::{Action, CharacterActionKind};
 
 use super::{HookContext, HookCriticality, PostExecutionHook};
 
@@ -54,7 +54,10 @@ impl PostExecutionHook for DamageHook {
     fn should_trigger(&self, ctx: &HookContext<'_>) -> bool {
         // Trigger when an Attack action was executed
         // (damage was already applied in AttackAction::apply)
-        matches!(ctx.delta.action.kind, ActionKind::Attack(_))
+        match &ctx.delta.action {
+            Action::Character { kind, .. } => matches!(kind, CharacterActionKind::Attack(_)),
+            Action::System { .. } => false,
+        }
 
         // TODO: Later, check delta for HP changes:
         // ctx.delta.entities.actors.iter().any(|(_, patch)| patch.hp.is_some())

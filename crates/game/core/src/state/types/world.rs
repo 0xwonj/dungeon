@@ -11,6 +11,7 @@ type OccupantSlots = ArrayVec<EntityId, { GameConfig::MAX_OCCUPANTS_PER_TILE }>;
 
 /// Aggregated world-level state layered on top of the static map commitment.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct WorldState {
     pub tile_map: TileMap,
 }
@@ -42,6 +43,7 @@ impl WorldState {
 
 /// Dynamic world deltas layered on top of immutable static tiles.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TileMap {
     occupancy: BTreeMap<Position, OccupantSlots>,
 }

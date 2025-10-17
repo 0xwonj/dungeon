@@ -15,6 +15,7 @@ use super::core::CoreEffective;
 /// Higher speed = faster action execution = lower action cost.
 /// Base speed is 100, modified by core stats and conditions.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SpeedStats {
     /// Physical action speed (movement, melee, physical skills)
     pub physical: i32,
@@ -51,6 +52,7 @@ impl SpeedStats {
 /// Represents effects like Haste, Slow, Stun, etc.
 /// Applied as final multipliers to base speed values.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SpeedBonuses {
     pub physical: BonusStack,
     pub cognitive: BonusStack,
@@ -102,6 +104,7 @@ impl StatLayer for SpeedStats {
 
 /// The kind of speed to use for an action
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SpeedKind {
     Physical,
     Cognitive,
