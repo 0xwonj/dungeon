@@ -237,10 +237,10 @@ zk = { path = "../zk" }
 
 ```bash
 # Production mode (real proofs, 30-60 seconds per action)
-ENABLE_ZK_PROVING=1 cargo run -p cli-client
+ENABLE_ZK_PROVING=1 cargo run -p client-cli
 
 # Development mode (mock proofs, <100ms per action)
-ENABLE_ZK_PROVING=1 RISC0_DEV_MODE=1 cargo run -p cli-client
+ENABLE_ZK_PROVING=1 RISC0_DEV_MODE=1 cargo run -p client-cli
 ```
 
 ```rust

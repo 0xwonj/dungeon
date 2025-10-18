@@ -38,7 +38,7 @@ impl TailLogs {
             eprintln!("  Path: {}", style(log_dir.display()).dim());
             eprintln!();
             eprintln!("  Run the client first to generate logs:");
-            eprintln!("    {}", style("cargo run -p cli-client").cyan());
+            eprintln!("    {}", style("cargo run -p client-cli").cyan());
             anyhow::bail!("Log directory does not exist");
         }
 

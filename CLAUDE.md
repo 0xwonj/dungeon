@@ -67,7 +67,7 @@ If you prefer not to use Just, you can use cargo directly:
 ```bash
 # Stub backend (fast development)
 cargo build --workspace --no-default-features --features stub
-cargo run -p cli-client --no-default-features --features stub
+cargo run -p client-cli --no-default-features --features stub
 cargo test --workspace --no-default-features --features stub
 
 # RISC0 backend (default)

@@ -121,11 +121,11 @@ build-guest:
 
 # Run CLI client with specified backend
 run backend=default_backend *args='':
-    @just _exec {{backend}} "run -p cli-client {{args}}"
+    @just _exec {{backend}} "run -p client-cli {{args}}"
 
 # Run CLI in release mode
 run-release backend=default_backend *args='':
-    @just _exec {{backend}} "run -p cli-client --release {{args}}"
+    @just _exec {{backend}} "run -p client-cli --release {{args}}"
 
 # ============================================================================
 # Test Commands
