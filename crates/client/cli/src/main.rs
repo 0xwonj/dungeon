@@ -56,7 +56,7 @@ fn setup_logging(session_id: &Option<String>) -> Result<()> {
     // Setup file layer (always enabled)
     let file_layer = tracing_subscriber::fmt::layer()
         .with_writer(non_blocking_file)
-        .with_ansi(false); // No ANSI codes in file
+        .with_ansi(true); // Enable ANSI codes in file for colorized tail-logs
 
     // Initialize subscriber with ONLY file layer (no stderr for TUI)
     tracing_subscriber::registry()
