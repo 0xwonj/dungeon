@@ -1,10 +1,10 @@
 [package]
-name = "cli-client"
+name = "client-cli"
 version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "cli-client"
+name = "client-cli"
 path = "src/main.rs"
 
 [features]
@@ -19,7 +19,7 @@ arkworks = ["client-bootstrap/arkworks"]
 # Core dependencies
 game-core = { workspace = true }
 runtime = { workspace = true }
-frontend-core = { workspace = true }
+client-core = { workspace = true }
 client-bootstrap = { workspace = true }
 
 # Async runtime

@@ -2,7 +2,7 @@
 use game_core::{Action, CharacterActionKind};
 use runtime::{Event, GameStateEvent};
 
-use frontend_core::{
+use client_core::{
     event::{EventConsumer, EventImpact},
     message::{MessageEntry, MessageLevel, MessageLog},
 };

@@ -8,7 +8,7 @@ mod state;
 use anyhow::Result;
 use app::CliApp;
 use client_bootstrap::config::CliConfig;
-use frontend_core::frontend::FrontendApp;
+use client_core::frontend::FrontendApp;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 

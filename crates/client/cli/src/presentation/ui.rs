@@ -19,7 +19,7 @@ use crate::{
     presentation::terminal::Tui,
     state::{AppMode, AppState},
 };
-use frontend_core::{
+use client_core::{
     message::{MessageEntry, MessageLevel, MessageLog},
     view_model::{
         ActorStatsSnapshot, EntityDetailView, MapSnapshot, MapTile, OccupantView, PlayerSnapshot,

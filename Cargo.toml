@@ -5,8 +5,8 @@ members = [
     "crates/runtime",
     "crates/zk",
     "crates/client/bootstrap",
-    "crates/client/frontend/core",
-    "crates/client/frontend/cli",
+    "crates/client/core",
+    "crates/client/cli",
     "crates/xtask",
 ]
 resolver = "2"
@@ -33,7 +33,7 @@ game-content = { path = "crates/game/content" }
 runtime = { path = "crates/runtime", default-features = false }
 zk = { path = "crates/zk", default-features = false }
 client-bootstrap = { path = "crates/client/bootstrap", default-features = false }
-frontend-core = { path = "crates/client/frontend/core" }
+client-core = { path = "crates/client/core" }
 
 # ----------------------------------------------------------------------------
 # Async Runtime

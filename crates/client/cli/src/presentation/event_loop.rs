@@ -21,7 +21,7 @@ use crate::{
     presentation::{terminal::Tui, ui},
     state::{AppMode, AppState},
 };
-use frontend_core::EventConsumer;
+use client_core::EventConsumer;
 
 const FRAME_INTERVAL_MS: u64 = 16;
 

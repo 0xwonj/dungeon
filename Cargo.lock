@@ -621,15 +621,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1d728cc89cf3aee9ff92b05e62b19ee65a02b5702cff7d5a377e32c6ae29d8d"
 
 [[package]]
-name = "cli-client"
+name = "client-bootstrap"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "game-content",
+ "game-core",
+ "runtime",
+]
+
+[[package]]
+name = "client-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "client-bootstrap",
+ "client-core",
  "crossterm 0.29.0",
  "dotenvy",
- "frontend-core",
  "game-core",
  "ratatui",
  "runtime",
@@ -641,11 +651,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "client-bootstrap"
+name = "client-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "game-content",
+ "async-trait",
  "game-core",
  "runtime",
 ]
@@ -1209,16 +1219,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
-]
-
-[[package]]
-name = "frontend-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "game-core",
- "runtime",
 ]
 
 [[package]]

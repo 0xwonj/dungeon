@@ -13,7 +13,7 @@ use client_bootstrap::{
     config::CliConfig,
     oracles::OracleBundle,
 };
-use frontend_core::{frontend::FrontendApp, message::MessageLog};
+use client_core::{frontend::FrontendApp, message::MessageLog};
 
 pub struct CliApp {
     config: CliConfig,
