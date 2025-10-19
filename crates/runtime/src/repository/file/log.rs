@@ -14,7 +14,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use crate::api::Result;
 use crate::events::Event;
 use crate::repository::RepositoryError;
-use crate::repository::traits::{ActionRepository, EventRepository};
+use crate::repository::traits::{ActionLogWriter, EventRepository};
 use crate::repository::types::ActionLogEntry;
 
 // ============================================================================
@@ -281,13 +281,9 @@ impl EventRepository for FileRepository<Event> {
     }
 }
 
-impl ActionRepository for FileRepository<ActionLogEntry> {
+impl ActionLogWriter for FileRepository<ActionLogEntry> {
     fn append(&mut self, entry: &ActionLogEntry) -> Result<u64> {
         self.append(entry)
-    }
-
-    fn read_at_offset(&self, byte_offset: u64) -> Result<Option<(ActionLogEntry, u64)>> {
-        self.read_at_offset(byte_offset)
     }
 
     fn flush(&mut self) -> Result<()> {

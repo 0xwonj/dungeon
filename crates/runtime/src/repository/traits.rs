@@ -47,18 +47,42 @@ pub trait StateRepository: Send + Sync {
 /// Repository for checkpoint persistence
 ///
 /// Checkpoints store lightweight metadata + indices to external data:
-/// - State references
-/// - Event log offsets
-/// - Proof references (optional)
+/// - State references (state hash, persisted status)
+/// - Action log offsets (for replay/recovery)
+/// - Proof references (optional, verified status)
+///
+/// # Storage Model
+///
+/// Each checkpoint is stored as an individual file indexed by (session_id, nonce):
+/// ```text
+/// checkpoint_{session}_nonce_{nonce:010}.json
+/// ```
+///
+/// This enables:
+/// - Multiple checkpoints per session (save history)
+/// - Easy CRUD operations (load specific nonce or latest)
+/// - Selective cleanup (delete old checkpoints)
 pub trait CheckpointRepository: Send + Sync {
-    /// Save a checkpoint
+    /// Save a checkpoint (indexed by session_id + nonce)
     fn save(&self, checkpoint: &Checkpoint) -> Result<()>;
 
-    /// Load a checkpoint by session ID
-    fn load(&self, session_id: &str) -> Result<Option<Checkpoint>>;
+    /// Load the latest checkpoint for a session
+    fn load_latest(&self, session_id: &str) -> Result<Option<Checkpoint>>;
 
-    /// Delete a checkpoint
-    fn delete(&self, session_id: &str) -> Result<()>;
+    /// Load a checkpoint at a specific nonce
+    fn load_at_nonce(&self, session_id: &str, nonce: u64) -> Result<Option<Checkpoint>>;
+
+    /// List all checkpoint nonces for a session (sorted ascending)
+    fn list_checkpoints(&self, session_id: &str) -> Result<Vec<u64>>;
+
+    /// Delete a specific checkpoint
+    fn delete(&self, session_id: &str, nonce: u64) -> Result<()>;
+
+    /// Delete all checkpoints for a session
+    fn delete_all(&self, session_id: &str) -> Result<usize>;
+
+    /// Delete checkpoints before a specific nonce (cleanup old saves)
+    fn delete_before(&self, session_id: &str, before_nonce: u64) -> Result<usize>;
 
     /// List all checkpoint sessions
     fn list_sessions(&self) -> Result<Vec<String>>;
@@ -91,7 +115,7 @@ pub trait EventRepository: Send + Sync {
     fn session_id(&self) -> &str;
 }
 
-/// Repository for action log persistence
+/// Write-only repository for action log persistence.
 ///
 /// Provides append-only logging specifically for executed actions.
 /// This stores the full ActionLogEntry data needed for proof generation,
@@ -99,10 +123,11 @@ pub trait EventRepository: Send + Sync {
 ///
 /// # Purpose
 ///
-/// The action log is optimized for proof generation:
-/// - Sequential access by ProverWorker
+/// The action log writer is optimized for proof generation:
+/// - Sequential write-only access by SimulationWorker
 /// - Contains all data needed for zkVM (before_state, after_state, action)
 /// - No filtering required (only ActionExecuted entries)
+/// - Reading is handled by ActionLogReader trait (separate responsibility)
 ///
 /// # File Format
 ///
@@ -110,17 +135,17 @@ pub trait EventRepository: Send + Sync {
 /// ```text
 /// [u32 length][bincode serialized ActionLogEntry]
 /// ```
-pub trait ActionRepository: Send + Sync {
+///
+/// # Naming
+///
+/// This trait is named `ActionLogWriter` for symmetry with `ActionLogReader`.
+/// Together they provide complete read/write access to action logs while
+/// maintaining clear separation of concerns.
+pub trait ActionLogWriter: Send + Sync {
     /// Append an action log entry
     ///
     /// Returns the byte offset where the entry was written.
     fn append(&mut self, entry: &ActionLogEntry) -> Result<u64>;
-
-    /// Read an action log entry at a specific byte offset
-    ///
-    /// Returns `None` if the offset is beyond the end of the log.
-    /// Returns `Some((entry, next_offset))` where next_offset is the byte position after this entry.
-    fn read_at_offset(&self, byte_offset: u64) -> Result<Option<(ActionLogEntry, u64)>>;
 
     /// Flush buffered writes to disk
     fn flush(&mut self) -> Result<()>;
@@ -162,6 +187,7 @@ pub trait ProofIndexRepository: Send + Sync {
 /// - Read-only sequential access (no random access needed)
 /// - Optimized for streaming consumption by ProverWorker
 /// - Supports file growth detection for continuous operation
+/// - Supports checkpoint/resume via seek()
 ///
 /// # Implementations
 ///
@@ -204,4 +230,23 @@ pub trait ActionLogReader: Send + Sync {
         // Default implementation - can be overridden for optimization
         true
     }
+
+    /// Seek to a specific byte offset in the log.
+    ///
+    /// This is useful for resuming proof generation from a checkpoint.
+    /// The offset should be a valid entry boundary (as returned by `current_offset()`).
+    ///
+    /// # Arguments
+    ///
+    /// * `offset` - The byte offset to seek to (must be <= log size)
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the offset is invalid (beyond end of log).
+    ///
+    /// # Notes
+    ///
+    /// - Does not validate that offset points to an entry boundary
+    /// - Caller must ensure offset is from a valid checkpoint
+    fn seek(&self, offset: u64) -> Result<()>;
 }

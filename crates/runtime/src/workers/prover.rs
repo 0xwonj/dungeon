@@ -99,9 +99,25 @@ impl ProverWorker {
         let proof_index = match proof_index_repo.load(&session_id) {
             Ok(Some(index)) => {
                 info!(
-                    "Loaded existing proof index: session={}, proven_up_to={}",
-                    session_id, index.proven_up_to_nonce
+                    "Loaded existing proof index: session={}, proven_up_to={}, offset={}",
+                    session_id, index.proven_up_to_nonce, index.action_log_offset
                 );
+
+                // Resume from checkpoint: seek reader to saved offset
+                if index.action_log_offset > 0 {
+                    if let Err(e) = reader.seek(index.action_log_offset) {
+                        warn!(
+                            "Failed to seek to checkpoint offset {}: {}. Starting from beginning.",
+                            index.action_log_offset, e
+                        );
+                    } else {
+                        info!(
+                            "Resumed proof generation from offset {} (after nonce {})",
+                            index.action_log_offset, index.proven_up_to_nonce
+                        );
+                    }
+                }
+
                 index
             }
             Ok(None) => {
@@ -180,8 +196,35 @@ impl ProverWorker {
 
         loop {
             // Tight loop: process all available entries
-            while let Ok(Some(entry)) = self.reader.read_next() {
-                self.handle_action_entry(entry).await;
+            loop {
+                match self.reader.read_next() {
+                    Ok(Some(entry)) => {
+                        self.handle_action_entry(entry).await;
+                    }
+                    Ok(None) => {
+                        // Caught up with writer - break to refresh
+                        break;
+                    }
+                    Err(e) => {
+                        // Handle read errors (partial writes, corrupted data, etc.)
+                        error!(
+                            "Failed to read action log at offset {}: {}",
+                            self.reader.current_offset(),
+                            e
+                        );
+
+                        // Check if this is a partial write error
+                        if e.to_string().contains("partial write") {
+                            error!(
+                                "Detected partial write - action log may be corrupted. \
+                                 Will retry after refresh."
+                            );
+                        }
+
+                        // Break and attempt refresh - file may be still being written
+                        break;
+                    }
+                }
             }
 
             // Caught up with writer - refresh and check for new data
@@ -276,6 +319,9 @@ impl ProverWorker {
                 // Update proof index
                 self.proof_index.add_proof(proof_entry);
 
+                // Update action log offset for checkpoint/resume
+                self.proof_index.action_log_offset = self.reader.current_offset();
+
                 // Save proof index to disk (every proof for now, could batch later)
                 if let Err(e) = self.storage.save_index(&self.proof_index) {
                     error!("Failed to save proof index: {}", e);
@@ -320,8 +366,6 @@ impl ProverWorker {
                     }));
             }
         }
-
-        // Offset is already updated in the main loop after read_at_offset returns next_offset
     }
 
     /// Saves proof to file if directory is configured.
@@ -410,7 +454,8 @@ pub struct ProverWorkerBuilder {
     event_bus: Option<EventBus>,
     oracles: Option<OracleManager>,
     save_proofs_dir: Option<PathBuf>,
-    start_offset: u64,
+    #[allow(dead_code)]
+    start_offset: u64, // Deprecated: Use ProofIndex checkpoint instead
 }
 
 impl ProverWorkerBuilder {
@@ -459,14 +504,6 @@ impl ProverWorkerBuilder {
         self
     }
 
-    /// Set the starting byte offset in the action log (optional, default: 0).
-    ///
-    /// Use this to resume proof generation from a checkpoint.
-    pub fn start_offset(mut self, offset: u64) -> Self {
-        self.start_offset = offset;
-        self
-    }
-
     /// Build the ProverWorker.
     ///
     /// # Errors
@@ -498,10 +535,10 @@ impl ProverWorkerBuilder {
         let action_log_path = session_dir.join("actions").join(&action_filename);
         let proof_index_dir = session_dir.join("proof_indices");
 
-        // Create memory-mapped reader (default implementation)
-        let reader =
-            MmapActionLogReader::new(action_log_path, session_id.clone(), self.start_offset)
-                .map_err(|e| format!("Failed to create mmap reader: {}", e))?;
+        // Create memory-mapped reader starting from beginning
+        // (will be seeked to checkpoint offset in ProverWorker::new)
+        let reader = MmapActionLogReader::new(action_log_path, session_id.clone(), 0)
+            .map_err(|e| format!("Failed to create mmap reader: {}", e))?;
 
         // Box as trait object
         let reader: Box<dyn ActionLogReader> = Box::new(reader);

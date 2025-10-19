@@ -577,12 +577,12 @@ impl RuntimeBuilder {
         let session_dir = persistence.base_dir.join(&config.session_id);
 
         // Build ProverWorker using its builder
+        // Note: ProverWorker automatically resumes from ProofIndex checkpoint
         let mut builder = ProverWorker::builder()
             .session_id(config.session_id.clone())
             .persistence_dir(&persistence.base_dir)
             .event_bus(event_bus)
-            .oracles(oracles)
-            .start_offset(0);
+            .oracles(oracles);
 
         // Optionally save proofs to disk
         if proving.save_proofs_dir.is_some() || persistence.enabled {

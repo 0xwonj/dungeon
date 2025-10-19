@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use game_core::GameState;
 use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::time::{Duration, sleep};
 use tracing::{debug, error, info, warn};
 
 use crate::events::{Event, GameStateEvent};
@@ -153,12 +154,17 @@ impl PersistenceWorker {
                 event = self.event_rx.recv() => {
                     match event {
                         Ok(event) => {
-                            if let Err(e) = self.handle_event(event).await {
-                                error!("Failed to handle event: {}", e);
+                            if let Err(e) = self.handle_event_with_retry(event).await {
+                                panic!("FATAL persistence error: {}", e);
                             }
                         }
                         Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                            warn!("PersistenceWorker lagged, skipped {} events", skipped);
+                            panic!(
+                                "🚨 FATAL: PersistenceWorker lost {} events! \
+                                 Data integrity COMPROMISED. This should NEVER happen with buffer size 50000. \
+                                 Check system performance and disk I/O.",
+                                skipped
+                            );
                         }
                         Err(broadcast::error::RecvError::Closed) => {
                             info!("Event bus closed, shutting down PersistenceWorker");
@@ -186,6 +192,50 @@ impl PersistenceWorker {
         }
 
         info!("PersistenceWorker stopped");
+    }
+
+    /// Handle an event with exponential backoff retry.
+    ///
+    /// Retries up to 5 times with exponential backoff (100ms, 200ms, 400ms, 800ms, 1600ms).
+    /// Panics if all retries fail to ensure data integrity.
+    async fn handle_event_with_retry(&mut self, event: Event) -> Result<(), String> {
+        const MAX_RETRIES: u32 = 5;
+        const BASE_DELAY_MS: u64 = 100;
+
+        for attempt in 0..MAX_RETRIES {
+            match self.handle_event(event.clone()).await {
+                Ok(_) => {
+                    if attempt > 0 {
+                        info!("Event persisted successfully after {} retries", attempt);
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    if attempt < MAX_RETRIES - 1 {
+                        let delay = Duration::from_millis(BASE_DELAY_MS * (1 << attempt));
+                        warn!(
+                            "Failed to persist event (attempt {}/{}): {}. Retrying in {:?}...",
+                            attempt + 1,
+                            MAX_RETRIES,
+                            e,
+                            delay
+                        );
+                        sleep(delay).await;
+                    } else {
+                        error!(
+                            "🚨 FATAL: Failed to persist event after {} attempts: {}",
+                            MAX_RETRIES, e
+                        );
+                        return Err(format!(
+                            "Persistence failed after {} retries: {}",
+                            MAX_RETRIES, e
+                        ));
+                    }
+                }
+            }
+        }
+
+        unreachable!()
     }
 
     /// Handle an event from the event bus
@@ -294,16 +344,19 @@ impl PersistenceWorker {
 
         // Create checkpoint
         let state_hash = self.compute_state_hash(&state);
-        let mut checkpoint = Checkpoint::with_state(
+        let action_offset = self.action_repo.size().unwrap_or(0);
+        let checkpoint = Checkpoint::with_state(
             self.config.session_id.clone(),
             nonce,
             state_hash,
             true,
-            nonce,
+            action_offset,
         );
 
-        // Record event log offset for crash recovery
-        checkpoint.event_ref.offset = self.event_repo.size().unwrap_or(0);
+        debug!(
+            "Checkpoint offsets: action={}, nonce={}",
+            action_offset, nonce
+        );
 
         self.checkpoint_repo
             .save(&checkpoint)

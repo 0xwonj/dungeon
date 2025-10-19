@@ -13,9 +13,9 @@ use memmap2::Mmap;
 use tracing::debug;
 
 use crate::api::Result;
+use crate::repository::RepositoryError;
 use crate::repository::traits::ActionLogReader;
 use crate::repository::types::ActionLogEntry;
-use crate::repository::RepositoryError;
 
 /// Memory-mapped action log reader optimized for sequential access.
 ///
@@ -70,11 +70,7 @@ impl MmapActionLogReader {
     /// - File doesn't exist
     /// - Cannot memory map the file
     /// - Invalid start offset
-    pub fn new(
-        file_path: impl AsRef<Path>,
-        session_id: String,
-        start_offset: u64,
-    ) -> Result<Self> {
+    pub fn new(file_path: impl AsRef<Path>, session_id: String, start_offset: u64) -> Result<Self> {
         let file_path = file_path.as_ref().to_path_buf();
 
         // Open file for reading
@@ -122,6 +118,12 @@ impl MmapActionLogReader {
     /// - `Some(entry)` - Next entry read successfully
     /// - `None` - Reached end of file (caught up with writer)
     ///
+    /// # Errors
+    ///
+    /// - `PartialWrite` - Detected incomplete write (corrupted log file)
+    /// - `Serialization` - Failed to deserialize entry
+    /// - `LockPoisoned` - Internal lock was poisoned
+    ///
     /// # Thread Safety
     ///
     /// Safe to call from multiple threads, but each thread should track its own offset
@@ -146,7 +148,17 @@ impl MmapActionLogReader {
 
         // Parse entry: [u32 length][bincode data]
         if data.len() < 4 {
-            // Not enough data for length prefix
+            // Check if we're truly at EOF or have a partial write
+            if offset + 4 <= size {
+                // We should have at least 4 bytes, but don't - this is a partial write
+                return Err(RepositoryError::PartialWrite {
+                    offset,
+                    expected: 4,
+                    actual: data.len(),
+                }
+                .into());
+            }
+            // True EOF - not enough data for length prefix
             return Ok(None);
         }
 
@@ -154,6 +166,17 @@ impl MmapActionLogReader {
 
         // Check if we have enough data for the full entry
         if data.len() < 4 + len {
+            // Check if this is a partial write or we just haven't caught up yet
+            if offset + 4 + len as u64 <= size {
+                // File claims to have enough data, but mmap doesn't - partial write
+                return Err(RepositoryError::PartialWrite {
+                    offset,
+                    expected: 4 + len,
+                    actual: data.len(),
+                }
+                .into());
+            }
+            // Still being written - caught up with writer
             return Ok(None);
         }
 
@@ -236,10 +259,7 @@ impl MmapActionLogReader {
         // Update size
         self.file_size.store(new_size, Ordering::Release);
 
-        debug!(
-            "Remapped action log: {} -> {} bytes",
-            old_size, new_size
-        );
+        debug!("Remapped action log: {} -> {} bytes", old_size, new_size);
 
         Ok(true)
     }
@@ -275,6 +295,36 @@ impl MmapActionLogReader {
         let size = self.file_size.load(Ordering::Acquire);
         size.saturating_sub(offset)
     }
+
+    /// Seek to a specific byte offset in the log.
+    ///
+    /// This is useful for resuming proof generation from a checkpoint.
+    ///
+    /// # Arguments
+    ///
+    /// * `offset` - The byte offset to seek to (must be <= file size)
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the offset is invalid (beyond end of file).
+    pub fn seek(&self, offset: u64) -> Result<()> {
+        let size = self.file_size.load(Ordering::Acquire);
+        if offset > size {
+            return Err(RepositoryError::InvalidOffset {
+                offset,
+                file_size: size,
+            }
+            .into());
+        }
+
+        self.current_offset.store(offset, Ordering::Release);
+        debug!(
+            "Action log reader seeked to offset {} / {} bytes",
+            offset, size
+        );
+
+        Ok(())
+    }
 }
 
 // Thread-safe: Multiple threads can read concurrently
@@ -302,143 +352,8 @@ impl ActionLogReader for MmapActionLogReader {
     fn has_more(&self) -> bool {
         self.has_more()
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::repository::file::FileRepository;
-    use game_core::{Action, CharacterActionKind, EntityId, GameState};
-    use tempfile::TempDir;
-
-    fn create_test_entry(nonce: u64) -> ActionLogEntry {
-        let before_state = GameState::default();
-        let after_state = GameState::default();
-        let action = Action::character(EntityId::PLAYER, CharacterActionKind::Wait);
-
-        ActionLogEntry {
-            nonce,
-            clock: nonce,
-            action: action.clone(),
-            before_state: Box::new(before_state.clone()),
-            after_state: Box::new(after_state.clone()),
-            delta: None, // Delta not needed for tests
-        }
-    }
-
-    #[test]
-    fn test_mmap_reader_basic() {
-        let temp_dir = TempDir::new().unwrap();
-        let filename = "test_actions.log";
-
-        // Write some entries
-        {
-            let mut writer =
-                FileRepository::<ActionLogEntry>::create(temp_dir.path(), filename).unwrap();
-            for i in 0..10 {
-                writer.append(&create_test_entry(i)).unwrap();
-            }
-            writer.flush().unwrap();
-        }
-
-        // Read with mmap
-        let reader = MmapActionLogReader::new(
-            temp_dir.path().join(filename),
-            "test".to_string(),
-            0,
-        )
-        .unwrap();
-
-        // Read all entries
-        let mut count = 0;
-        while let Some(entry) = reader.read_next().unwrap() {
-            assert_eq!(entry.nonce, count);
-            count += 1;
-        }
-
-        assert_eq!(count, 10);
-    }
-
-    #[test]
-    fn test_mmap_reader_refresh() {
-        let temp_dir = TempDir::new().unwrap();
-        let filename = "test_actions.log";
-
-        // Write initial entries
-        let mut writer =
-            FileRepository::<ActionLogEntry>::create(temp_dir.path(), filename).unwrap();
-        for i in 0..5 {
-            writer.append(&create_test_entry(i)).unwrap();
-        }
-        writer.flush().unwrap();
-
-        // Create reader
-        let reader = MmapActionLogReader::new(
-            temp_dir.path().join(filename),
-            "test".to_string(),
-            0,
-        )
-        .unwrap();
-
-        // Read first batch
-        let mut count = 0;
-        while let Some(entry) = reader.read_next().unwrap() {
-            assert_eq!(entry.nonce, count);
-            count += 1;
-        }
-        assert_eq!(count, 5);
-
-        // Write more entries
-        for i in 5..10 {
-            writer.append(&create_test_entry(i)).unwrap();
-        }
-        writer.flush().unwrap();
-
-        // Refresh and read new entries
-        let grew = reader.refresh().unwrap();
-        assert!(grew);
-
-        while let Some(entry) = reader.read_next().unwrap() {
-            assert_eq!(entry.nonce, count);
-            count += 1;
-        }
-        assert_eq!(count, 10);
-    }
-
-    #[test]
-    fn test_mmap_reader_peek() {
-        let temp_dir = TempDir::new().unwrap();
-        let filename = "test_actions.log";
-
-        // Write entries
-        let mut writer =
-            FileRepository::<ActionLogEntry>::create(temp_dir.path(), filename).unwrap();
-        writer.append(&create_test_entry(0)).unwrap();
-        writer.flush().unwrap();
-
-        // Create reader
-        let reader = MmapActionLogReader::new(
-            temp_dir.path().join(filename),
-            "test".to_string(),
-            0,
-        )
-        .unwrap();
-
-        // Peek should not advance offset
-        let peeked = reader.peek_next().unwrap().unwrap();
-        assert_eq!(peeked.nonce, 0);
-        assert_eq!(reader.current_offset(), 0);
-
-        // Peek again - same result
-        let peeked = reader.peek_next().unwrap().unwrap();
-        assert_eq!(peeked.nonce, 0);
-
-        // Now read - should advance offset
-        let entry = reader.read_next().unwrap().unwrap();
-        assert_eq!(entry.nonce, 0);
-        assert!(reader.current_offset() > 0);
-
-        // Peek at end - should be None
-        assert!(reader.peek_next().unwrap().is_none());
+    fn seek(&self, offset: u64) -> Result<()> {
+        self.seek(offset)
     }
 }

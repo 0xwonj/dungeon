@@ -101,6 +101,24 @@ impl ActionLogReader for InMemoryActionLogReader {
         let position = self.position.lock().unwrap();
         *position < entries.len()
     }
+
+    fn seek(&self, offset: u64) -> Result<()> {
+        // In-memory uses entry index as "offset"
+        let entries = self.entries.lock().unwrap();
+        let mut position = self.position.lock().unwrap();
+
+        let index = offset as usize;
+        if index > entries.len() {
+            return Err(crate::repository::RepositoryError::InvalidOffset {
+                offset,
+                file_size: entries.len() as u64,
+            }
+            .into());
+        }
+
+        *position = index;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -121,7 +139,11 @@ mod tests {
 
     #[test]
     fn test_in_memory_reader_basic() {
-        let entries = vec![create_test_entry(0), create_test_entry(1), create_test_entry(2)];
+        let entries = vec![
+            create_test_entry(0),
+            create_test_entry(1),
+            create_test_entry(2),
+        ];
 
         let reader = InMemoryActionLogReader::with_entries("test".to_string(), entries);
 

@@ -51,7 +51,7 @@ pub struct EventBus {
 impl EventBus {
     /// Creates a new event bus with default capacity for each topic
     pub fn new() -> Self {
-        Self::with_capacity(100)
+        Self::with_capacity(50000)
     }
 
     /// Creates a new event bus with specified capacity per topic
