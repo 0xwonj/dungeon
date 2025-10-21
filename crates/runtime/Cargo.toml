@@ -13,6 +13,8 @@ arkworks = ["zk/arkworks"]
 
 [dependencies]
 game-core = { workspace = true, features = ["serde"] }
+game-content = { workspace = true, features = ["serde"] }
+behavior-tree = { workspace = true }
 zk = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
