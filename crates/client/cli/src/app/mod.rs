@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use game_core::{Action, EntityId};
-use runtime::{AiKind, InteractiveKind, ProviderKind, Runtime, Topic, WaitActionProvider};
+use runtime::{InteractiveKind, ProviderKind, Runtime, Topic};
 
 use crate::input::CliActionProvider;
 use crate::presentation::{CliEventConsumer, EventLoop, terminal};
@@ -19,7 +19,6 @@ pub struct CliApp {
     config: CliConfig,
     oracles: OracleBundle,
     runtime: Runtime,
-    tx_action: mpsc::Sender<Action>,
 }
 
 pub struct CliAppBuilder {
@@ -51,37 +50,30 @@ impl CliApp {
             runtime,
         } = setup;
 
-        let (tx_action, _rx_action) = mpsc::channel::<Action>(config.channels.action_buffer);
-
         Self {
             config,
             oracles,
             runtime,
-            tx_action,
         }
     }
 
-    pub async fn execute(mut self) -> Result<()> {
+    pub async fn execute(self) -> Result<()> {
         tracing::info!("CLI client starting...");
 
-        // Setup providers before starting
-        let (tx_action_new, rx_action) =
-            mpsc::channel::<Action>(self.config.channels.action_buffer);
-        self.tx_action = tx_action_new;
+        // Setup CLI-specific provider (interactive input)
+        let (tx_action, rx_action) = mpsc::channel::<Action>(self.config.channels.action_buffer);
 
         let handle = self.runtime.handle();
         let cli_kind = ProviderKind::Interactive(InteractiveKind::CliInput);
-        let wait_kind = ProviderKind::Ai(AiKind::Wait);
 
-        // Register provider instances (now synchronous)
+        // Register CLI input provider for player
         handle.register_provider(cli_kind, CliActionProvider::new(rx_action))?;
-        handle.register_provider(wait_kind, WaitActionProvider)?;
 
-        // Bind player to CLI input (now synchronous)
+        // Bind player to CLI input
         handle.bind_entity_provider(EntityId::PLAYER, cli_kind)?;
 
-        // Set default to Wait for unmapped entities (NPCs, now synchronous)
-        handle.set_default_provider(wait_kind)?;
+        // Note: AI providers and default are already set up in RuntimeBuilder
+        // NPCs will use the AggressiveAiProvider configured in bootstrap
 
         let mut terminal = terminal::init()?;
         let _guard = terminal::TerminalGuard;
@@ -90,7 +82,6 @@ impl CliApp {
             config,
             oracles,
             mut runtime,
-            tx_action,
         } = self;
 
         // Subscribe to topics that CLI needs (GameState and Proof)

@@ -91,7 +91,7 @@ impl NpcTemplateBuilder {
 }
 
 /// Oracle providing NPC template data for entity creation.
-pub trait NpcOracle {
+pub trait NpcOracle: Send + Sync {
     /// Returns the template for a given NPC type ID.
     fn template(&self, template_id: u16) -> Option<NpcTemplate>;
 }

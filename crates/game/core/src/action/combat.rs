@@ -37,7 +37,7 @@ impl ActionTransition for AttackAction {
     }
 
     fn cost(&self) -> Tick {
-        0
+        6
     }
 
     fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {

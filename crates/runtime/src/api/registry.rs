@@ -21,12 +21,10 @@ use super::{ActionProvider, AiKind, ProviderKind, Result, RuntimeError};
 ///
 /// # Architecture
 ///
-/// ```text
 /// ProviderRegistry
 /// ├── providers: HashMap<ProviderKind, Provider>  (provider instances)
 /// ├── entity_mappings: HashMap<EntityId, ProviderKind>  (entity bindings)
 /// └── default_kind: ProviderKind  (fallback)
-/// ```
 pub struct ProviderRegistry {
     /// Provider instances by kind (shared across entities)
     /// Uses Arc instead of Box to allow cloning providers for use outside locks
@@ -66,13 +64,6 @@ impl ProviderRegistry {
     /// Bind an entity to a specific provider kind.
     ///
     /// The entity will use this provider until unbound or rebound to a different kind.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// registry.bind_entity(EntityId::PLAYER, ProviderKind::Interactive(InteractiveKind::CliInput));
-    /// registry.bind_entity(EntityId(1), ProviderKind::Ai(AiKind::Aggressive));
-    /// ```
     pub fn bind_entity(&mut self, entity: EntityId, kind: ProviderKind) {
         self.entity_mappings.insert(entity, kind);
     }

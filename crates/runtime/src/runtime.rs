@@ -142,6 +142,9 @@ pub struct Runtime {
 
     // Provider registry (shared with RuntimeHandle via Arc)
     providers: Arc<RwLock<ProviderRegistry>>,
+
+    // Oracle manager (cloned, cheap due to Arc internals)
+    oracles: OracleManager,
 }
 
 impl Runtime {
@@ -172,14 +175,17 @@ impl Runtime {
     /// 2. Queries the entity's provider for an action
     /// 3. Executes the action
     ///
+    /// If the provider fails to generate an action, a fallback Wait action is used.
+    ///
     /// # Errors
     ///
     /// Returns an error if:
     /// - No active entities are available
     /// - The entity's provider kind is not registered
-    /// - Provider fails to generate an action
     /// - Action execution fails
     pub async fn step(&mut self) -> Result<()> {
+        use game_core::{Action, CharacterActionKind};
+
         // 1. Prepare turn (SimulationWorker determines which entity acts)
         let (entity, snapshot) = self.handle.prepare_next_turn().await?;
 
@@ -193,7 +199,20 @@ impl Runtime {
         };
 
         // 3. Query provider for action (I/O operation at Runtime layer)
-        let action = provider.provide_action(entity, &snapshot).await?;
+        let env = self.oracles.as_game_env();
+        let action = match provider.provide_action(entity, &snapshot, env).await {
+            Ok(action) => action,
+            Err(e) => {
+                // Provider failed - log and fallback to Wait action
+                tracing::warn!(
+                    target: "runtime",
+                    entity = ?entity,
+                    error = %e,
+                    "Provider failed to generate action, falling back to Wait"
+                );
+                Action::character(entity, CharacterActionKind::Wait)
+            }
+        };
 
         // 4. Execute the action (SimulationWorker applies pure game logic)
         self.handle.execute_action(action).await?;
@@ -492,6 +511,7 @@ impl RuntimeBuilder {
             },
             proof_metrics,
             providers,
+            oracles,
         })
     }
 

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use game_core::{Action, EntityId, GameState};
+use game_core::{Action, EntityId, GameEnv, GameState};
 use runtime::ActionProvider;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex};
 
 /// Action provider that waits for player input from CLI
 pub struct CliActionProvider {
@@ -23,17 +23,20 @@ impl ActionProvider for CliActionProvider {
         &self,
         entity: EntityId,
         _state: &GameState,
+        _env: GameEnv<'_>,
     ) -> runtime::Result<Action> {
         let mut rx = self.rx_action.lock().await;
 
         match rx.recv().await {
             Some(action) => {
+                // Validate that the action is for the correct entity
                 if action.actor() != entity {
-                    tracing::warn!(
-                        "Received action for entity {:?}, but expected {:?}",
+                    tracing::error!(
+                        "Action actor mismatch: received {:?}, expected {:?}",
                         action.actor(),
                         entity
                     );
+                    return Err(runtime::RuntimeError::InvalidEntityId(action.actor()));
                 }
                 Ok(action)
             }

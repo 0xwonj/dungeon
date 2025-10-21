@@ -8,6 +8,7 @@
 //! Modules are organized by responsibility:
 //! - [`runtime`] hosts the orchestrator and builder
 //! - [`api`] exposes the types downstream clients interact with
+//! - [`providers`] contains concrete action provider implementations
 //! - [`events`] provides topic-based event bus for flexible event routing
 //! - [`workers`] keeps background tasks internal to the crate
 //! - [`hooks`] provides post-execution hook system for runtime orchestration
@@ -17,6 +18,7 @@ pub mod api;
 pub mod events;
 pub mod hooks;
 pub mod oracle;
+pub mod providers;
 pub mod repository;
 pub mod runtime;
 pub mod types;
@@ -26,8 +28,9 @@ mod workers;
 
 pub use api::{
     ActionProvider, AiKind, InteractiveKind, ProviderKind, ProviderRegistry, Result, RuntimeError,
-    RuntimeHandle, WaitActionProvider,
+    RuntimeHandle,
 };
+pub use providers::ai::{presets, AiContext, BehaviorTreeProvider};
 pub use events::{Event, EventBus, GameStateEvent, ProofEvent, Topic};
 pub use hooks::{
     ActionCostHook, ActivationHook, HookContext, HookCriticality, HookRegistry, PostExecutionHook,

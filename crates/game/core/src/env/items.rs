@@ -1,6 +1,6 @@
 use crate::state::ItemHandle;
 
-pub trait ItemOracle {
+pub trait ItemOracle: Send + Sync {
     fn definition(&self, handle: ItemHandle) -> Option<ItemDefinition>;
 }
 

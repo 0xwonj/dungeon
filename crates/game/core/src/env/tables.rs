@@ -5,7 +5,7 @@ use crate::action::AttackStyle;
 /// This oracle defines core gameplay mechanics like movement constraints,
 /// attack formulas, and status effect durations. It does NOT define entity data
 /// (use NpcOracle, ItemOracle, etc. for that).
-pub trait TablesOracle {
+pub trait TablesOracle: Send + Sync {
     fn movement_rules(&self) -> MovementRules;
     fn attack_profile(&self, style: AttackStyle) -> Option<AttackProfile>;
 }

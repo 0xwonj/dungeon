@@ -1,7 +1,7 @@
 use crate::state::{EntityId, ItemHandle, Position, PropKind};
 
 /// Static map oracle exposing immutable layout information and initial entity placement.
-pub trait MapOracle {
+pub trait MapOracle: Send + Sync {
     fn dimensions(&self) -> MapDimensions;
     fn tile(&self, position: Position) -> Option<StaticTile>;
 

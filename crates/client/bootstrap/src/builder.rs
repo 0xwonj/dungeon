@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use runtime::{AiKind, ProviderKind, Runtime, WaitActionProvider};
+use runtime::{presets, AiKind, BehaviorTreeProvider, ProviderKind, Runtime};
 
 use crate::config::CliConfig;
 use crate::oracles::{OracleBundle, OracleFactory, TestOracleFactory};
@@ -58,15 +58,25 @@ impl RuntimeBuilder {
         // Build the runtime
         let runtime = builder.build().await?;
 
-        // Register default NPC provider (Wait AI) before returning
+        // Register AI providers before returning
         let wait_kind = ProviderKind::Ai(AiKind::Wait);
+        let aggressive_kind = ProviderKind::Ai(AiKind::Aggressive);
         let handle = runtime.handle();
 
-        // Register wait provider (now synchronous)
-        handle.register_provider(wait_kind, WaitActionProvider)?;
+        // Register dummy provider (stationary/default fallback)
+        handle.register_provider(
+            wait_kind,
+            BehaviorTreeProvider::new(presets::dummy()),
+        )?;
 
-        // Set as default for unmapped entities (now synchronous)
-        handle.set_default_provider(wait_kind)?;
+        // Register goblin provider (aggressive melee, flees at 20%)
+        handle.register_provider(
+            aggressive_kind,
+            BehaviorTreeProvider::new(presets::goblin(0.2)),
+        )?;
+
+        // Set Aggressive (goblin) as default for unmapped entities
+        handle.set_default_provider(aggressive_kind)?;
 
         Ok(RuntimeSetup {
             config: self.config,
