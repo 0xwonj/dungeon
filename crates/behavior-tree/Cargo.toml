@@ -1,0 +1,13 @@
+[package]
+name = "behavior-tree"
+version = "0.1.0"
+edition = "2024"
+authors = ["wonj"]
+license = "MIT"
+description = "Lightweight behavior tree library optimized for turn-based games"
+
+[lib]
+name = "behavior_tree"
+path = "src/lib.rs"
+
+[dependencies]
