@@ -1,6 +1,7 @@
 //! Action domain definitions.
 //!
 //! Provides typed representations for player intent and concrete action kinds executed by the engine.
+pub mod available;
 pub mod combat;
 pub mod interact;
 pub mod inventory;
@@ -10,9 +11,10 @@ pub mod system;
 use crate::env::GameEnv;
 use crate::state::{EntityId, GameState, Tick};
 
+pub use available::get_available_actions;
 pub use combat::{AttackAction, AttackStyle};
 pub use interact::InteractAction;
-pub use inventory::{InventorySlot, ItemTarget, UseItemAction};
+pub use inventory::{InventoryIndex, ItemTarget, UseItemAction};
 pub use movement::{CardinalDirection, MoveAction, MoveError};
 pub use system::{ActionCostAction, ActivationAction, PrepareTurnAction, TurnError};
 

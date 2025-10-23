@@ -8,14 +8,8 @@ pub enum MoveError {
     #[error("map oracle not available")]
     MissingMap,
 
-    #[error("tables oracle not available")]
-    MissingTables,
-
     #[error("actor {0:?} not found")]
     ActorNotFound(EntityId),
-
-    #[error("distance {distance} exceeds maximum {max_distance}")]
-    DistanceExceeded { distance: u32, max_distance: u8 },
 
     #[error("destination {destination:?} is out of bounds")]
     OutOfBounds { destination: Position },
@@ -42,28 +36,16 @@ pub enum MoveError {
 pub struct MoveAction {
     pub actor: EntityId,
     pub direction: CardinalDirection,
-    pub distance: u32,
 }
 
 impl MoveAction {
-    pub fn new(actor: EntityId, direction: CardinalDirection, distance: u32) -> Self {
-        Self {
-            actor,
-            direction,
-            distance,
-        }
+    pub fn new(actor: EntityId, direction: CardinalDirection) -> Self {
+        Self { actor, direction }
     }
 
     fn destination_from(&self, origin: Position) -> Position {
         let (dx, dy) = self.direction.delta();
-        Position::new(
-            origin.x + dx * self.distance as i32,
-            origin.y + dy * self.distance as i32,
-        )
-    }
-
-    fn step_distance(&self) -> u32 {
-        self.distance
+        Position::new(origin.x + dx, origin.y + dy)
     }
 }
 
@@ -77,6 +59,13 @@ pub enum CardinalDirection {
 }
 
 impl CardinalDirection {
+    pub const ALL: [CardinalDirection; 4] = [
+        CardinalDirection::North,
+        CardinalDirection::South,
+        CardinalDirection::East,
+        CardinalDirection::West,
+    ];
+
     pub fn delta(self) -> (i32, i32) {
         match self {
             CardinalDirection::North => (0, 1),
@@ -103,16 +92,6 @@ impl ActionTransition for MoveAction {
             .entities
             .actor(self.actor)
             .ok_or(MoveError::ActorNotFound(self.actor))?;
-
-        let tables = env.tables().ok_or(MoveError::MissingTables)?;
-        let movement_rules = tables.movement_rules();
-        let step_distance = self.step_distance();
-        if step_distance > movement_rules.max_step_distance as u32 {
-            return Err(MoveError::DistanceExceeded {
-                distance: step_distance,
-                max_distance: movement_rules.max_step_distance,
-            });
-        }
 
         let map = env.map().ok_or(MoveError::MissingMap)?;
         let destination = self.destination_from(actor_state.position);

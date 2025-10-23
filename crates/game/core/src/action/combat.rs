@@ -10,15 +10,15 @@ use crate::state::{EntityId, GameState, Tick};
 pub struct AttackAction {
     pub actor: EntityId,
     pub target: EntityId,
-    pub style: AttackStyle,
+    pub damage: u32,
 }
 
 impl AttackAction {
-    pub fn new(actor: EntityId, target: EntityId, style: AttackStyle) -> Self {
+    pub fn new(actor: EntityId, target: EntityId, damage: u32) -> Self {
         Self {
             actor,
             target,
-            style,
+            damage,
         }
     }
 }
