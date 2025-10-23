@@ -22,9 +22,8 @@ use crate::{
 use client_core::{
     message::{MessageEntry, MessageLevel, MessageLog},
     view_model::{
-        ActorView, ItemView, MapSnapshot, MapTile,
-        OccupantView, PlayerSnapshot, PropView, ResourceSnapshot, TurnSummary,
-        UiFrame, WorldSnapshot,
+        ActorView, ItemView, MapSnapshot, MapTile, OccupantView, PlayerSnapshot, PropView,
+        ResourceSnapshot, TurnSummary, UiFrame, WorldSnapshot,
     },
 };
 
@@ -686,4 +685,3 @@ fn render_actor_details_from_view<'a>(type_name: &'a str, actor: &'a ActorView) 
         ]),
     ]
 }
-

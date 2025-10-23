@@ -23,6 +23,6 @@ pub mod status;
 
 // Re-export core types for ergonomic API
 pub use behavior::Behavior;
-pub use composite::{Selector, Sequence};
+pub use composite::{Selector, Sequence, UtilitySelector};
 pub use decorator::{AlwaysSucceed, Inverter};
 pub use status::Status;

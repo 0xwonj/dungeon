@@ -1,6 +1,6 @@
 //! Cursor movement utilities.
 
-use game_core::{CardinalDirection, Position};
+use game_core::CardinalDirection;
 
 /// Helper trait for converting direction inputs to cursor deltas.
 pub trait CursorMovement {
@@ -16,9 +16,4 @@ impl CursorMovement for CardinalDirection {
             CardinalDirection::West => (-1, 0),
         }
     }
-}
-
-/// Computes Manhattan distance between two positions.
-pub fn manhattan_distance(a: Position, b: Position) -> u32 {
-    ((a.x - b.x).abs() + (a.y - b.y).abs()) as u32
 }

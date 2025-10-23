@@ -6,6 +6,13 @@
 
 use crate::{Behavior, Status};
 
+/// Type alias for a scored behavior option in utility-based decision making.
+///
+/// Each option consists of:
+/// - A behavior to execute
+/// - A scoring function that evaluates desirability (0-100)
+type ScoredOption<C> = (Box<dyn Behavior<C>>, Box<dyn Fn(&C) -> u32 + Send + Sync>);
+
 /// Executes child behaviors in sequence until one fails.
 ///
 /// # Semantics
@@ -64,6 +71,36 @@ pub struct Selector<C> {
     children: Vec<Box<dyn Behavior<C>>>,
 }
 
+/// Executes child behaviors based on utility scores.
+///
+/// # Semantics
+///
+/// A `UtilitySelector` node evaluates all children's scores and picks the highest:
+/// - Each child has an associated scoring function that returns a score (0-100)
+/// - All scoring functions are evaluated before execution
+/// - The child with the highest score is executed
+/// - If all scores are 0, the selector returns `Failure`
+///
+/// # Design
+///
+/// This is a **utility-based** decision system rather than priority-based.
+/// Unlike `Selector` which tries children in fixed order, `UtilitySelector`
+/// dynamically chooses based on current context.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use behavior_tree::UtilitySelector;
+///
+/// let selector = UtilitySelector::new(vec![
+///     (flee_behavior(), Box::new(|ctx| compute_flee_score(ctx))),
+///     (attack_behavior(), Box::new(|ctx| compute_attack_score(ctx))),
+/// ]);
+/// ```
+pub struct UtilitySelector<C> {
+    options: Vec<ScoredOption<C>>,
+}
+
 impl<C> Selector<C> {
     /// Creates a new selector with the given child behaviors.
     ///
@@ -90,6 +127,50 @@ impl<C> Behavior<C> for Selector<C> {
             }
         }
         // All children failed
+        Status::Failure
+    }
+}
+
+impl<C> UtilitySelector<C> {
+    /// Creates a new utility selector with the given options.
+    ///
+    /// Each option is a tuple of (behavior, scoring_function).
+    /// The scoring function takes a read-only reference to the context
+    /// and returns a score from 0 to 100.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `options` is empty.
+    pub fn new(options: Vec<ScoredOption<C>>) -> Self {
+        assert!(
+            !options.is_empty(),
+            "UtilitySelector must have at least one option"
+        );
+        Self { options }
+    }
+}
+
+impl<C> Behavior<C> for UtilitySelector<C> {
+    fn tick(&self, ctx: &mut C) -> Status {
+        // Compute scores for all options
+        let mut scores: Vec<(usize, u32)> = self
+            .options
+            .iter()
+            .enumerate()
+            .map(|(i, (_, scorer))| (i, scorer(ctx)))
+            .collect();
+
+        // Sort by score (descending)
+        scores.sort_by(|a, b| b.1.cmp(&a.1));
+
+        // Execute highest-scoring option
+        if let Some((best_idx, score)) = scores.first()
+            && *score > 0
+        {
+            return self.options[*best_idx].0.tick(ctx);
+        }
+
+        // All options scored 0 (all impossible/undesirable)
         Status::Failure
     }
 }

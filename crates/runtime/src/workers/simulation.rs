@@ -56,6 +56,12 @@ impl SimulationWorker {
         event_bus: EventBus,
         hooks: HookRegistry,
     ) -> Self {
+        tracing::info!(
+            "SimulationWorker initialized with active_actors: {:?}, total actors: {}",
+            state.turn.active_actors,
+            state.entities.actors.len()
+        );
+
         Self {
             state,
             oracles,

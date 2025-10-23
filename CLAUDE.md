@@ -84,7 +84,7 @@ cargo fmt --all
 - `ZK_BACKEND` - Set default backend for Just commands (risc0, risc0-fast, stub, sp1, arkworks)
 - `RISC0_SKIP_BUILD=1` - Skip guest builds during cargo build (use for fast iteration)
 - `RISC0_DEV_MODE=1` - Fast dev proofs (when running with real RISC0 backend)
-- `RUST_LOG=info` - Logging level
+- `RUST_LOG=info` - Logging level (use `info` or `warn` only - `debug` causes RISC0 to pollute TUI output)
 
 ## Architecture
 

@@ -4,11 +4,9 @@
 //! both Examine mode (free exploration) and Targeting mode (constrained selection).
 
 mod movement;
-mod target_selector;
 mod targeting;
 
 pub use movement::CursorMovement;
-pub use target_selector::{ChainSelector, select_target};
 
 use game_core::Position;
 

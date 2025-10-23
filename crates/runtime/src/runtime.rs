@@ -244,6 +244,7 @@ pub struct RuntimeBuilder {
     proving: ProvingSettings,
     state: Option<GameState>,
     oracles: Option<OracleManager>,
+    scenario: Option<crate::scenario::Scenario>,
     providers: ProviderRegistry,
     hooks: Option<HookRegistry>,
 }
@@ -256,6 +257,7 @@ impl RuntimeBuilder {
             proving: ProvingSettings::default(),
             state: None,
             oracles: None,
+            scenario: None,
             providers: ProviderRegistry::new(),
             hooks: None,
         }
@@ -288,6 +290,14 @@ impl RuntimeBuilder {
     /// Set required oracle manager
     pub fn oracles(mut self, oracles: OracleManager) -> Self {
         self.oracles = Some(oracles);
+        self
+    }
+
+    /// Provide scenario for entity initialization.
+    ///
+    /// If both scenario and initial_state are provided, initial_state takes precedence.
+    pub fn scenario(mut self, scenario: crate::scenario::Scenario) -> Self {
+        self.scenario = Some(scenario);
         self
     }
 
@@ -453,6 +463,7 @@ impl RuntimeBuilder {
             proving,
             state,
             oracles,
+            scenario,
             providers,
             hooks,
         } = self;
@@ -460,10 +471,19 @@ impl RuntimeBuilder {
         let oracles = oracles.ok_or_else(|| RuntimeError::MissingOracles)?;
 
         let initial_state = if let Some(state) = state {
+            // Use provided state if available
+            tracing::info!("Using provided initial state");
             state
+        } else if let Some(scenario) = scenario {
+            // Initialize from scenario
+            tracing::info!("Initializing from scenario: {}", scenario.map_id);
+            scenario.create_initial_state(&oracles)?
         } else {
-            let env = oracles.as_game_env();
-            GameState::from_initial_entities(&env).map_err(RuntimeError::InitialState)?
+            // No state or scenario provided - start with empty state
+            tracing::warn!(
+                "No scenario or initial state provided - using default (player inactive)"
+            );
+            GameState::default()
         };
 
         let (command_tx, command_rx) = mpsc::channel::<Command>(config.command_buffer_size);

@@ -151,20 +151,20 @@ impl ProverWorker {
     /// and verification.
     fn create_oracle_snapshot(oracle_manager: &OracleManager) -> zk::OracleSnapshot {
         use zk::{
-            ConfigSnapshot, ItemsSnapshot, MapSnapshot, NpcsSnapshot, OracleSnapshot,
+            ActorsSnapshot, ConfigSnapshot, ItemsSnapshot, MapSnapshot, OracleSnapshot,
             TablesSnapshot,
         };
 
         let map_snapshot = MapSnapshot::from_oracle(oracle_manager.map.as_ref());
         let items_snapshot = ItemsSnapshot::empty(); // TODO: Populate with actual items
-        let npcs_snapshot = NpcsSnapshot::empty(); // TODO: Populate with actual NPCs
+        let actors_snapshot = ActorsSnapshot::empty(); // TODO: Populate with actual actors
         let tables_snapshot = TablesSnapshot::from_oracle(oracle_manager.tables.as_ref());
         let config_snapshot = ConfigSnapshot::from_oracle(oracle_manager.config.as_ref());
 
         OracleSnapshot::new(
             map_snapshot,
             items_snapshot,
-            npcs_snapshot,
+            actors_snapshot,
             tables_snapshot,
             config_snapshot,
         )

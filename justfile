@@ -72,6 +72,7 @@ help:
     @echo "  just tail-logs <id>      Monitor specific session"
     @echo "  just clean-data          Clean all data (with confirmation)"
     @echo "  just clean-logs          Clean only logs"
+    @echo "  just rebuild-guest       Rebuild guest program (fixes malformed binary)"
     @echo ""
     @echo "Set default backend:"
     @echo "  export ZK_BACKEND=stub"
@@ -126,6 +127,13 @@ run backend=default_backend *args='':
 # Run CLI in release mode
 run-release backend=default_backend *args='':
     @just _exec {{backend}} "run -p client-cli --release {{args}}"
+
+# Run CLI with AI debug logging (filters out RISC0 and ZK noise)
+run-debug backend=default_backend *args='':
+    #!/usr/bin/env bash
+    # Enable debug logs for our code only, suppress RISC0 and ZK crates
+    export RUST_LOG="runtime=debug,client=debug,game_core=debug,zk=warn,risc0_zkvm=warn,risc0_circuit=warn"
+    just _exec {{backend}} "run -p client-cli {{args}}"
 
 # ============================================================================
 # Test Commands
@@ -292,6 +300,20 @@ clean-data *args='':
 # Clean only logs (faster than clean-data --logs)
 clean-logs:
     @cargo run -q -p xtask -- clean --logs
+
+# Rebuild RISC0 guest program (fixes malformed binary errors)
+rebuild-guest:
+    @echo "🧹 Cleaning zk crate..."
+    @cargo clean -p zk
+    @echo "✅ Cleaned zk crate"
+    @echo "🔨 Building guest program (this may take a minute)..."
+    @cargo build -p zk
+    @echo "✅ Guest program rebuilt successfully"
+    @echo ""
+    @echo "💡 You can now run the client without malformed binary errors:"
+    @echo "   cargo run -p client-cli"
+    @echo "   or"
+    @echo "   just run risc0-fast"
 
 # List all available sessions
 sessions:
