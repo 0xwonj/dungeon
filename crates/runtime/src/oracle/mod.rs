@@ -4,19 +4,19 @@
 //! an [`OracleManager`] so the runtime can build [`game_core::Env`] snapshots
 //! on demand. The data is immutable at runtime; dynamic state lives in
 //! repositories or [`game_core::state::GameState`].
+mod actors;
 mod config;
 mod items;
 mod map;
-mod npc;
 mod tables;
 
 use game_core::{Env, GameEnv};
 use std::sync::Arc;
 
+pub use actors::{ActorOracleImpl, AiConfig};
 pub use config::ConfigOracleImpl;
 pub use items::ItemOracleImpl;
 pub use map::MapOracleImpl;
-pub use npc::NpcOracleImpl;
 pub use tables::TablesOracleImpl;
 
 /// Manages all oracle implementations and provides unified access
@@ -25,7 +25,7 @@ pub struct OracleManager {
     pub(crate) map: Arc<MapOracleImpl>,
     pub(crate) items: Arc<ItemOracleImpl>,
     pub(crate) tables: Arc<TablesOracleImpl>,
-    pub(crate) npcs: Arc<NpcOracleImpl>,
+    pub(crate) actors: Arc<ActorOracleImpl>,
     pub(crate) config: Arc<ConfigOracleImpl>,
 }
 
@@ -35,14 +35,14 @@ impl OracleManager {
         map: Arc<MapOracleImpl>,
         items: Arc<ItemOracleImpl>,
         tables: Arc<TablesOracleImpl>,
-        npcs: Arc<NpcOracleImpl>,
+        actors: Arc<ActorOracleImpl>,
         config: Arc<ConfigOracleImpl>,
     ) -> Self {
         Self {
             map,
             items,
             tables,
-            npcs,
+            actors,
             config,
         }
     }
@@ -53,21 +53,14 @@ impl OracleManager {
             self.map.as_ref(),
             self.items.as_ref(),
             self.tables.as_ref(),
-            self.npcs.as_ref(),
+            self.actors.as_ref(),
             self.config.as_ref(),
         )
         .into_game_env()
     }
 
-    /// Creates a test oracle manager with default test data
-    #[cfg(test)]
-    pub fn test_manager() -> Self {
-        Self::new(
-            Arc::new(MapOracleImpl::test_map(20, 20)),
-            Arc::new(ItemOracleImpl::test_items()),
-            Arc::new(TablesOracleImpl::test_tables()),
-            Arc::new(NpcOracleImpl::test_npcs()),
-            Arc::new(ConfigOracleImpl::new(game_core::GameConfig::default())),
-        )
+    /// Get access to actor oracle for runtime AI setup
+    pub fn actors(&self) -> &ActorOracleImpl {
+        &self.actors
     }
 }

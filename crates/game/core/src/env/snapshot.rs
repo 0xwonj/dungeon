@@ -21,10 +21,10 @@ use alloc::vec::Vec;
 use std::vec::Vec;
 
 use super::{
-    AttackProfile, ConfigOracle, InitialEntitySpec, ItemDefinition, ItemOracle, MapDimensions,
-    MapOracle, MovementRules, NpcOracle, NpcTemplate, StaticTile, TablesOracle,
+    ActorOracle, ConfigOracle, ItemDefinition, ItemOracle, MapDimensions, MapOracle, StaticTile,
+    TablesOracle,
 };
-use crate::{AttackStyle, GameConfig, ItemHandle, Position};
+use crate::{GameConfig, ItemHandle, Position};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -39,7 +39,7 @@ use serde::{Deserialize, Serialize};
 pub struct OracleSnapshot {
     pub map: MapSnapshot,
     pub items: ItemsSnapshot,
-    pub npcs: NpcsSnapshot,
+    pub actors: ActorsSnapshot,
     pub tables: TablesSnapshot,
     pub config: ConfigSnapshot,
 }
@@ -48,14 +48,14 @@ impl OracleSnapshot {
     pub fn new(
         map: MapSnapshot,
         items: ItemsSnapshot,
-        npcs: NpcsSnapshot,
+        actors: ActorsSnapshot,
         tables: TablesSnapshot,
         config: ConfigSnapshot,
     ) -> Self {
         Self {
             map,
             items,
-            npcs,
+            actors,
             tables,
             config,
         }
@@ -63,45 +63,40 @@ impl OracleSnapshot {
 
     /// Creates a complete oracle snapshot from all oracle implementations.
     ///
-    /// This is a convenience function for creating a snapshot from a bundle of oracles.
+    /// # Arguments
+    ///
+    /// * `actor_ids` - List of actor definition IDs to include in snapshot
+    ///   (should come from scenario or other source)
     #[cfg(feature = "std")]
     pub fn from_oracles(
         map: &impl MapOracle,
         _items: &impl ItemOracle,
-        _npcs: &impl NpcOracle,
+        actors: &impl ActorOracle,
         tables: &impl TablesOracle,
         config: &impl ConfigOracle,
+        actor_ids: &[String],
     ) -> Self {
         Self::new(
             MapSnapshot::from_oracle(map),
-            ItemsSnapshot::empty(), // TODO: Need item handles list
-            NpcsSnapshot::empty(),  // TODO: Need template IDs list
+            ItemsSnapshot::empty(), // TODO: Need item handles from scenario
+            ActorsSnapshot::from_oracle(actors, actor_ids),
             TablesSnapshot::from_oracle(tables),
             ConfigSnapshot::from_oracle(config),
         )
     }
 }
 
-/// Snapshot of map oracle data
+/// Snapshot of map oracle data (terrain only, no entities)
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MapSnapshot {
     pub dimensions: MapDimensions,
     pub tiles: Vec<Option<StaticTile>>,
-    pub initial_entities: Vec<InitialEntitySpec>,
 }
 
 impl MapSnapshot {
-    pub fn new(
-        dimensions: MapDimensions,
-        tiles: Vec<Option<StaticTile>>,
-        initial_entities: Vec<InitialEntitySpec>,
-    ) -> Self {
-        Self {
-            dimensions,
-            tiles,
-            initial_entities,
-        }
+    pub fn new(dimensions: MapDimensions, tiles: Vec<Option<StaticTile>>) -> Self {
+        Self { dimensions, tiles }
     }
 
     /// Creates a map snapshot from a MapOracle implementation.
@@ -121,9 +116,7 @@ impl MapSnapshot {
             }
         }
 
-        let initial_entities = oracle.initial_entities();
-
-        Self::new(dimensions, tiles, initial_entities)
+        Self::new(dimensions, tiles)
     }
 }
 
@@ -157,61 +150,75 @@ impl ItemsSnapshot {
     }
 }
 
-/// Snapshot of NPCs oracle data
-#[derive(Debug, Clone, PartialEq, Eq)]
+// Type alias for String based on std/no_std
+#[cfg(not(feature = "std"))]
+type ActorId = alloc::string::String;
+#[cfg(feature = "std")]
+type ActorId = String;
+
+/// Snapshot of actors oracle data containing actor templates by definition ID.
+///
+/// This snapshot stores all actor templates that need to be available in the zkVM guest.
+/// Templates are stored by their definition ID (e.g., "player", "goblin_scout").
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct NpcsSnapshot {
-    pub npcs: Vec<(u16, NpcTemplate)>,
+pub struct ActorsSnapshot {
+    /// Vector of (definition_id, template) pairs.
+    pub templates: Vec<(ActorId, super::ActorTemplate)>,
 }
 
-impl NpcsSnapshot {
-    pub fn new(npcs: Vec<(u16, NpcTemplate)>) -> Self {
-        Self { npcs }
+impl ActorsSnapshot {
+    /// Create a new actors snapshot with the given templates.
+    pub fn new(templates: Vec<(ActorId, super::ActorTemplate)>) -> Self {
+        Self { templates }
     }
 
+    /// Create an empty snapshot with no templates.
     pub fn empty() -> Self {
-        Self { npcs: Vec::new() }
+        Self {
+            templates: Vec::new(),
+        }
     }
 
-    /// Creates an NPCs snapshot from an NpcOracle.
+    /// Creates an actors snapshot from an ActorOracle implementation.
     ///
-    /// Note: This requires the list of all template IDs to query.
+    /// # Arguments
+    ///
+    /// * `oracle` - Actor oracle implementation
+    /// * `def_ids` - List of actor definition IDs to snapshot
     #[cfg(feature = "std")]
-    pub fn from_oracle(oracle: &impl NpcOracle, template_ids: &[u16]) -> Self {
-        let npcs: Vec<(u16, NpcTemplate)> = template_ids
-            .iter()
-            .filter_map(|&id| oracle.template(id).map(|tmpl| (id, tmpl)))
-            .collect();
+    pub fn from_oracle(oracle: &impl super::ActorOracle, def_ids: &[String]) -> Self {
+        let mut templates = Vec::with_capacity(def_ids.len());
 
-        Self::new(npcs)
+        for id in def_ids {
+            if let Some(template) = oracle.template(id) {
+                templates.push((id.clone(), template));
+            }
+        }
+
+        Self::new(templates)
     }
 }
 
-/// Snapshot of tables oracle data
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Snapshot of tables oracle data (PLACEHOLDER)
+///
+/// TablesOracle currently has no methods, so this snapshot is empty.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TablesSnapshot {
-    pub movement_rules: MovementRules,
-    pub attack_profiles: Vec<Option<AttackProfile>>,
+    // Placeholder - no data yet
 }
 
 impl TablesSnapshot {
-    pub fn new(movement_rules: MovementRules, attack_profiles: Vec<Option<AttackProfile>>) -> Self {
-        Self {
-            movement_rules,
-            attack_profiles,
-        }
+    pub fn new() -> Self {
+        Self {}
     }
 
     /// Creates a tables snapshot from a TablesOracle.
     #[cfg(feature = "std")]
+    #[allow(unused_variables)]
     pub fn from_oracle(oracle: &impl TablesOracle) -> Self {
-        let movement_rules = oracle.movement_rules();
-
-        // Query all attack styles to build the profiles array
-        let attack_profiles = vec![oracle.attack_profile(AttackStyle::Melee)];
-
-        Self::new(movement_rules, attack_profiles)
+        Self::new()
     }
 }
 
@@ -265,10 +272,6 @@ impl<'a> MapOracle for SnapshotMapOracle<'a> {
         let index = (pos.y as usize * dims.width as usize) + pos.x as usize;
         self.snapshot.tiles.get(index).and_then(|t| *t)
     }
-
-    fn initial_entities(&self) -> Vec<InitialEntitySpec> {
-        self.snapshot.initial_entities.clone()
-    }
 }
 
 /// Guest-side adapter for ItemOracle backed by ItemsSnapshot
@@ -292,29 +295,30 @@ impl<'a> ItemOracle for SnapshotItemOracle<'a> {
     }
 }
 
-/// Guest-side adapter for NpcOracle backed by NpcsSnapshot
-pub struct SnapshotNpcOracle<'a> {
-    snapshot: &'a NpcsSnapshot,
+/// Guest-side adapter for ActorOracle backed by ActorsSnapshot
+pub struct SnapshotActorOracle<'a> {
+    snapshot: &'a ActorsSnapshot,
 }
 
-impl<'a> SnapshotNpcOracle<'a> {
-    pub fn new(snapshot: &'a NpcsSnapshot) -> Self {
+impl<'a> SnapshotActorOracle<'a> {
+    pub fn new(snapshot: &'a ActorsSnapshot) -> Self {
         Self { snapshot }
     }
 }
 
-impl<'a> NpcOracle for SnapshotNpcOracle<'a> {
-    fn template(&self, template_id: u16) -> Option<NpcTemplate> {
+impl<'a> ActorOracle for SnapshotActorOracle<'a> {
+    fn template(&self, def_id: &str) -> Option<super::ActorTemplate> {
         self.snapshot
-            .npcs
+            .templates
             .iter()
-            .find(|(id, _)| *id == template_id)
-            .map(|(_, tmpl)| tmpl.clone())
+            .find(|(id, _)| id.as_str() == def_id)
+            .map(|(_, template)| template.clone())
     }
 }
 
-/// Guest-side adapter for TablesOracle backed by TablesSnapshot
+/// Guest-side adapter for TablesOracle backed by TablesSnapshot (PLACEHOLDER)
 pub struct SnapshotTablesOracle<'a> {
+    #[allow(dead_code)] // Placeholder - will be used when TablesOracle gains methods
     snapshot: &'a TablesSnapshot,
 }
 
@@ -325,17 +329,7 @@ impl<'a> SnapshotTablesOracle<'a> {
 }
 
 impl<'a> TablesOracle for SnapshotTablesOracle<'a> {
-    fn movement_rules(&self) -> MovementRules {
-        self.snapshot.movement_rules
-    }
-
-    fn attack_profile(&self, style: AttackStyle) -> Option<AttackProfile> {
-        let index = style as usize;
-        self.snapshot
-            .attack_profiles
-            .get(index)
-            .and_then(|profile| *profile)
-    }
+    // No methods to implement - trait is empty (placeholder)
 }
 
 /// Guest-side adapter for ConfigOracle backed by ConfigSnapshot
@@ -362,7 +356,7 @@ pub struct SnapshotOracleBundle<'a> {
     pub map: SnapshotMapOracle<'a>,
     pub items: SnapshotItemOracle<'a>,
     pub tables: SnapshotTablesOracle<'a>,
-    pub npcs: SnapshotNpcOracle<'a>,
+    pub actors: SnapshotActorOracle<'a>,
     pub config: SnapshotConfigOracle<'a>,
 }
 
@@ -373,7 +367,7 @@ impl<'a> SnapshotOracleBundle<'a> {
             map: SnapshotMapOracle::new(&snapshot.map),
             items: SnapshotItemOracle::new(&snapshot.items),
             tables: SnapshotTablesOracle::new(&snapshot.tables),
-            npcs: SnapshotNpcOracle::new(&snapshot.npcs),
+            actors: SnapshotActorOracle::new(&snapshot.actors),
             config: SnapshotConfigOracle::new(&snapshot.config),
         }
     }
@@ -386,14 +380,14 @@ impl<'a> SnapshotOracleBundle<'a> {
         SnapshotMapOracle<'a>,
         SnapshotItemOracle<'a>,
         SnapshotTablesOracle<'a>,
-        SnapshotNpcOracle<'a>,
+        SnapshotActorOracle<'a>,
         SnapshotConfigOracle<'a>,
     > {
         super::Env::with_all(
             &self.map,
             &self.items,
             &self.tables,
-            &self.npcs,
+            &self.actors,
             &self.config,
         )
     }

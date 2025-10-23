@@ -177,25 +177,26 @@ impl StateDelta {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EntitiesChanges {
-    pub player: Option<ActorChanges>,
-    pub npcs: CollectionChanges<ActorChanges>,
+    pub actors: CollectionChanges<ActorChanges>,
     pub props: CollectionChanges<PropChanges>,
     pub items: CollectionChanges<ItemChanges>,
 }
 
 impl EntitiesChanges {
     fn from_states(before: &EntitiesState, after: &EntitiesState) -> Self {
-        let player = AC::from_states(&before.player, &after.player);
-
-        let npcs = diff_collection(&before.npcs, &after.npcs, |npc| npc.id, AC::from_states);
+        let actors = diff_collection(
+            &before.actors,
+            &after.actors,
+            |actor| actor.id,
+            AC::from_states,
+        );
 
         let props = diff_collection(&before.props, &after.props, |prop| prop.id, PC::from_states);
 
         let items = diff_collection(&before.items, &after.items, |item| item.id, IC::from_states);
 
         Self {
-            player,
-            npcs,
+            actors,
             props,
             items,
         }
@@ -204,10 +205,7 @@ impl EntitiesChanges {
     /// Returns true if no entity changes occurred.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.player.is_none()
-            && self.npcs.is_empty()
-            && self.props.is_empty()
-            && self.items.is_empty()
+        self.actors.is_empty() && self.props.is_empty() && self.items.is_empty()
     }
 }
 
@@ -215,8 +213,7 @@ impl EntitiesChanges {
 impl EntitiesChanges {
     fn empty() -> Self {
         Self {
-            player: None,
-            npcs: CollectionChanges::empty(),
+            actors: CollectionChanges::empty(),
             props: CollectionChanges::empty(),
             items: CollectionChanges::empty(),
         }

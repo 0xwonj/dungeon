@@ -37,9 +37,6 @@ pub enum RuntimeError {
     #[error("runtime requires oracles to be configured before building")]
     MissingOracles,
 
-    #[error("failed to initialize game state from oracles")]
-    InitialState(#[source] game_core::state::InitializationError),
-
     #[error("invalid configuration: {0}")]
     InvalidConfig(String),
 
@@ -59,7 +56,7 @@ pub enum RuntimeError {
 /// - Interactive sources (human players, network clients, replays)
 /// - Automated AI decision makers (combat AI, passive behavior, etc.)
 /// - Custom extensibility slots for user-defined providers
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ProviderKind {
     /// Interactive input sources (human players, network clients, etc.)
     Interactive(InteractiveKind),
@@ -72,7 +69,7 @@ pub enum ProviderKind {
 }
 
 /// Interactive input provider types.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum InteractiveKind {
     /// Local CLI keyboard input
     CliInput,
@@ -85,7 +82,7 @@ pub enum InteractiveKind {
 }
 
 /// AI provider types for automated decision making.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum AiKind {
     /// Simple wait-only AI (no-op, default for unmapped entities)
     Wait,
@@ -98,6 +95,9 @@ pub enum AiKind {
 
     /// Scripted behavior AI
     Scripted,
+
+    /// Utility-based AI with 3-layer decision making (Intent → Tactic → Action)
+    Utility,
 }
 
 impl fmt::Display for ProviderKind {
@@ -128,6 +128,7 @@ impl fmt::Display for AiKind {
             Self::Aggressive => "aggressive",
             Self::Passive => "passive",
             Self::Scripted => "scripted",
+            Self::Utility => "utility",
         };
         write!(f, "{}", s)
     }

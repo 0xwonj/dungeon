@@ -12,24 +12,27 @@ pub mod state;
 pub mod stats;
 pub use action::{
     Action, ActionCostAction, ActionTransition, ActivationAction, AttackAction, AttackStyle,
-    CardinalDirection, CharacterActionKind, InteractAction, InventorySlot, ItemTarget, MoveAction,
+    CardinalDirection, CharacterActionKind, InteractAction, InventoryIndex, ItemTarget, MoveAction,
     MoveError, PrepareTurnAction, SystemActionKind, TurnError, UseItemAction,
+    get_available_actions,
 };
 pub use config::GameConfig;
 pub use engine::{ExecuteError, GameEngine, TransitionPhase, TransitionPhaseError};
 pub use env::{
-    AttackProfile, ConfigOracle, ConfigSnapshot, Env, GameEnv, InitialEntityKind,
-    InitialEntitySpec, ItemCategory, ItemDefinition, ItemOracle, ItemsSnapshot, MapDimensions,
-    MapOracle, MapSnapshot, MovementRules, NpcOracle, NpcTemplate, NpcsSnapshot, OracleSnapshot,
-    SnapshotConfigOracle, SnapshotItemOracle, SnapshotMapOracle, SnapshotNpcOracle,
+    ActorOracle, ActorTemplate, ActorTemplateBuilder, ActorsSnapshot, ArmorData, ConfigOracle,
+    ConfigSnapshot, ConsumableData, ConsumableEffect, Env, GameEnv, ItemDefinition, ItemKind,
+    ItemOracle, ItemsSnapshot, MapDimensions, MapOracle, MapSnapshot, OracleSnapshot,
+    SnapshotActorOracle, SnapshotConfigOracle, SnapshotItemOracle, SnapshotMapOracle,
     SnapshotOracleBundle, SnapshotTablesOracle, StaticTile, TablesOracle, TablesSnapshot,
-    TerrainKind,
+    TerrainKind, WeaponData,
 };
 pub use state::{
-    ActorChanges, ActorFields, ActorState, CollectionChanges, EntitiesChanges, EntitiesState,
-    EntityId, GameState, InitializationError, InventoryState, ItemChanges, ItemFields, ItemHandle,
-    ItemState, OccupancyChanges, Position, PropChanges, PropFields, PropKind, PropState,
-    StateDelta, Tick, TileMap, TileView, TurnChanges, TurnFields, TurnState, WorldChanges,
+    ActionAbilities, ActionAbility, ActionKind, ActorChanges, ActorFields, ActorState, ArmorKind,
+    CollectionChanges, EntitiesChanges, EntitiesState, EntityId, Equipment, EquipmentBuilder,
+    GameState, InventorySlot, InventoryState, ItemChanges, ItemFields, ItemHandle, ItemState,
+    OccupancyChanges, PassiveAbilities, PassiveAbility, PassiveKind, Position, PropChanges,
+    PropFields, PropKind, PropState, StateDelta, StatusEffect, StatusEffectKind, StatusEffects,
+    Tick, TileMap, TileView, TurnChanges, TurnFields, TurnState, WeaponKind, WorldChanges,
     WorldState,
 };
 pub use stats::{

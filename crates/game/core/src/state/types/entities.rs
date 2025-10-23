@@ -1,61 +1,111 @@
 use arrayvec::ArrayVec;
 use bounded_vector::BoundedVec;
 
-use super::{EntityId, Position, Tick};
+use super::{ActionAbility, EntityId, Equipment, PassiveAbility, Position, StatusEffects, Tick};
 use crate::config::GameConfig;
 use crate::stats::{
     ActorBonuses, CoreStats, ResourceCurrent, StatsSnapshot, compute_actor_bonuses,
 };
 
 /// Aggregate state for every entity in the map.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EntitiesState {
-    pub player: ActorState,
-    pub npcs: BoundedVec<ActorState, 0, { GameConfig::MAX_NPCS }>,
+    /// All actors (including player). Player is typically at index 0 with EntityId::PLAYER.
+    /// Minimum size is 1 to guarantee player exists.
+    pub actors: BoundedVec<ActorState, 1, { GameConfig::MAX_ACTORS }>,
     pub props: BoundedVec<PropState, 0, { GameConfig::MAX_PROPS }>,
     pub items: BoundedVec<ItemState, 0, { GameConfig::MAX_WORLD_ITEMS }>,
 }
 
 impl EntitiesState {
     pub fn new(
-        player: ActorState,
-        npcs: BoundedVec<ActorState, 0, { GameConfig::MAX_NPCS }>,
+        actors: BoundedVec<ActorState, 1, { GameConfig::MAX_ACTORS }>,
         props: BoundedVec<PropState, 0, { GameConfig::MAX_PROPS }>,
         items: BoundedVec<ItemState, 0, { GameConfig::MAX_WORLD_ITEMS }>,
     ) -> Self {
         Self {
-            player,
-            npcs,
+            actors,
             props,
             items,
         }
     }
 
-    /// Returns a reference to an actor by ID (player or NPC).
+    /// Creates an empty EntitiesState with no actors (minimum constraint temporarily violated).
+    ///
+    /// # Safety
+    ///
+    /// This violates the MIN=1 constraint for actors. The caller MUST add at least one actor
+    /// (typically the player) before using this state in gameplay logic.
+    ///
+    /// Use this only for scenario initialization where entities will be added immediately.
+    pub fn empty() -> Self {
+        Self {
+            actors: unsafe { BoundedVec::from_vec_unchecked(vec![]) },
+            props: BoundedVec::new(),
+            items: BoundedVec::new(),
+        }
+    }
+
+    /// Returns a reference to an actor by ID.
     pub fn actor(&self, id: EntityId) -> Option<&ActorState> {
-        if self.player.id == id {
-            return Some(&self.player);
-        }
-        self.npcs.iter().find(|actor| actor.id == id)
+        self.actors.iter().find(|a| a.id == id)
     }
 
-    /// Returns a mutable reference to an actor by ID (player or NPC).
+    /// Returns a mutable reference to an actor by ID.
     pub fn actor_mut(&mut self, id: EntityId) -> Option<&mut ActorState> {
-        if self.player.id == id {
-            return Some(&mut self.player);
-        }
-        self.npcs.iter_mut().find(|actor| actor.id == id)
+        self.actors.iter_mut().find(|a| a.id == id)
     }
 
-    /// Returns an iterator over all actors (player + NPCs).
+    /// Returns a reference to the player actor.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no actor with EntityId::PLAYER exists (should never happen if invariants are maintained).
+    pub fn player(&self) -> &ActorState {
+        self.actor(EntityId::PLAYER)
+            .expect("Player must exist in EntitiesState")
+    }
+
+    /// Returns a mutable reference to the player actor.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no actor with EntityId::PLAYER exists (should never happen if invariants are maintained).
+    pub fn player_mut(&mut self) -> &mut ActorState {
+        self.actor_mut(EntityId::PLAYER)
+            .expect("Player must exist in EntitiesState")
+    }
+
+    /// Returns an iterator over all actors.
     pub fn all_actors(&self) -> impl Iterator<Item = &ActorState> {
-        std::iter::once(&self.player).chain(self.npcs.iter())
+        self.actors.iter()
     }
 
-    /// Returns a mutable iterator over all actors (player + NPCs).
+    /// Returns a mutable iterator over all actors.
     pub fn all_actors_mut(&mut self) -> impl Iterator<Item = &mut ActorState> {
-        std::iter::once(&mut self.player).chain(self.npcs.iter_mut())
+        self.actors.iter_mut()
+    }
+}
+
+impl Default for EntitiesState {
+    fn default() -> Self {
+        // Create default player actor
+        let player = ActorState::new(
+            EntityId::PLAYER,
+            Position::default(),
+            CoreStats::default(),
+            InventoryState::default(),
+        );
+
+        // SAFETY: We're creating a Vec with exactly 1 element, which satisfies MIN=1 constraint
+        let actors = unsafe { BoundedVec::from_vec_unchecked(vec![player]) };
+
+        Self {
+            actors,
+            props: BoundedVec::new(),
+            items: BoundedVec::new(),
+        }
     }
 }
 
@@ -69,29 +119,45 @@ impl EntitiesState {
 ///
 /// # Invariants
 ///
-/// - `bonuses` must always reflect current `inventory` state
-/// - Update `bonuses` whenever `inventory` changes
-/// - Never expose mutable `inventory` without recomputing `bonuses`
+/// - `bonuses` must always reflect current `equipment`, `status_effects`, and `abilities`
+/// - Update `bonuses` whenever any of these change
+/// - Use helper methods (`equip_weapon`, `add_status`, etc.) to maintain invariants
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ActorState {
     pub id: EntityId,
     pub position: Position,
 
-    // SSOT: Stored state
+    // === SSOT: Core Stats ===
     pub core_stats: CoreStats,
     pub resources: ResourceCurrent,
 
-    // Cached: Derived from inventory/effects
+    // === State affecting bonuses ===
+    /// Equipped items (weapons, armor).
+    pub equipment: Equipment,
+
+    /// Active status effects (buffs, debuffs, crowd control).
+    pub status_effects: StatusEffects,
+
+    // === Abilities ===
+    /// Active abilities that can be used (Move, Attack, Fireball, etc.).
+    pub actions: ArrayVec<ActionAbility, { GameConfig::MAX_ACTIONS }>,
+
+    /// Passive abilities that provide automatic benefits (Flight, Regeneration, etc.).
+    pub passives: ArrayVec<PassiveAbility, { GameConfig::MAX_PASSIVES }>,
+
+    // === Cached: Derived from equipment + status_effects + actions + passives ===
+    /// Cached bonuses from equipment, status effects, and abilities.
+    ///
+    /// Must be recomputed whenever `equipment`, `status_effects`, `actions`, or `passives` change.
     pub bonuses: ActorBonuses,
 
+    // === Inventory (independent) ===
     pub inventory: InventoryState,
 
+    // === Scheduling ===
     /// When this actor is scheduled to act next. None means not currently scheduled.
     pub ready_at: Option<Tick>,
-
-    /// NPC template ID (0 for player).
-    pub template_id: u16,
 }
 
 impl ActorState {
@@ -105,6 +171,10 @@ impl ActorState {
         core_stats: CoreStats,
         inventory: InventoryState,
     ) -> Self {
+        let equipment = Equipment::empty();
+        let status_effects = StatusEffects::empty();
+        let actions = ArrayVec::new();
+        let passives = ArrayVec::new();
         let bonuses = compute_actor_bonuses();
 
         // Compute initial resource maximums
@@ -121,10 +191,13 @@ impl ActorState {
             position,
             core_stats,
             resources,
+            equipment,
+            status_effects,
+            actions,
+            passives,
             bonuses,
             inventory,
             ready_at: None,
-            template_id: 0,
         }
     }
 
@@ -147,9 +220,52 @@ impl ActorState {
         self
     }
 
-    pub fn with_template_id(mut self, template_id: u16) -> Self {
-        self.template_id = template_id;
-        self
+    // ========================================================================
+    // Action Ability Helpers
+    // ========================================================================
+
+    /// Checks if this actor has a specific action ability (regardless of enabled state).
+    pub fn has_action(&self, kind: super::ActionKind) -> bool {
+        self.actions.iter().any(|a| a.kind == kind)
+    }
+
+    /// Checks if this actor can use a specific action ability right now.
+    ///
+    /// Returns true if the action exists, is enabled, and not on cooldown.
+    pub fn can_use_action(&self, kind: super::ActionKind, current_tick: Tick) -> bool {
+        self.actions
+            .iter()
+            .any(|a| a.kind == kind && a.is_ready(current_tick))
+    }
+
+    /// Sets the cooldown for a specific action ability.
+    pub fn set_action_cooldown(&mut self, kind: super::ActionKind, until: Tick) {
+        if let Some(action) = self.actions.iter_mut().find(|a| a.kind == kind) {
+            action.cooldown_until = until;
+        }
+    }
+
+    /// Enables or disables a specific action ability.
+    pub fn set_action_enabled(&mut self, kind: super::ActionKind, enabled: bool) {
+        if let Some(action) = self.actions.iter_mut().find(|a| a.kind == kind) {
+            action.enabled = enabled;
+        }
+    }
+
+    // ========================================================================
+    // Passive Ability Helpers
+    // ========================================================================
+
+    /// Checks if this actor has a specific passive ability that is enabled.
+    pub fn has_passive(&self, kind: super::PassiveKind) -> bool {
+        self.passives.iter().any(|p| p.kind == kind && p.enabled)
+    }
+
+    /// Enables or disables a specific passive ability.
+    pub fn set_passive_enabled(&mut self, kind: super::PassiveKind, enabled: bool) {
+        if let Some(passive) = self.passives.iter_mut().find(|p| p.kind == kind) {
+            passive.enabled = enabled;
+        }
     }
 }
 
@@ -164,16 +280,36 @@ impl Default for ActorState {
     }
 }
 
+/// Inventory slot containing an item and its quantity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct InventorySlot {
+    pub handle: ItemHandle,
+    pub quantity: u16,
+}
+
+impl InventorySlot {
+    pub fn new(handle: ItemHandle, quantity: u16) -> Self {
+        Self { handle, quantity }
+    }
+}
+
 /// Simplified inventory snapshot; expand as item systems mature.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct InventoryState {
-    pub items: ArrayVec<ItemHandle, { GameConfig::MAX_INVENTORY_SLOTS }>,
+    pub items: ArrayVec<InventorySlot, { GameConfig::MAX_INVENTORY_SLOTS }>,
 }
 
 impl InventoryState {
-    pub fn new(items: ArrayVec<ItemHandle, { GameConfig::MAX_INVENTORY_SLOTS }>) -> Self {
+    pub fn new(items: ArrayVec<InventorySlot, { GameConfig::MAX_INVENTORY_SLOTS }>) -> Self {
         Self { items }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            items: ArrayVec::new(),
+        }
     }
 }
 
@@ -215,14 +351,16 @@ pub struct ItemState {
     pub id: EntityId,
     pub position: Position,
     pub handle: ItemHandle,
+    pub quantity: u16,
 }
 
 impl ItemState {
-    pub fn new(id: EntityId, position: Position, handle: ItemHandle) -> Self {
+    pub fn new(id: EntityId, position: Position, handle: ItemHandle, quantity: u16) -> Self {
         Self {
             id,
             position,
             handle,
+            quantity,
         }
     }
 }

@@ -6,22 +6,28 @@
 pub mod delta;
 pub mod types;
 
-use crate::env::{GameEnv, InitialEntityKind, MapOracle};
-use crate::stats::CoreStats;
+use crate::env::MapOracle;
 pub use bounded_vector::BoundedVec;
 pub use delta::{
     ActorChanges, ActorFields, CollectionChanges, EntitiesChanges, ItemChanges, ItemFields,
     OccupancyChanges, PropChanges, PropFields, StateDelta, TurnChanges, TurnFields, WorldChanges,
 };
 pub use types::{
-    ActorState, EntitiesState, EntityId, InventoryState, ItemHandle, ItemState, Position, PropKind,
-    PropState, Tick, TileMap, TileView, TurnState, WorldState,
+    ActionAbilities, ActionAbility, ActionKind, ActorState, ArmorKind, EntitiesState, EntityId,
+    Equipment, EquipmentBuilder, InventorySlot, InventoryState, ItemHandle, ItemState,
+    PassiveAbilities, PassiveAbility, PassiveKind, Position, PropKind, PropState, StatusEffect,
+    StatusEffectKind, StatusEffects, Tick, TileMap, TileView, TurnState, WeaponKind, WorldState,
 };
 
 /// Canonical snapshot of the deterministic game state.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GameState {
+    /// Sequential entity ID allocator (monotonically increasing).
+    ///
+    /// Never reused. IDs 0 (PLAYER) and u32::MAX (SYSTEM) are reserved.
+    next_entity_id: u32,
+
     /// Turn bookkeeping including current phase within the turn.
     pub turn: TurnState,
     /// All entities tracked in the room: actors, props, items.
@@ -34,9 +40,23 @@ impl GameState {
     /// Creates a fresh state from the provided sub-components.
     pub fn new(turn: TurnState, entities: EntitiesState, world: WorldState) -> Self {
         Self {
+            next_entity_id: 1, // Start at 1 (0 is reserved for PLAYER)
             turn,
             entities,
             world,
+        }
+    }
+
+    /// Creates an empty state with no entities (for scenario initialization).
+    ///
+    /// Unlike `default()`, this does not create a default player.
+    /// Use this when you'll be adding all entities explicitly (e.g., from a scenario).
+    pub fn empty() -> Self {
+        Self {
+            next_entity_id: 1, // Start at 1 (0 is reserved for PLAYER)
+            turn: TurnState::default(),
+            entities: EntitiesState::empty(),
+            world: WorldState::default(),
         }
     }
 
@@ -58,123 +78,143 @@ impl GameState {
             .unwrap_or(false)
     }
 
-    /// Creates a new GameState from initial entity specifications provided by the map oracle.
+    /// Allocates a new unique EntityId.
     ///
-    /// This is the canonical way to initialize game state at the start of a session.
-    /// The function:
-    /// - Reads initial entity specs from the map oracle
-    /// - Resolves NPC templates from the tables oracle
-    /// - Creates all entities (player, NPCs, props, items)
-    /// - Sets up tile occupancy
+    /// # Returns
     ///
-    /// Returns an error if required oracles are missing or entity limits are exceeded.
-    pub fn from_initial_entities(env: &GameEnv<'_>) -> Result<Self, InitializationError> {
-        let map = env.map().ok_or(InitializationError::MissingMapOracle)?;
-        let npcs = env.npcs().ok_or(InitializationError::MissingNpcOracle)?;
-
-        let mut state = GameState::default();
-        let initial_entities = map.initial_entities();
-
-        // Process each initial entity spec
-        for spec in initial_entities {
-            match spec.kind {
-                InitialEntityKind::Player => {
-                    // Player uses default stats for now
-                    state.entities.player = ActorState::new(
-                        spec.id,
-                        spec.position,
-                        CoreStats::default(),
-                        InventoryState::default(),
-                    )
-                    .with_ready_at(0);
-
-                    // Activate player in turn system at tick 0
-                    state.turn.active_actors.insert(spec.id);
-
-                    // Add player to tile occupancy
-                    state.world.tile_map.add_occupant(spec.position, spec.id);
-                }
-
-                InitialEntityKind::Npc { template } => {
-                    // Resolve template to get stats and inventory
-                    let npc_template = npcs
-                        .template(template)
-                        .ok_or(InitializationError::UnknownNpcTemplate(template))?;
-
-                    let mut actor = ActorState::new(
-                        spec.id,
-                        spec.position,
-                        npc_template.core_stats,
-                        npc_template.inventory,
-                    )
-                    .with_template_id(template)
-                    .with_ready_at(0);
-
-                    // Set initial resources from template
-                    actor.resources = npc_template.resources;
-
-                    // Activate NPC in turn system at tick 0
-                    state.turn.active_actors.insert(spec.id);
-
-                    state
-                        .entities
-                        .npcs
-                        .push(actor)
-                        .map_err(|_| InitializationError::TooManyNpcs)?;
-
-                    // Add NPC to tile occupancy
-                    state.world.tile_map.add_occupant(spec.position, spec.id);
-                }
-
-                InitialEntityKind::Prop { kind, is_active } => {
-                    let prop = PropState::new(spec.id, spec.position, kind, is_active);
-
-                    state
-                        .entities
-                        .props
-                        .push(prop)
-                        .map_err(|_| InitializationError::TooManyProps)?;
-
-                    // Props also occupy tiles
-                    state.world.tile_map.add_occupant(spec.position, spec.id);
-                }
-
-                InitialEntityKind::Item { handle } => {
-                    let item = ItemState::new(spec.id, spec.position, handle);
-
-                    state
-                        .entities
-                        .items
-                        .push(item)
-                        .map_err(|_| InitializationError::TooManyItems)?;
-
-                    // Items don't block movement, so we don't add to occupancy
-                }
-            }
+    /// A new EntityId that has never been used before.
+    ///
+    /// # Panics
+    ///
+    /// Panics if we've exhausted all available IDs.
+    pub fn allocate_entity_id(&mut self) -> EntityId {
+        // Skip reserved IDs (0 = PLAYER, u32::MAX = SYSTEM)
+        while self.next_entity_id == EntityId::PLAYER.0 || self.next_entity_id == EntityId::SYSTEM.0
+        {
+            self.next_entity_id = self
+                .next_entity_id
+                .checked_add(1)
+                .expect("EntityId overflow");
         }
 
-        Ok(state)
+        let id = EntityId(self.next_entity_id);
+        self.next_entity_id = self
+            .next_entity_id
+            .checked_add(1)
+            .expect("EntityId overflow");
+
+        id
+    }
+
+    /// Add the player actor to the game.
+    ///
+    /// Player is always assigned EntityId::PLAYER, set as active, and ready to act immediately.
+    ///
+    /// # Arguments
+    ///
+    /// * `template` - Actor template defining stats, equipment, abilities
+    /// * `position` - Starting position on the map
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(())` if player was added successfully
+    /// - `Err` if the actors list is full
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let template = oracles.actors().template("player")?;
+    /// state.add_player(template, Position::new(5, 5))?;
+    /// ```
+    pub fn add_player(
+        &mut self,
+        template: &crate::env::ActorTemplate,
+        position: Position,
+    ) -> Result<(), &'static str> {
+        // Create actor from template with PLAYER id
+        let mut actor = template.to_actor(EntityId::PLAYER, position);
+        actor.ready_at = Some(0); // Ready to act immediately
+
+        // Add to actors list
+        self.entities
+            .actors
+            .push(actor)
+            .map_err(|_| "Failed to add player (actors list full)")?;
+
+        // Add to active_actors
+        self.turn.active_actors.insert(EntityId::PLAYER);
+
+        // Update occupancy map
+        self.world.tile_map.add_occupant(position, EntityId::PLAYER);
+
+        Ok(())
+    }
+
+    /// Add an NPC actor to the game with automatic ID allocation.
+    ///
+    /// NPCs start inactive and will be activated by the ActivationHook when
+    /// the player moves within activation radius.
+    ///
+    /// # Arguments
+    ///
+    /// * `template` - Actor template defining stats, equipment, abilities
+    /// * `position` - Starting position on the map
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(EntityId)` - The allocated entity ID for this NPC
+    /// - `Err` if the actors list is full
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let template = oracles.actors().template("goblin_scout")?;
+    /// let npc_id = state.add_npc(template, Position::new(10, 10))?;
+    /// ```
+    pub fn add_npc(
+        &mut self,
+        template: &crate::env::ActorTemplate,
+        position: Position,
+    ) -> Result<EntityId, &'static str> {
+        // Allocate new entity ID
+        let id = self.allocate_entity_id();
+
+        // Create actor from template with allocated id
+        let mut actor = template.to_actor(id, position);
+        actor.ready_at = None; // Inactive by default
+
+        // Add to actors list
+        self.entities
+            .actors
+            .push(actor)
+            .map_err(|_| "Failed to add NPC (actors list full)")?;
+
+        // Don't add to active_actors - ActivationHook will handle this
+
+        // Update occupancy map
+        self.world.tile_map.add_occupant(position, id);
+
+        Ok(id)
     }
 }
 
-/// Errors that can occur during initial state creation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
-pub enum InitializationError {
-    #[error("map oracle not available")]
-    MissingMapOracle,
+impl Default for GameState {
+    fn default() -> Self {
+        let mut state = Self {
+            next_entity_id: 1, // Start at 1 (0 is reserved for PLAYER)
+            turn: TurnState::default(),
+            entities: EntitiesState::default(),
+            world: WorldState::default(),
+        };
 
-    #[error("npc oracle not available")]
-    MissingNpcOracle,
+        // IMPORTANT: Activate the default player so they can act
+        // EntitiesState::default() creates a player actor, but doesn't add to active_actors
+        // We need to ensure player is ready to act
+        if let Some(player) = state.entities.actors.first_mut() {
+            player.ready_at = Some(0);
+        }
+        state.turn.active_actors.insert(EntityId::PLAYER);
 
-    #[error("unknown npc template id: {0}")]
-    UnknownNpcTemplate(u16),
-
-    #[error("too many npcs")]
-    TooManyNpcs,
-
-    #[error("too many props")]
-    TooManyProps,
-
-    #[error("too many items")]
-    TooManyItems,
+        state
+    }
 }

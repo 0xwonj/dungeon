@@ -13,6 +13,7 @@
 //! - [`workers`] keeps background tasks internal to the crate
 //! - [`hooks`] provides post-execution hook system for runtime orchestration
 //! - [`oracle`] and [`repository`] provide data adapters reused by other crates
+//! - [`scenario`] provides entity placement and game initialization
 //! - [`types`] provides common type aliases for semantic clarity
 pub mod api;
 pub mod events;
@@ -21,6 +22,7 @@ pub mod oracle;
 pub mod providers;
 pub mod repository;
 pub mod runtime;
+pub mod scenario;
 pub mod types;
 
 mod utils;
@@ -30,14 +32,15 @@ pub use api::{
     ActionProvider, AiKind, InteractiveKind, ProviderKind, ProviderRegistry, Result, RuntimeError,
     RuntimeHandle,
 };
-pub use providers::ai::{presets, AiContext, BehaviorTreeProvider};
 pub use events::{Event, EventBus, GameStateEvent, ProofEvent, Topic};
 pub use hooks::{
     ActionCostHook, ActivationHook, HookContext, HookCriticality, HookRegistry, PostExecutionHook,
 };
 pub use oracle::{
-    ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, NpcOracleImpl, OracleManager, TablesOracleImpl,
+    ActorOracleImpl, AiConfig, ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, OracleManager,
+    TablesOracleImpl,
 };
+pub use providers::ai::{AiContext, UtilityAiProvider};
 pub use repository::{
     ActionLogEntry, ActionLogReader, ActionLogWriter, Checkpoint, CheckpointRepository,
     EventRepository, FileActionLog, FileCheckpointRepository, FileEventLog,
@@ -46,5 +49,6 @@ pub use repository::{
     StateReference, StateRepository,
 };
 pub use runtime::{PersistenceSettings, ProvingSettings, Runtime, RuntimeBuilder, RuntimeConfig};
+pub use scenario::{EntityKind, EntityPlacement, Scenario};
 pub use types::{ByteOffset, DurationMs, Nonce, ProofSize, SessionId, StateHash, Timestamp};
 pub use workers::{CheckpointStrategy, PersistenceConfig, ProofMetrics};

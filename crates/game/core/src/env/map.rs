@@ -1,14 +1,12 @@
-use crate::state::{EntityId, ItemHandle, Position, PropKind};
+use crate::state::Position;
 
-/// Static map oracle exposing immutable layout information and initial entity placement.
+/// Static map oracle exposing immutable layout information.
+///
+/// MapOracle provides access to pure terrain/tile data only.
+/// Entity placement is handled separately via runtime scenarios.
 pub trait MapOracle: Send + Sync {
     fn dimensions(&self) -> MapDimensions;
     fn tile(&self, position: Position) -> Option<StaticTile>;
-
-    /// Returns the entities that should exist when the scenario starts.
-    fn initial_entities(&self) -> Vec<InitialEntitySpec> {
-        Vec::new()
-    }
 
     fn contains(&self, position: Position) -> bool {
         self.dimensions().contains(position)
@@ -73,22 +71,4 @@ impl TerrainKind {
     pub fn is_passable(self) -> bool {
         matches!(self, TerrainKind::Floor)
     }
-}
-
-/// Blueprint describing an entity that should exist at the start of a session.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct InitialEntitySpec {
-    pub id: EntityId,
-    pub position: Position,
-    pub kind: InitialEntityKind,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum InitialEntityKind {
-    Player,
-    Npc { template: u16 },
-    Prop { kind: PropKind, is_active: bool },
-    Item { handle: ItemHandle },
 }
