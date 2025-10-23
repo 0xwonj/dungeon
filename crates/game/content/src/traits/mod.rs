@@ -495,3 +495,155 @@ pub fn lerp_f32(min: f32, max: f32, value: u8, value_max: u8) -> f32 {
     let t = value as f32 / value_max as f32;
     min + (max - min) * t
 }
+
+// ============================================================================
+// Trait Registry and Preset System
+// ============================================================================
+
+/// Trait profile specification referencing named presets.
+///
+/// This is used in NPC definitions to reference trait layers by name
+/// instead of repeating trait values.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct TraitProfileSpec {
+    pub species: String,
+    pub archetype: String,
+    pub faction: String,
+    pub temperament: String,
+}
+
+impl TraitProfileSpec {
+    /// Creates a new trait profile specification.
+    pub fn new(
+        species: impl Into<String>,
+        archetype: impl Into<String>,
+        faction: impl Into<String>,
+        temperament: impl Into<String>,
+    ) -> Self {
+        Self {
+            species: species.into(),
+            archetype: archetype.into(),
+            faction: faction.into(),
+            temperament: temperament.into(),
+        }
+    }
+}
+
+/// Registry of named trait layer presets.
+///
+/// Stores predefined trait layers by name for each of the 4 layer types
+/// (species, archetype, faction, temperament).
+pub struct TraitRegistry {
+    species: std::collections::HashMap<String, TraitLayer>,
+    archetypes: std::collections::HashMap<String, TraitLayer>,
+    factions: std::collections::HashMap<String, TraitLayer>,
+    temperaments: std::collections::HashMap<String, TraitLayer>,
+    weights: TraitWeights,
+}
+
+impl TraitRegistry {
+    /// Creates a new empty registry with default weights.
+    pub fn new() -> Self {
+        Self {
+            species: std::collections::HashMap::new(),
+            archetypes: std::collections::HashMap::new(),
+            factions: std::collections::HashMap::new(),
+            temperaments: std::collections::HashMap::new(),
+            weights: TraitWeights::default(),
+        }
+    }
+
+    /// Creates a new registry with custom weights.
+    pub fn with_weights(weights: TraitWeights) -> Self {
+        Self {
+            species: std::collections::HashMap::new(),
+            archetypes: std::collections::HashMap::new(),
+            factions: std::collections::HashMap::new(),
+            temperaments: std::collections::HashMap::new(),
+            weights,
+        }
+    }
+
+    /// Adds a species layer preset.
+    pub fn add_species(&mut self, name: String, layer: TraitLayer) {
+        self.species.insert(name, layer);
+    }
+
+    /// Adds an archetype layer preset.
+    pub fn add_archetype(&mut self, name: String, layer: TraitLayer) {
+        self.archetypes.insert(name, layer);
+    }
+
+    /// Adds a faction layer preset.
+    pub fn add_faction(&mut self, name: String, layer: TraitLayer) {
+        self.factions.insert(name, layer);
+    }
+
+    /// Adds a temperament layer preset.
+    pub fn add_temperament(&mut self, name: String, layer: TraitLayer) {
+        self.temperaments.insert(name, layer);
+    }
+
+    /// Resolves a trait profile specification into a composed TraitProfile.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any of the referenced preset names are not found.
+    pub fn resolve(&self, spec: &TraitProfileSpec) -> Result<TraitProfile, String> {
+        let species = self
+            .species
+            .get(&spec.species)
+            .ok_or_else(|| format!("Species preset '{}' not found", spec.species))?;
+
+        let archetype = self
+            .archetypes
+            .get(&spec.archetype)
+            .ok_or_else(|| format!("Archetype preset '{}' not found", spec.archetype))?;
+
+        let faction = self
+            .factions
+            .get(&spec.faction)
+            .ok_or_else(|| format!("Faction preset '{}' not found", spec.faction))?;
+
+        let temperament = self
+            .temperaments
+            .get(&spec.temperament)
+            .ok_or_else(|| format!("Temperament preset '{}' not found", spec.temperament))?;
+
+        Ok(TraitProfile::compose(
+            species,
+            archetype,
+            faction,
+            temperament,
+            &self.weights,
+        ))
+    }
+}
+
+impl Default for TraitRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Helper function to build a TraitLayer from sparse data Vec<(TraitKind, u8)>.
+///
+/// This is used during deserialization to convert sparse RON format into TraitLayer.
+pub fn build_layer_from_pairs(pairs: &[(TraitKind, u8)]) -> TraitLayer {
+    let mut builder = TraitLayer::builder();
+    for (trait_kind, value) in pairs {
+        if *value > 15 {
+            panic!(
+                "Trait {:?} has invalid value {} (must be 0..=15)",
+                trait_kind, value
+            );
+        }
+        builder = builder.set(*trait_kind, *value);
+    }
+    builder.build()
+}

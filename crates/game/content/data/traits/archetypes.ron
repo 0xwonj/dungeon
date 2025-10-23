@@ -1,0 +1,31 @@
+// Archetype trait layer presets
+// Each archetype defines role/class-based behavioral traits (0-15 per trait)
+{
+    "none": [],  // Default empty archetype
+
+    "scout": [
+        (Perception, 12),     // High awareness
+        (Caution, 10),        // Careful approach
+        (Mobility, 13),       // Fast movement
+        (Curiosity, 10),      // Investigates
+    ],
+
+    "warrior": [
+        (Bravery, 11),        // Stands ground
+        (Discipline, 10),     // Follows tactics
+        (Aggression, 10),     // Engages enemies
+        (Stamina, 11),        // Endurance in combat
+    ],
+
+    "archer": [
+        (PreferredRange, 13), // Prefers distance (high value)
+        (TacticalSense, 10),  // Good positioning
+        (Caution, 9),         // Cautious
+    ],
+
+    "leader": [
+        (Discipline, 13),     // Highly organized
+        (TacticalSense, 13),  // Strategic
+        (Dominance, 14),      // Commands others
+    ],
+}

@@ -1,0 +1,35 @@
+// Test scenario - basic dungeon with player and a few NPCs
+Scenario(
+    map_id: "test_dungeon",
+    placements: [
+        // Player at starting position
+        EntityPlacement(
+            position: (x: 5, y: 5),
+            kind: Player,
+        ),
+
+        // Goblin scout nearby
+        EntityPlacement(
+            position: (x: 8, y: 7),
+            kind: Actor(def_id: "goblin_scout"),
+        ),
+
+        // Orc warrior in the middle
+        EntityPlacement(
+            position: (x: 10, y: 10),
+            kind: Actor(def_id: "orc_warrior"),
+        ),
+
+        // Health potion
+        EntityPlacement(
+            position: (x: 7, y: 5),
+            kind: Item(handle: ItemHandle(1)),
+        ),
+
+        // Mana potion
+        EntityPlacement(
+            position: (x: 5, y: 7),
+            kind: Item(handle: ItemHandle(2)),
+        ),
+    ],
+)
