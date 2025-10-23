@@ -1,80 +1,51 @@
-//! Behavior tree-based AI system for NPCs.
+//! Utility-based AI system for NPCs.
 //!
-//! This module provides a complete, layered AI architecture using behavior trees.
-//! The system is organized into four layers of abstraction:
+//! This module provides a three-layer utility scoring system for NPC decision-making:
 //!
-//! # Architecture Layers
+//! 1. **Intent Selection** (Layer 1): What does the NPC want to do?
+//!    - Combat, Survival, Exploration, Social, Resource, Idle
 //!
-//! - **Layer 0 ([`nodes`])**: Atomic conditions and actions (building blocks)
-//! - **Layer 1 ([`subtrees::patterns`])**: Simple if-then patterns
-//! - **Layer 2 ([`subtrees::tactics`])**: Goal-oriented tactical behaviors
-//! - **Layer 3 ([`subtrees::strategies`])**: Decision-making strategies
-//! - **Layer 4 ([`presets`])**: Complete NPC AI definitions
+//! 2. **Tactic Selection** (Layer 2): How should they achieve that intent?
+//!    - AggressiveMelee, Kiting, Flee, HealAlly, etc.
+//!
+//! 3. **Action Selection** (Layer 3): Which specific action to execute?
+//!    - Selects from available_actions based on tactic-specific scoring
 //!
 //! # Core Components
 //!
-//! - [`AiContext`]: The blackboard for AI decision-making (read game state, write actions)
-//! - [`BehaviorTreeProvider`]: Adapter that implements [`crate::ActionProvider`] using BTs
-//! - [`nodes`]: Atomic behavior tree nodes (conditions like `IsHealthLow`, actions like `AttackPlayer`)
-//! - [`subtrees`]: Reusable behavior tree patterns organized by complexity
-//! - [`presets`]: Ready-to-use AI for different NPC types
-//!
-//! # Usage Examples
-//!
-//! ## Using Pre-built AI
-//!
-//! ```rust,ignore
-//! use runtime::providers::ai::{BehaviorTreeProvider, presets};
-//!
-//! // Simple: Use a pre-built NPC AI
-//! let goblin_ai = BehaviorTreeProvider::new(presets::goblin());
-//! runtime_builder.provider(ProviderKind::Ai(AiKind::Goblin), goblin_ai);
-//! ```
-//!
-//! ## Composing Custom AI from Strategies
-//!
-//! ```rust,ignore
-//! use runtime::providers::ai::{BehaviorTreeProvider, subtrees};
-//! use behavior_tree::Selector;
-//!
-//! // Intermediate: Compose from strategies
-//! let custom_ai = BehaviorTreeProvider::new(
-//!     Box::new(Selector::new(vec![
-//!         subtrees::strategies::aggressive_melee(0.3),
-//!         subtrees::patterns::wait_fallback(),
-//!     ]))
-//! );
-//! ```
-//!
-//! ## Building from Scratch with Patterns
-//!
-//! ```rust,ignore
-//! use runtime::providers::ai::{BehaviorTreeProvider, subtrees};
-//! use behavior_tree::Selector;
-//!
-//! // Advanced: Full control with patterns
-//! let custom_ai = BehaviorTreeProvider::new(
-//!     Box::new(Selector::new(vec![
-//!         subtrees::patterns::flee_when_low_health(0.25),
-//!         subtrees::tactics::melee_engagement(),
-//!         subtrees::patterns::wait_fallback(),
-//!     ]))
-//! );
-//! ```
+//! - [`AiContext`]: The blackboard for AI decision-making (game state + available actions)
+//! - [`UtilityAiProvider`]: Main AI provider implementing [`crate::ActionProvider`]
+//! - [`Intent`] / [`Tactic`]: Strategic and tactical decision types
+//! - [`scoring`]: Utility scoring functions for all three layers
 //!
 //! # Design Principles
 //!
-//! 1. **Composability**: Every layer can be freely combined with others
-//! 2. **Reusability**: Common patterns are abstracted into reusable subtrees
-//! 3. **Type Safety**: All subtrees return the same `BehaviorTree` type
-//! 4. **Determinism**: AI decisions are purely deterministic (required for ZK proofs)
-//! 5. **Zero Runtime Cost**: Abstraction layers compile to direct function calls
+//! 1. **Utility-first**: All decisions use deterministic scoring functions
+//! 2. **Action reuse**: All tactics share the same pool of available actions
+//! 3. **Automatic composition**: NPC behavior emerges from TraitProfile (Species × Archetype × Faction × Temperament)
+//! 4. **Determinism**: All decisions are purely deterministic (required for ZK proofs)
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use runtime::providers::ai::UtilityAiProvider;
+//!
+//! // Create AI provider (automatically uses TraitProfile)
+//! let ai = UtilityAiProvider::new();
+//!
+//! // NPC behavior is determined by their TraitProfile
+//! // Goblin + Archer + Bandit → prefers kiting, flees easily, ignores allies
+//! // Orc + Warrior + Guard → prefers aggressive melee, territorial, protects allies
+//! ```
 
 pub mod context;
-pub mod nodes;
-pub mod presets;
 pub mod provider;
-pub mod subtrees;
+pub mod scoring;
+pub mod types;
 
+// Re-export core types
 pub use context::AiContext;
-pub use provider::BehaviorTreeProvider;
+pub use provider::UtilityAiProvider;
+pub use scoring::actions::ActionScorer;
+pub use scoring::selector::{IntentScorer, TacticScorer};
+pub use types::{Intent, Tactic};
