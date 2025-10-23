@@ -12,16 +12,15 @@
 # Examples:
 #   just build              # Build with default backend (risc0)
 #   just build stub         # Build with stub backend
-#   just run risc0-fast     # Run with RISC0 (skip guest builds)
+#   just run-fast stub      # Run in fast mode (no proofs, no persistence)
 #   just test stub          # Test with stub backend
 #   just lint               # Lint with default backend
 #
 # Environment Variables:
-#   ZK_BACKEND - Set default backend (risc0, risc0-fast, stub, sp1, arkworks)
+#   ZK_BACKEND - Set default backend (risc0, stub, sp1, arkworks)
 #
 # Available Backends:
 #   risc0       - RISC0 zkVM (production, real proofs, slow)
-#   risc0-fast  - RISC0 zkVM with RISC0_SKIP_BUILD=1 (fast iteration)
 #   stub        - Stub prover (instant, no real proofs, testing only)
 #   sp1         - SP1 zkVM (not implemented yet)
 #   arkworks    - Arkworks circuits (not implemented yet)
@@ -55,14 +54,13 @@ help:
     @echo ""
     @echo "Available backends:"
     @echo "  risc0       Production RISC0 zkVM (real proofs, slow)"
-    @echo "  risc0-fast  RISC0 with guest build skip (fast iteration)"
     @echo "  stub        Dummy prover (instant, testing only)"
     @echo "  sp1         SP1 zkVM (not implemented)"
     @echo "  arkworks    Arkworks circuits (not implemented)"
     @echo ""
     @echo "Common workflows:"
     @echo "  just build stub          Fast development build"
-    @echo "  just run risc0-fast      Run game with RISC0 (no guest rebuild)"
+    @echo "  just run-fast stub       Run in fast mode (no proofs, no persistence)"
     @echo "  just test stub           Fast tests"
     @echo "  just lint                Check code quality"
     @echo "  just check-all           Verify all backends compile"
@@ -124,16 +122,16 @@ build-guest:
 run backend=default_backend *args='':
     @just _exec {{backend}} "run -p client-cli {{args}}"
 
+# Run CLI in fast mode (no proof generation, no persistence)
+run-fast backend=default_backend *args='':
+    #!/usr/bin/env bash
+    export ENABLE_ZK_PROVING=false
+    export ENABLE_PERSISTENCE=false
+    just _exec {{backend}} "run -p client-cli {{args}}"
+
 # Run CLI in release mode
 run-release backend=default_backend *args='':
     @just _exec {{backend}} "run -p client-cli --release {{args}}"
-
-# Run CLI with AI debug logging (filters out RISC0 and ZK noise)
-run-debug backend=default_backend *args='':
-    #!/usr/bin/env bash
-    # Enable debug logs for our code only, suppress RISC0 and ZK crates
-    export RUST_LOG="runtime=debug,client=debug,game_core=debug,zk=warn,risc0_zkvm=warn,risc0_circuit=warn"
-    just _exec {{backend}} "run -p client-cli {{args}}"
 
 # ============================================================================
 # Test Commands
@@ -197,7 +195,7 @@ check-all:
     @echo "🔍 Verifying all implemented backends compile..."
     @echo ""
     @echo "Checking risc0 backend..."
-    @just _exec risc0-fast "check --workspace"
+    @just _exec risc0 "check --workspace"
     @echo "✅ RISC0 verified"
     @echo ""
     @echo "Checking stub backend..."
@@ -242,7 +240,7 @@ dev:
 pre-commit:
     @echo "🔍 Running pre-commit checks..."
     @just fmt
-    @just lint risc0-fast
+    @just lint stub
     @just test stub
     @echo "✅ Pre-commit checks passed!"
 
@@ -251,7 +249,6 @@ ci:
     @echo "🤖 Running full CI simulation..."
     @just fmt-check
     @just check-all
-    @just test risc0-fast
     @just test stub
     @echo "✅ CI simulation passed!"
 
@@ -313,7 +310,7 @@ rebuild-guest:
     @echo "💡 You can now run the client without malformed binary errors:"
     @echo "   cargo run -p client-cli"
     @echo "   or"
-    @echo "   just run risc0-fast"
+    @echo "   just run risc0"
 
 # List all available sessions
 sessions:
@@ -335,10 +332,6 @@ _exec backend *args:
             echo "🔧 Using RISC0 backend (production mode)"
             cargo {{args}}
             ;;
-        risc0-fast)
-            echo "⚡ Using RISC0 backend (fast mode, skipping guest builds)"
-            RISC0_SKIP_BUILD=1 cargo {{args}}
-            ;;
         stub)
             echo "🎭 Using Stub backend (no real proofs)"
             cargo {{args}} --no-default-features --features stub
@@ -355,7 +348,7 @@ _exec backend *args:
             echo "❌ Error: Unknown backend '{{backend}}'"
             echo ""
             echo "Available backends:"
-            echo "  risc0, risc0-fast, stub, sp1, arkworks"
+            echo "  risc0, stub, sp1, arkworks"
             exit 1
             ;;
     esac
