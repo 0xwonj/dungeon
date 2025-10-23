@@ -5,6 +5,7 @@
 pub mod event;
 pub mod frontend;
 pub mod message;
+pub mod targeting;
 pub mod view_model;
 
 pub use event::{EventConsumer, EventImpact};

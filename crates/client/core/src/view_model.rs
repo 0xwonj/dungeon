@@ -6,6 +6,53 @@ use game_core::{
 
 use crate::message::{MessageEntry, MessageLog};
 
+/// Actor view for target selection and examination.
+#[derive(Clone, Debug)]
+pub struct ActorView {
+    pub id: EntityId,
+    pub position: Position,
+    pub is_player: bool,
+    pub stats: ActorStatsSnapshot,
+}
+
+/// Prop view for examination.
+#[derive(Clone, Debug)]
+pub struct PropView {
+    pub id: EntityId,
+    pub position: Position,
+    pub kind: PropKind,
+    pub is_active: bool,
+}
+
+/// Item view for examination.
+#[derive(Clone, Debug)]
+pub struct ItemView {
+    pub id: EntityId,
+    pub position: Position,
+    pub handle: ItemHandle,
+}
+
+/// Stats snapshot for display purposes.
+#[derive(Clone, Debug)]
+pub struct ActorStatsSnapshot {
+    pub health: ResourceSnapshot,
+    pub energy: ResourceSnapshot,
+    pub speed: u16,
+    pub ready_at: Option<u64>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ResourceSnapshot {
+    pub current: u32,
+    pub maximum: u32,
+}
+
+impl ResourceSnapshot {
+    fn new(current: u32, maximum: u32) -> Self {
+        Self { current, maximum }
+    }
+}
+
 /// High-level snapshot of the game used by presentation layers.
 #[derive(Clone, Debug)]
 pub struct UiFrame {
@@ -14,6 +61,12 @@ pub struct UiFrame {
     pub player: PlayerSnapshot,
     pub world: WorldSnapshot,
     pub messages: Vec<MessageEntry>,
+    /// All actors (player + NPCs) for target selection and examination
+    pub actors: Vec<ActorView>,
+    /// All props for examination
+    pub props: Vec<PropView>,
+    /// All items for examination
+    pub items: Vec<ItemView>,
 }
 
 impl UiFrame {
@@ -29,6 +82,9 @@ impl UiFrame {
             player: PlayerSnapshot::from_state(state),
             world: WorldSnapshot::from_state(state),
             messages: collect_messages(messages, message_limit),
+            actors: collect_actors(state),
+            props: collect_props(state),
+            items: collect_items(state),
         }
     }
 }
@@ -172,15 +228,6 @@ pub enum OccupantView {
     },
 }
 
-/// Stats snapshot for display purposes.
-#[derive(Clone, Debug)]
-pub struct ActorStatsSnapshot {
-    pub health: ResourceSnapshot,
-    pub energy: ResourceSnapshot,
-    pub speed: u16,
-    pub ready_at: Option<u64>,
-}
-
 #[derive(Clone, Debug)]
 pub struct PlayerSnapshot {
     pub id: EntityId,
@@ -191,7 +238,7 @@ pub struct PlayerSnapshot {
 
 impl PlayerSnapshot {
     fn from_state(state: &GameState) -> Self {
-        let player = &state.entities.player;
+        let player = state.entities.player();
         let snapshot = player.snapshot();
         let (hp_current, hp_max) = snapshot.hp();
         let (mp_current, mp_max) = snapshot.mp();
@@ -219,18 +266,6 @@ pub struct PlayerStats {
 }
 
 #[derive(Clone, Debug)]
-pub struct ResourceSnapshot {
-    pub current: u32,
-    pub maximum: u32,
-}
-
-impl ResourceSnapshot {
-    fn new(current: u32, maximum: u32) -> Self {
-        Self { current, maximum }
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct WorldSnapshot {
     pub npc_count: usize,
     pub prop_count: usize,
@@ -240,7 +275,11 @@ pub struct WorldSnapshot {
 impl WorldSnapshot {
     fn from_state(state: &GameState) -> Self {
         Self {
-            npc_count: state.entities.npcs.len(),
+            npc_count: state
+                .entities
+                .all_actors()
+                .filter(|a| a.id != EntityId::PLAYER)
+                .count(),
             prop_count: state.entities.props.len(),
             loose_item_count: state.entities.items.len(),
         }
@@ -249,6 +288,49 @@ impl WorldSnapshot {
 
 fn collect_messages(messages: &MessageLog, limit: usize) -> Vec<MessageEntry> {
     messages.recent(limit).cloned().collect()
+}
+
+/// Collect all actors (player + NPCs) for target selection.
+fn collect_actors(state: &GameState) -> Vec<ActorView> {
+    state
+        .entities
+        .all_actors()
+        .map(|actor| ActorView {
+            id: actor.id,
+            position: actor.position,
+            is_player: actor.id == EntityId::PLAYER,
+            stats: actor_stats_snapshot(actor),
+        })
+        .collect()
+}
+
+/// Collect all props for examination.
+fn collect_props(state: &GameState) -> Vec<PropView> {
+    state
+        .entities
+        .props
+        .iter()
+        .map(|prop| PropView {
+            id: prop.id,
+            position: prop.position,
+            kind: prop.kind.clone(),
+            is_active: prop.is_active,
+        })
+        .collect()
+}
+
+/// Collect all items for examination.
+fn collect_items(state: &GameState) -> Vec<ItemView> {
+    state
+        .entities
+        .items
+        .iter()
+        .map(|item| ItemView {
+            id: item.id,
+            position: item.position,
+            handle: item.handle,
+        })
+        .collect()
 }
 
 /// Helper to create ActorStatsSnapshot from ActorState.
@@ -286,18 +368,18 @@ impl TileInfoSnapshot {
         // Add occupants (actors and props)
         if let Some(ids) = state.world.tile_map.occupants(&position) {
             for id in ids {
-                if *id == state.entities.player.id {
+                if *id == EntityId::PLAYER {
                     entities.push(EntityDetailView::Player {
                         id: *id,
-                        stats: actor_stats_snapshot(&state.entities.player),
+                        stats: actor_stats_snapshot(state.entities.player()),
                     });
                     continue;
                 }
 
-                if let Some(npc) = state.entities.npcs.iter().find(|npc| npc.id == *id) {
+                if let Some(npc) = state.entities.actor(*id) {
                     entities.push(EntityDetailView::Npc {
                         id: npc.id,
-                        template_id: npc.template_id,
+                        template_id: 0, // TODO: Restore after actor system migration
                         stats: actor_stats_snapshot(npc),
                     });
                     continue;
@@ -338,20 +420,20 @@ fn build_occupants(state: &GameState, position: Position) -> Vec<OccupantView> {
 
     if let Some(ids) = state.world.tile_map.occupants(&position) {
         for id in ids {
-            if *id == state.entities.player.id {
+            if *id == EntityId::PLAYER {
                 occupants.push(OccupantView::Player {
                     id: *id,
                     is_current: state.turn.current_actor == *id,
-                    stats: actor_stats_snapshot(&state.entities.player),
+                    stats: actor_stats_snapshot(state.entities.player()),
                 });
                 continue;
             }
 
-            if let Some(npc) = state.entities.npcs.iter().find(|npc| npc.id == *id) {
+            if let Some(npc) = state.entities.actor(*id) {
                 occupants.push(OccupantView::Npc {
                     id: npc.id,
                     is_current: state.turn.current_actor == npc.id,
-                    template_id: npc.template_id,
+                    template_id: 0, // TODO: Restore after actor system migration
                     stats: actor_stats_snapshot(npc),
                 });
                 continue;

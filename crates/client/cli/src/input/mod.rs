@@ -70,6 +70,14 @@ impl InputHandler {
             KeyCode::Up => self.movement(CardinalDirection::North),
             KeyCode::Down => self.movement(CardinalDirection::South),
             KeyCode::Enter => self.wait(),
+            KeyCode::Tab => {
+                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                    KeyAction::PrevEntity
+                } else {
+                    KeyAction::NextEntity
+                }
+            }
+            KeyCode::BackTab => KeyAction::PrevEntity,
             _ => KeyAction::None,
         }
     }
@@ -119,7 +127,7 @@ impl InputHandler {
     }
 
     fn movement(&self, direction: CardinalDirection) -> KeyAction {
-        let action = MoveAction::new(self.player_entity, direction, 1);
+        let action = MoveAction::new(self.player_entity, direction);
         KeyAction::Submit(Action::character(
             self.player_entity,
             CharacterActionKind::Move(action),

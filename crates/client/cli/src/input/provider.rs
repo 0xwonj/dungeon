@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use game_core::{Action, EntityId, GameEnv, GameState};
 use runtime::ActionProvider;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 
 /// Action provider that waits for player input from CLI
 pub struct CliActionProvider {

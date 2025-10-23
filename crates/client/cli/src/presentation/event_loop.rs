@@ -16,12 +16,12 @@ use tokio::{
 };
 
 use crate::{
-    cursor::{ChainSelector, CursorMovement, select_target},
+    cursor::CursorMovement,
     input::{InputHandler, KeyAction},
     presentation::{terminal::Tui, ui},
     state::{AppMode, AppState},
 };
-use client_core::EventConsumer;
+use client_core::{EventConsumer, targeting};
 
 const FRAME_INTERVAL_MS: u64 = 16;
 
@@ -164,7 +164,7 @@ where
             KeyAction::ToggleExamine => {
                 let state = self.handle.query_state().await?;
                 self.app_state
-                    .toggle_examine(state.entities.player.position);
+                    .toggle_examine(state.entities.player().position);
                 self.input.set_modal(self.app_state.is_modal());
                 self.render_with_state(terminal, map, &state)?;
                 Ok(false)
@@ -211,26 +211,19 @@ where
         map: &M,
         state: &GameState,
     ) -> Result<()> {
-        self.input.set_player_entity(state.entities.player.id);
+        self.input.set_player_entity(state.entities.player().id);
 
-        // Compute auto-target in Normal mode
+        // Build view model first
+        let frame = ui::build_frame(map, state, self.consumer.message_log());
+
+        // Compute auto-target in Normal mode using view model
         if self.app_state.mode == AppMode::Normal {
-            let player_pos = state.entities.player.position;
-            let selector = ChainSelector::combat_default(player_pos);
-            let target_pos = select_target(state, &selector).or(Some(player_pos));
+            let player_pos = state.entities.player().position;
+            let target_pos =
+                targeting::select_auto_target(&frame.actors, player_pos).or(Some(player_pos));
             self.app_state.set_auto_target(target_pos);
         }
 
-        self.render(terminal, map, state)
-    }
-
-    fn render<M: MapOracle>(
-        &mut self,
-        terminal: &mut Tui,
-        map: &M,
-        state: &GameState,
-    ) -> Result<()> {
-        let frame = ui::build_frame(map, state, self.consumer.message_log());
-        ui::render(terminal, &frame, &self.app_state, state, map)
+        ui::render(terminal, &frame, &self.app_state, map)
     }
 }

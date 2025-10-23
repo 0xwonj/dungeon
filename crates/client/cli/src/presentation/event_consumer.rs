@@ -19,10 +19,9 @@ impl CliEventConsumer {
     fn push_action(&mut self, action: &Action, timestamp: u64) {
         let text = match action {
             Action::Character { actor, kind } => match kind {
-                CharacterActionKind::Move(movement) => format!(
-                    "{} moves {:?} by {}",
-                    actor, movement.direction, movement.distance
-                ),
+                CharacterActionKind::Move(movement) => {
+                    format!("{} moves {:?}", actor, movement.direction)
+                }
                 CharacterActionKind::Wait => format!("{} waits", actor),
                 other => format!("{} performs {:?}", actor, other),
             },

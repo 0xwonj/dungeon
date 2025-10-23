@@ -22,8 +22,9 @@ use crate::{
 use client_core::{
     message::{MessageEntry, MessageLevel, MessageLog},
     view_model::{
-        ActorStatsSnapshot, EntityDetailView, MapSnapshot, MapTile, OccupantView, PlayerSnapshot,
-        ResourceSnapshot, TileInfoSnapshot, TurnSummary, UiFrame, WorldSnapshot,
+        ActorView, ItemView, MapSnapshot, MapTile,
+        OccupantView, PlayerSnapshot, PropView, ResourceSnapshot, TurnSummary,
+        UiFrame, WorldSnapshot,
     },
 };
 
@@ -41,20 +42,13 @@ pub fn render(
     terminal: &mut Tui,
     frame: &UiFrame,
     app_state: &AppState,
-    game_state: &GameState,
     map: &dyn MapOracle,
 ) -> Result<()> {
-    terminal.draw(|ctx| render_frame(ctx, frame, app_state, game_state, map))?;
+    terminal.draw(|ctx| render_frame(ctx, frame, app_state, map))?;
     Ok(())
 }
 
-fn render_frame(
-    frame: &mut Frame,
-    view: &UiFrame,
-    app_state: &AppState,
-    game_state: &GameState,
-    map: &dyn MapOracle,
-) {
+fn render_frame(frame: &mut Frame, view: &UiFrame, app_state: &AppState, map: &dyn MapOracle) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -70,11 +64,8 @@ fn render_frame(
         frame,
         chunks[1],
         GameRenderContext {
-            map: &view.map,
-            player: &view.player,
-            world: &view.world,
+            view,
             app_state,
-            game_state,
             map_oracle: map,
         },
     );
@@ -84,11 +75,8 @@ fn render_frame(
 
 /// Context for rendering the game panel.
 struct GameRenderContext<'a> {
-    map: &'a MapSnapshot,
-    player: &'a PlayerSnapshot,
-    world: &'a WorldSnapshot,
+    view: &'a UiFrame,
     app_state: &'a AppState,
-    game_state: &'a GameState,
     map_oracle: &'a dyn MapOracle,
 }
 
@@ -103,8 +91,8 @@ fn render_game(frame: &mut Frame, area: ratatui::layout::Rect, ctx: GameRenderCo
         ])
         .split(area);
 
-    render_map(frame, chunks[0], ctx.map, ctx.app_state);
-    render_player_stats(frame, chunks[1], ctx.player, ctx.world);
+    render_map(frame, chunks[0], &ctx.view.map, ctx.app_state);
+    render_player_stats(frame, chunks[1], &ctx.view.player, &ctx.view.world);
 
     // Always render Examine panel (auto-target or manual cursor)
     if let Some(examine_pos) = ctx.app_state.examine_position() {
@@ -114,7 +102,7 @@ fn render_game(frame: &mut Frame, area: ratatui::layout::Rect, ctx: GameRenderCo
             examine_pos,
             ctx.app_state.entity_index,
             ctx.app_state.is_manual_cursor(),
-            ctx.game_state,
+            ctx.view,
             ctx.map_oracle,
         );
     }
@@ -317,11 +305,6 @@ fn render_resource<'a>(resource: &ResourceSnapshot, color: Color) -> Span<'a> {
     )
 }
 
-/// Formats a resource as a colored string for entity details.
-fn format_resource_str(resource: &ResourceSnapshot) -> String {
-    format!("{}/{}", resource.current, resource.maximum)
-}
-
 fn glyph_for_tile(tile: &MapTile) -> (String, Style) {
     if let Some(glyph) = tile
         .occupants
@@ -400,30 +383,76 @@ fn render_examine_panel(
     cursor_position: Position,
     entity_index: usize,
     is_manual: bool,
-    game_state: &GameState,
+    view: &UiFrame,
     map_oracle: &dyn MapOracle,
 ) {
-    let tile_info = TileInfoSnapshot::from_state(map_oracle, game_state, cursor_position);
+    // Find tile in map snapshot
+    let map_tile = find_map_tile(&view.map, cursor_position);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(7), Constraint::Min(0)])
         .split(area);
 
-    render_tile_info(frame, chunks[0], &tile_info, is_manual);
-    render_entity_details(frame, chunks[1], &tile_info, entity_index);
+    // Render tile info
+    render_tile_info_simple(
+        frame,
+        chunks[0],
+        cursor_position,
+        map_tile,
+        map_oracle,
+        is_manual,
+    );
+
+    // Render entities based on mode
+    if is_manual {
+        // Manual mode: show entities at cursor position
+        render_entities_at_position(frame, chunks[1], cursor_position, view, entity_index);
+    } else {
+        // Auto mode: show all active NPCs (cycle through all)
+        render_all_active_npcs(frame, chunks[1], view, entity_index);
+    }
 }
 
-/// Renders tile-level information (terrain, passability, overlays).
-fn render_tile_info(
+/// Find a tile in MapSnapshot by position.
+fn find_map_tile(map: &MapSnapshot, position: Position) -> Option<&MapTile> {
+    // MapSnapshot tiles are stored as Vec<Vec<MapTile>> with reversed Y
+    // tiles[0] is the top row (highest Y), tiles[last] is bottom row (lowest Y)
+    let row_index = (map.height as i32 - 1 - position.y) as usize;
+    let col_index = position.x as usize;
+
+    map.tiles.get(row_index).and_then(|row| row.get(col_index))
+}
+
+/// Renders simplified tile information.
+fn render_tile_info_simple(
     frame: &mut Frame,
     area: ratatui::layout::Rect,
-    tile_info: &TileInfoSnapshot,
+    position: Position,
+    map_tile: Option<&MapTile>,
+    map_oracle: &dyn MapOracle,
     is_manual: bool,
 ) {
-    let terrain_name = format!("{:?}", tile_info.terrain);
-    let passable = if tile_info.is_passable { "Yes" } else { "No" };
-    let occupied = if tile_info.is_occupied { "Yes" } else { "No" };
+    let terrain = map_tile
+        .map(|t| format!("{:?}", t.terrain))
+        .or_else(|| {
+            map_oracle
+                .tile(position)
+                .map(|t| format!("{:?}", t.terrain()))
+        })
+        .unwrap_or_else(|| "Void".to_string());
+
+    let tile_view_opt = map_oracle.tile(position);
+    let passable = if tile_view_opt.as_ref().is_some_and(|v| v.is_passable()) {
+        "Yes"
+    } else {
+        "No"
+    };
+    let occupied = if map_tile.is_some_and(|t| !t.occupants.is_empty()) {
+        "Yes"
+    } else {
+        "No"
+    };
     let mode_indicator = if is_manual { "MANUAL" } else { "AUTO" };
 
     let lines = vec![
@@ -442,14 +471,11 @@ fn render_tile_info(
         ]),
         Line::from(vec![
             Span::styled("Position: ", Style::default().fg(Color::White)),
-            Span::raw(format!(
-                "({}, {})",
-                tile_info.position.x, tile_info.position.y
-            )),
+            Span::raw(format!("({}, {})", position.x, position.y)),
         ]),
         Line::from(vec![
             Span::styled("Terrain: ", Style::default().fg(Color::White)),
-            Span::raw(terrain_name),
+            Span::raw(terrain),
         ]),
         Line::from(vec![
             Span::styled("Passable: ", Style::default().fg(Color::White)),
@@ -467,81 +493,93 @@ fn render_tile_info(
     frame.render_widget(paragraph, area);
 }
 
-/// Renders entity details with cycling support.
-fn render_entity_details(
+/// Entity at a position for examination.
+enum EntityAtPosition<'a> {
+    Npc(&'a ActorView),
+    Prop(&'a PropView),
+    Item(&'a ItemView),
+}
+
+/// Renders all active NPCs (excluding player) with cycling support.
+/// Used in Auto mode to cycle through all NPCs regardless of position.
+fn render_all_active_npcs(
     frame: &mut Frame,
     area: ratatui::layout::Rect,
-    tile_info: &TileInfoSnapshot,
+    view: &UiFrame,
     entity_index: usize,
 ) {
-    if tile_info.entities.is_empty() {
+    // Filter to only active NPCs (exclude player, only those with ready_at set)
+    let active_npcs: Vec<&ActorView> = view
+        .actors
+        .iter()
+        .filter(|a| !a.is_player && a.stats.ready_at.is_some())
+        .collect();
+
+    if active_npcs.is_empty() {
+        let paragraph = Paragraph::new(vec![Line::from("No active NPCs")])
+            .block(Block::default().borders(Borders::ALL).title("NPCs"));
+        frame.render_widget(paragraph, area);
+        return;
+    }
+
+    let index = entity_index % active_npcs.len();
+    let npc = active_npcs[index];
+
+    let title = format!("NPCs ({}/{})", index + 1, active_npcs.len());
+    let lines = render_actor_details_from_view("NPC", npc);
+
+    let paragraph =
+        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(title));
+
+    frame.render_widget(paragraph, area);
+}
+
+/// Renders all entities at cursor position (NPCs, Props, Items) with cycling support.
+fn render_entities_at_position(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    position: Position,
+    view: &UiFrame,
+    entity_index: usize,
+) {
+    // Collect all entities at this position (exclude player)
+    let mut entities: Vec<EntityAtPosition> = Vec::new();
+
+    // Add NPCs at this position
+    for actor in &view.actors {
+        if !actor.is_player && actor.position == position {
+            entities.push(EntityAtPosition::Npc(actor));
+        }
+    }
+
+    // Add Props at this position
+    for prop in &view.props {
+        if prop.position == position {
+            entities.push(EntityAtPosition::Prop(prop));
+        }
+    }
+
+    // Add Items at this position
+    for item in &view.items {
+        if item.position == position {
+            entities.push(EntityAtPosition::Item(item));
+        }
+    }
+
+    if entities.is_empty() {
         let paragraph = Paragraph::new(vec![Line::from("No entities here")])
             .block(Block::default().borders(Borders::ALL).title("Entities"));
         frame.render_widget(paragraph, area);
         return;
     }
 
-    let index = entity_index % tile_info.entities.len();
-    let entity = &tile_info.entities[index];
+    let index = entity_index % entities.len();
+    let title = format!("Entities ({}/{})", index + 1, entities.len());
 
-    let title = format!("Entities ({}/{})", index + 1, tile_info.entities.len());
-    let lines = match entity {
-        EntityDetailView::Player { id, stats } => render_actor_details("Player", *id, stats),
-        EntityDetailView::Npc {
-            id,
-            template_id,
-            stats,
-        } => {
-            let mut lines = render_actor_details("NPC", *id, stats);
-            lines.insert(
-                1,
-                Line::from(vec![
-                    Span::styled("Template: ", Style::default().fg(Color::White)),
-                    Span::raw(format!("#{}", template_id)),
-                ]),
-            );
-            lines
-        }
-        EntityDetailView::Prop {
-            id,
-            kind,
-            is_active,
-        } => {
-            vec![
-                Line::from(vec![
-                    Span::styled("Type: ", Style::default().fg(Color::White)),
-                    Span::raw("Prop"),
-                ]),
-                Line::from(vec![
-                    Span::styled("ID: ", Style::default().fg(Color::White)),
-                    Span::raw(format!("{}", id)),
-                ]),
-                Line::from(vec![
-                    Span::styled("Kind: ", Style::default().fg(Color::White)),
-                    Span::raw(format!("{:?}", kind)),
-                ]),
-                Line::from(vec![
-                    Span::styled("Active: ", Style::default().fg(Color::White)),
-                    Span::raw(if *is_active { "Yes" } else { "No" }),
-                ]),
-            ]
-        }
-        EntityDetailView::Item { id, handle } => {
-            vec![
-                Line::from(vec![
-                    Span::styled("Type: ", Style::default().fg(Color::White)),
-                    Span::raw("Item"),
-                ]),
-                Line::from(vec![
-                    Span::styled("ID: ", Style::default().fg(Color::White)),
-                    Span::raw(format!("{}", id)),
-                ]),
-                Line::from(vec![
-                    Span::styled("Handle: ", Style::default().fg(Color::White)),
-                    Span::raw(format!("{}", handle.0)),
-                ]),
-            ]
-        }
+    let lines = match &entities[index] {
+        EntityAtPosition::Npc(actor) => render_actor_details_from_view("NPC", actor),
+        EntityAtPosition::Prop(prop) => render_prop_details(prop),
+        EntityAtPosition::Item(item) => render_item_details(item),
     };
 
     let paragraph =
@@ -550,12 +588,56 @@ fn render_entity_details(
     frame.render_widget(paragraph, area);
 }
 
-/// Helper to render actor (Player/NPC) stat lines.
-fn render_actor_details<'a>(
-    type_name: &'a str,
-    id: game_core::EntityId,
-    stats: &'a ActorStatsSnapshot,
-) -> Vec<Line<'a>> {
+/// Render prop details.
+fn render_prop_details<'a>(prop: &'a PropView) -> Vec<Line<'a>> {
+    vec![
+        Line::from(vec![
+            Span::styled("Type: ", Style::default().fg(Color::White)),
+            Span::raw("Prop"),
+        ]),
+        Line::from(vec![
+            Span::styled("ID: ", Style::default().fg(Color::White)),
+            Span::raw(format!("{}", prop.id)),
+        ]),
+        Line::from(vec![
+            Span::styled("Position: ", Style::default().fg(Color::White)),
+            Span::raw(format!("({}, {})", prop.position.x, prop.position.y)),
+        ]),
+        Line::from(vec![
+            Span::styled("Kind: ", Style::default().fg(Color::White)),
+            Span::raw(format!("{:?}", prop.kind)),
+        ]),
+        Line::from(vec![
+            Span::styled("Active: ", Style::default().fg(Color::White)),
+            Span::raw(if prop.is_active { "Yes" } else { "No" }),
+        ]),
+    ]
+}
+
+/// Render item details.
+fn render_item_details<'a>(item: &'a ItemView) -> Vec<Line<'a>> {
+    vec![
+        Line::from(vec![
+            Span::styled("Type: ", Style::default().fg(Color::White)),
+            Span::raw("Item"),
+        ]),
+        Line::from(vec![
+            Span::styled("ID: ", Style::default().fg(Color::White)),
+            Span::raw(format!("{}", item.id)),
+        ]),
+        Line::from(vec![
+            Span::styled("Position: ", Style::default().fg(Color::White)),
+            Span::raw(format!("({}, {})", item.position.x, item.position.y)),
+        ]),
+        Line::from(vec![
+            Span::styled("Handle: ", Style::default().fg(Color::White)),
+            Span::raw(format!("{}", item.handle.0)),
+        ]),
+    ]
+}
+
+/// Render actor details from ActorView.
+fn render_actor_details_from_view<'a>(type_name: &'a str, actor: &'a ActorView) -> Vec<Line<'a>> {
     vec![
         Line::from(vec![
             Span::styled("Type: ", Style::default().fg(Color::White)),
@@ -563,33 +645,45 @@ fn render_actor_details<'a>(
         ]),
         Line::from(vec![
             Span::styled("ID: ", Style::default().fg(Color::White)),
-            Span::raw(format!("{}", id)),
+            Span::raw(format!("{}", actor.id)),
+        ]),
+        Line::from(vec![
+            Span::styled("Position: ", Style::default().fg(Color::White)),
+            Span::raw(format!("({}, {})", actor.position.x, actor.position.y)),
         ]),
         Line::from(vec![
             Span::styled("Health: ", Style::default().fg(Color::White)),
             Span::styled(
-                format_resource_str(&stats.health),
+                format!(
+                    "{}/{}",
+                    actor.stats.health.current, actor.stats.health.maximum
+                ),
                 Style::default().fg(Color::Red),
             ),
         ]),
         Line::from(vec![
             Span::styled("Energy: ", Style::default().fg(Color::White)),
             Span::styled(
-                format_resource_str(&stats.energy),
+                format!(
+                    "{}/{}",
+                    actor.stats.energy.current, actor.stats.energy.maximum
+                ),
                 Style::default().fg(Color::Blue),
             ),
         ]),
         Line::from(vec![
             Span::styled("Speed: ", Style::default().fg(Color::White)),
-            Span::raw(stats.speed.to_string()),
+            Span::raw(actor.stats.speed.to_string()),
         ]),
         Line::from(vec![
             Span::styled("Ready at: ", Style::default().fg(Color::White)),
             Span::raw(
-                stats
+                actor
+                    .stats
                     .ready_at
                     .map_or("Inactive".to_string(), |t| t.to_string()),
             ),
         ]),
     ]
 }
+

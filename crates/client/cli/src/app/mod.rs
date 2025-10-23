@@ -75,9 +75,6 @@ impl CliApp {
         // Note: AI providers and default are already set up in RuntimeBuilder
         // NPCs will use the AggressiveAiProvider configured in bootstrap
 
-        let mut terminal = terminal::init()?;
-        let _guard = terminal::TerminalGuard;
-
         let CliApp {
             config,
             oracles,
@@ -98,18 +95,24 @@ impl CliApp {
         let consumer = CliEventConsumer::new(messages);
 
         let event_loop = EventLoop::new(
-            handle,
+            handle.clone(),
             subscriptions,
             tx_action,
-            initial_state.entities.player.id,
+            initial_state.entities.player().id,
             consumer,
         );
 
+        // Start runtime.run() BEFORE terminal init to avoid deadlock
+        // EventLoop is already prepared to receive events, but terminal isn't initialized yet
         let runtime_task = tokio::spawn(async move {
             if let Err(e) = runtime.run().await {
                 tracing::error!("Runtime error: {}", e);
             }
         });
+
+        // Initialize terminal AFTER runtime starts so EventLoop can consume events immediately
+        let mut terminal = terminal::init()?;
+        let _guard = terminal::TerminalGuard;
 
         let _consumer = event_loop
             .run(&mut terminal, oracles.map.as_ref(), initial_state)

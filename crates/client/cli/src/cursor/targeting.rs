@@ -16,8 +16,8 @@ pub struct HostileFilter;
 
 impl TargetFilter for HostileFilter {
     fn is_valid(&self, state: &GameState, entity: EntityId) -> bool {
-        // For now, all NPCs are considered hostile
-        state.entities.npcs.iter().any(|npc| npc.id == entity)
+        // For now, all non-player actors are considered hostile
+        entity != EntityId::PLAYER && state.entities.actor(entity).is_some()
     }
 }
 
@@ -37,15 +37,10 @@ pub fn collect_targets<F: TargetFilter>(
 ) -> Vec<(EntityId, Position)> {
     let mut targets = Vec::new();
 
-    // Check player
-    if filter.is_valid(state, state.entities.player.id) {
-        targets.push((state.entities.player.id, state.entities.player.position));
-    }
-
-    // Check NPCs
-    for npc in state.entities.npcs.iter() {
-        if filter.is_valid(state, npc.id) {
-            targets.push((npc.id, npc.position));
+    // Check all actors
+    for actor in state.entities.all_actors() {
+        if filter.is_valid(state, actor.id) {
+            targets.push((actor.id, actor.position));
         }
     }
 

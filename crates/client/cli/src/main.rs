@@ -49,9 +49,9 @@ fn setup_logging(session_id: &Option<String>) -> Result<()> {
     let file_appender = tracing_appender::rolling::never(&session_log_dir, "client.log");
     let (non_blocking_file, _guard) = tracing_appender::non_blocking(file_appender);
 
-    // Create env filter
-    let env_filter = tracing_subscriber::EnvFilter::from_default_env()
-        .add_directive(tracing::Level::INFO.into());
+    // Create env filter from RUST_LOG or default to info
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
 
     // Setup file layer (always enabled)
     let file_layer = tracing_subscriber::fmt::layer()
