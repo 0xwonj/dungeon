@@ -33,15 +33,6 @@ crates/
 docs/                      # Architecture, research notes, design decisions
 ```
 
-Key implementation features:
-- **Action System**: Comprehensive action validation with pre-validate, execute, and post-validate phases
-- **Turn Management**: Deterministic turn scheduling with entity activation and cooldown tracking
-- **CLI Interface**: Terminal UI with examine mode, cursor system, and targeting for tactical gameplay
-- **Event Broadcasting**: Runtime emits `GameEvent` notifications for all state transitions
-- **Worker Architecture**: `SimulationWorker` manages canonical state; `ProverWorker` planned for ZK proofs
-
-To see how these pieces interact end-to-end, read the workspace and runtime diagrams in [`docs/architecture.md`](docs/architecture.md).
-
 ## Prerequisites
 
 - Rust toolchain (1.85+ recommended). Install via [rustup](https://rustup.rs/) if you have not already.
@@ -63,14 +54,13 @@ just build stub
 just run stub
 just test stub
 
+# Fast mode (no proof generation, no persistence)
+just run-fast stub
+
 # Set default backend via environment
 export ZK_BACKEND=stub
 just build  # uses stub automatically
 just run
-
-# RISC0 backend (skip guest builds for speed)
-just build risc0-fast
-just run risc0-fast
 
 # See all available commands
 just --list
@@ -80,7 +70,6 @@ just help
 ### Available ZK Backends
 
 - `risc0` - RISC0 zkVM (production, real proofs, slow)
-- `risc0-fast` - RISC0 with guest build skip (fast iteration)
 - `stub` - Stub prover (instant, no proofs, testing only)
 - `sp1` - SP1 zkVM (not implemented yet)
 - `arkworks` - Arkworks circuits (not implemented yet)
@@ -91,6 +80,7 @@ just help
 |------|---------|
 | Build with backend | `just build [backend]` |
 | Run CLI client | `just run [backend]` |
+| Run in fast mode | `just run-fast [backend]` (no proofs, no persistence) |
 | Run all tests | `just test [backend]` |
 | Lint code | `just lint [backend]` |
 | Format code | `just fmt` |
