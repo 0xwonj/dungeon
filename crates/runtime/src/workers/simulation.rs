@@ -33,6 +33,12 @@ pub enum Command {
 }
 
 /// Background task that processes gameplay commands.
+///
+/// # Design Note
+///
+/// SimulationWorker is now a pure game logic executor - it does not own
+/// providers or handle I/O. Provider orchestration is done by Runtime.
+/// This follows the "functional core, imperative shell" principle.
 pub struct SimulationWorker {
     state: GameState,
     oracles: OracleManager,
@@ -50,6 +56,12 @@ impl SimulationWorker {
         event_bus: EventBus,
         hooks: HookRegistry,
     ) -> Self {
+        tracing::info!(
+            "SimulationWorker initialized with active_actors: {:?}, total actors: {}",
+            state.turn.active_actors,
+            state.entities.actors.len()
+        );
+
         Self {
             state,
             oracles,
@@ -64,14 +76,14 @@ impl SimulationWorker {
         loop {
             tokio::select! {
                 Some(cmd) = self.command_rx.recv() => {
-                    self.handle_command(cmd);
+                    self.handle_command(cmd).await;
                 }
                 else => break,
             }
         }
     }
 
-    fn handle_command(&mut self, cmd: Command) {
+    async fn handle_command(&mut self, cmd: Command) {
         match cmd {
             Command::PrepareNextTurn { reply } => {
                 let result = self.handle_turn_preparation();

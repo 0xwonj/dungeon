@@ -1,0 +1,10 @@
+[package]
+name = "client-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+game-core = { workspace = true }
+runtime = { workspace = true }

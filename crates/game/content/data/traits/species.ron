@@ -1,0 +1,35 @@
+// Species trait layer presets
+// Each species defines inherent biological/physical traits (0-15 per trait)
+{
+    "goblin": [
+        (Bravery, 4),      // Cowardly (flees early)
+        (Mobility, 11),    // Fast
+        (Perception, 9),   // Alert
+        (Aggression, 6),   // Somewhat aggressive
+    ],
+    "orc": [
+        (Bravery, 11),     // Brave (fights longer)
+        (Mobility, 5),     // Slow
+        (Aggression, 13),  // Very aggressive
+        (Perception, 7),   // Average perception
+    ],
+    "boss": [
+        (Bravery, 14),        // Fearless (near max)
+        (Aggression, 14),     // Extremely aggressive
+        (TacticalSense, 11),  // Smart fighter
+        (Perception, 12),     // High awareness
+        (Dominance, 13),      // Commanding presence
+    ],
+    "skeleton": [
+        (Bravery, 15),     // Fearless (undead - max)
+        (Empathy, 0),      // No empathy
+        (Curiosity, 0),    // No curiosity
+        (Mobility, 6),     // Somewhat slow
+        (Aggression, 8),   // Neutral aggression
+    ],
+    "human": [
+        (Bravery, 6),        // Cautious
+        (Perception, 11),    // Sharp eyes
+        (Aggression, 8),     // Slightly aggressive
+    ],
+}

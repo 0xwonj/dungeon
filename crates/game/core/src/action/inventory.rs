@@ -9,12 +9,12 @@ use crate::state::{EntityId, GameState, Position, Tick};
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct UseItemAction {
     pub actor: EntityId,
-    pub slot: InventorySlot,
+    pub slot: InventoryIndex,
     pub target: Option<ItemTarget>,
 }
 
 impl UseItemAction {
-    pub fn new(actor: EntityId, slot: InventorySlot, target: Option<ItemTarget>) -> Self {
+    pub fn new(actor: EntityId, slot: InventoryIndex, target: Option<ItemTarget>) -> Self {
         Self {
             actor,
             slot,
@@ -23,13 +23,14 @@ impl UseItemAction {
     }
 }
 
+/// Index into an actor's inventory.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct InventorySlot {
+pub struct InventoryIndex {
     pub index: u8,
 }
 
-impl InventorySlot {
+impl InventoryIndex {
     pub fn new(index: u8) -> Self {
         Self { index }
     }

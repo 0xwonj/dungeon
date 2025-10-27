@@ -1,11 +1,20 @@
+pub mod abilities;
 pub mod common;
 pub mod entities;
+pub mod equipment;
+pub mod status;
 pub mod turn;
 pub mod world;
 
+pub use abilities::{
+    ActionAbilities, ActionAbility, ActionKind, PassiveAbilities, PassiveAbility, PassiveKind,
+};
 pub use common::{EntityId, Position, Tick};
 pub use entities::{
-    ActorState, EntitiesState, InventoryState, ItemHandle, ItemState, PropKind, PropState,
+    ActorState, EntitiesState, InventorySlot, InventoryState, ItemHandle, ItemState, PropKind,
+    PropState,
 };
+pub use equipment::{ArmorKind, Equipment, EquipmentBuilder, WeaponKind};
+pub use status::{StatusEffect, StatusEffectKind, StatusEffects};
 pub use turn::TurnState;
 pub use world::{TileMap, TileView, WorldState};

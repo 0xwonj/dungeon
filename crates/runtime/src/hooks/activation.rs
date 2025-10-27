@@ -43,15 +43,17 @@ impl PostExecutionHook for ActivationHook {
             && ctx
                 .delta
                 .entities
-                .player
-                .as_ref()
+                .actors
+                .updated
+                .iter()
+                .find(|changes| changes.id == EntityId::PLAYER)
                 .map(|changes| changes.fields.contains(ActorFields::POSITION))
                 .unwrap_or(false)
     }
 
     fn create_actions(&self, ctx: &HookContext<'_>) -> Vec<Action> {
         // Get player's current position
-        let player_position = ctx.state.entities.player.position;
+        let player_position = ctx.state.entities.player().position;
 
         // Create activation system action
         vec![Action::system(SystemActionKind::Activation(

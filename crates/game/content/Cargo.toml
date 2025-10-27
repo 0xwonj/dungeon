@@ -4,3 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+serde = { workspace = true, optional = true }
+ron = { version = "0.11", optional = true }
+toml = { version = "0.9", optional = true }
+anyhow = { workspace = true, optional = true }
+game-core = { path = "../core" }
+
+[features]
+default = ["loaders"]
+serde = ["dep:serde"]
+loaders = ["serde", "dep:ron", "dep:toml", "dep:anyhow", "game-core/serde"]

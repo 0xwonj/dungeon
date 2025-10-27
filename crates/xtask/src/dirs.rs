@@ -27,8 +27,15 @@ pub fn log_dir() -> Result<PathBuf> {
 /// - macOS: `~/Library/Application Support/dungeon`
 /// - Linux: `~/.local/share/dungeon` (or `$XDG_DATA_HOME/dungeon`)
 /// - Windows: `%APPDATA%\dungeon`
+/// - Override: `SAVE_DATA_DIR` environment variable
 /// - Fallback: `./save_data`
 pub fn data_dir() -> Result<PathBuf> {
+    // Check for SAVE_DATA_DIR environment variable first (from .env)
+    if let Ok(custom_dir) = std::env::var("SAVE_DATA_DIR") {
+        return Ok(PathBuf::from(custom_dir));
+    }
+
+    // Use platform-specific directory
     let dir = directories::ProjectDirs::from("", "", "dungeon")
         .map(|dirs| dirs.data_dir().to_path_buf())
         .unwrap_or_else(|| PathBuf::from("./save_data"));

@@ -1,11 +1,12 @@
 //! ZK proof generation worker.
 //!
 //! This worker reads from the action log and generates zero-knowledge proofs
-//! for executed actions. It maintains a cursor into the action log and
-//! processes entries sequentially.
+//! for executed actions. It maintains a cursor into the action log and processes
+//! entries sequentially using the [`ActionLogReader`] trait.
 //!
 //! Design principles:
-//! - Reads from action log rather than subscribing to events
+//! - Uses trait-based abstraction for flexible storage backends (mmap, in-memory, etc.)
+//! - Default implementation uses memory-mapped files for zero-copy reading
 //! - Runs asynchronously without blocking game execution
 //! - Emits proof events for clients/submitters to consume
 //! - Can resume from checkpoint to avoid re-proving
@@ -21,57 +22,9 @@ use zk::{ProofData, ProofError, Prover, ZkProver};
 use crate::events::{Event, EventBus, ProofEvent};
 use crate::oracle::OracleManager;
 use crate::repository::{
-    ActionLogEntry, ActionRepository, ProofEntry, ProofIndex, ProofIndexRepository,
+    ActionLogEntry, ActionLogReader, ProofEntry, ProofIndex, ProofIndexRepository,
 };
 use crate::workers::ProofMetrics;
-
-/// Action log reader that tracks current read position.
-struct ActionLogReader {
-    /// Action log repository
-    log: Box<dyn ActionRepository>,
-
-    /// Current byte offset in the action log
-    current_offset: u64,
-
-    /// Polling interval for checking new actions
-    poll_interval: Duration,
-}
-
-impl ActionLogReader {
-    fn new(log: Box<dyn ActionRepository>, start_offset: u64) -> Self {
-        Self {
-            log,
-            current_offset: start_offset,
-            poll_interval: Duration::from_millis(100),
-        }
-    }
-
-    fn session_id(&self) -> &str {
-        self.log.session_id()
-    }
-
-    fn read_next(
-        &mut self,
-    ) -> Result<Option<(ActionLogEntry, u64)>, crate::api::errors::RuntimeError> {
-        self.log.read_at_offset(self.current_offset)
-    }
-
-    fn size(&self) -> Result<u64, crate::api::errors::RuntimeError> {
-        self.log.size()
-    }
-
-    fn advance_to(&mut self, offset: u64) {
-        self.current_offset = offset;
-    }
-
-    fn current_offset(&self) -> u64 {
-        self.current_offset
-    }
-
-    fn poll_interval(&self) -> Duration {
-        self.poll_interval
-    }
-}
 
 /// Proof persistence layer (disk I/O).
 struct ProofStorage {
@@ -101,14 +54,13 @@ impl ProofStorage {
 
 /// Background worker for ZK proof generation.
 ///
-/// Reads ActionLogEntry records from the action log, generates zero-knowledge proofs,
-/// and broadcasts ProofGenerated/ProofFailed events.
+/// Reads ActionLogEntry records from the action log and generates zero-knowledge proofs.
 pub struct ProverWorker {
     /// ZK prover instance
     prover: ZkProver,
 
-    /// Action log reader
-    reader: ActionLogReader,
+    /// Action log reader (trait object for flexibility)
+    reader: Box<dyn ActionLogReader>,
 
     /// Event bus for publishing proof events
     event_bus: EventBus,
@@ -131,24 +83,13 @@ impl ProverWorker {
     }
 
     /// Creates a new prover worker (used by builder).
-    ///
-    /// # Arguments
-    ///
-    /// * `action_log` - Action log repository to read from
-    /// * `event_bus` - Event bus for publishing Proof events
-    /// * `oracle_manager` - Oracle manager for creating snapshots
-    /// * `save_proofs_dir` - Optional directory to save proof files
-    /// * `proof_index_repo` - Proof index repository for tracking generated proofs
-    /// * `session_id` - Session ID for this runtime instance
-    /// * `start_offset` - Byte offset to start reading from (0 for beginning, or checkpoint offset)
     fn new(
-        action_log: Box<dyn ActionRepository>,
+        reader: Box<dyn ActionLogReader>,
         event_bus: EventBus,
         oracle_manager: OracleManager,
         save_proofs_dir: Option<PathBuf>,
         proof_index_repo: Box<dyn ProofIndexRepository>,
         session_id: String,
-        start_offset: u64,
     ) -> Result<Self, String> {
         // Create prover
         let oracle_snapshot = Self::create_oracle_snapshot(&oracle_manager);
@@ -158,9 +99,25 @@ impl ProverWorker {
         let proof_index = match proof_index_repo.load(&session_id) {
             Ok(Some(index)) => {
                 info!(
-                    "Loaded existing proof index: session={}, proven_up_to={}",
-                    session_id, index.proven_up_to_nonce
+                    "Loaded existing proof index: session={}, proven_up_to={}, offset={}",
+                    session_id, index.proven_up_to_nonce, index.action_log_offset
                 );
+
+                // Resume from checkpoint: seek reader to saved offset
+                if index.action_log_offset > 0 {
+                    if let Err(e) = reader.seek(index.action_log_offset) {
+                        warn!(
+                            "Failed to seek to checkpoint offset {}: {}. Starting from beginning.",
+                            index.action_log_offset, e
+                        );
+                    } else {
+                        info!(
+                            "Resumed proof generation from offset {} (after nonce {})",
+                            index.action_log_offset, index.proven_up_to_nonce
+                        );
+                    }
+                }
+
                 index
             }
             Ok(None) => {
@@ -175,7 +132,7 @@ impl ProverWorker {
 
         Ok(Self {
             prover,
-            reader: ActionLogReader::new(action_log, start_offset),
+            reader,
             event_bus,
             metrics: Arc::new(ProofMetrics::new()),
             proof_index,
@@ -194,20 +151,20 @@ impl ProverWorker {
     /// and verification.
     fn create_oracle_snapshot(oracle_manager: &OracleManager) -> zk::OracleSnapshot {
         use zk::{
-            ConfigSnapshot, ItemsSnapshot, MapSnapshot, NpcsSnapshot, OracleSnapshot,
+            ActorsSnapshot, ConfigSnapshot, ItemsSnapshot, MapSnapshot, OracleSnapshot,
             TablesSnapshot,
         };
 
         let map_snapshot = MapSnapshot::from_oracle(oracle_manager.map.as_ref());
         let items_snapshot = ItemsSnapshot::empty(); // TODO: Populate with actual items
-        let npcs_snapshot = NpcsSnapshot::empty(); // TODO: Populate with actual NPCs
+        let actors_snapshot = ActorsSnapshot::empty(); // TODO: Populate with actual actors
         let tables_snapshot = TablesSnapshot::from_oracle(oracle_manager.tables.as_ref());
         let config_snapshot = ConfigSnapshot::from_oracle(oracle_manager.config.as_ref());
 
         OracleSnapshot::new(
             map_snapshot,
             items_snapshot,
-            npcs_snapshot,
+            actors_snapshot,
             tables_snapshot,
             config_snapshot,
         )
@@ -215,7 +172,21 @@ impl ProverWorker {
 
     /// Main worker loop.
     ///
-    /// Polls the action log for new entries and generates proofs.
+    /// Continuously reads from the action log and generates proofs.
+    ///
+    /// # Performance Strategy
+    ///
+    /// The worker uses a tight loop for maximum throughput when there's backlog:
+    /// 1. Read entries in a tight loop using the ActionLogReader trait
+    /// 2. Process each entry immediately
+    /// 3. Only when caught up: refresh and check for new data, sleep briefly if none
+    ///
+    /// This design assumes ProverWorker is always behind PersistenceWorker
+    /// (proof generation is slower than action execution), so the worker
+    /// spends most of its time in the tight loop with minimal overhead.
+    ///
+    /// The implementation is agnostic to the underlying storage mechanism -
+    /// it works with any ActionLogReader (mmap, in-memory, S3, etc.).
     pub async fn run(mut self) {
         info!(
             "ProverWorker started (offset: {}, session: {})",
@@ -224,38 +195,52 @@ impl ProverWorker {
         );
 
         loop {
-            // Try to read next entry from action log
-            match self.reader.read_next() {
-                Ok(Some((entry, next_offset))) => {
-                    // Process the entry
-                    self.handle_action_entry(entry).await;
+            // Tight loop: process all available entries
+            loop {
+                match self.reader.read_next() {
+                    Ok(Some(entry)) => {
+                        self.handle_action_entry(entry).await;
+                    }
+                    Ok(None) => {
+                        // Caught up with writer - break to refresh
+                        break;
+                    }
+                    Err(e) => {
+                        // Handle read errors (partial writes, corrupted data, etc.)
+                        error!(
+                            "Failed to read action log at offset {}: {}",
+                            self.reader.current_offset(),
+                            e
+                        );
 
-                    // Update offset to point to the next entry
-                    self.reader.advance_to(next_offset);
+                        // Check if this is a partial write error
+                        if e.to_string().contains("partial write") {
+                            error!(
+                                "Detected partial write - action log may be corrupted. \
+                                 Will retry after refresh."
+                            );
+                        }
 
-                    // Check if there might be more entries immediately available
-                    match self.reader.size() {
-                        Ok(size) if size > self.reader.current_offset() => {
-                            // There might be more entries, continue immediately
-                            continue;
-                        }
-                        _ => {
-                            // No more entries yet, sleep and poll again
-                            time::sleep(self.reader.poll_interval()).await;
-                        }
+                        // Break and attempt refresh - file may be still being written
+                        break;
                     }
                 }
-                Ok(None) => {
-                    // No more entries available, sleep and poll again
-                    time::sleep(self.reader.poll_interval()).await;
+            }
+
+            // Caught up with writer - refresh and check for new data
+            match self.reader.refresh() {
+                Ok(true) => {
+                    // New data available - immediately continue processing
+                    debug!("Action log grew, resuming proof generation");
+                    continue;
+                }
+                Ok(false) => {
+                    // No new data - sleep briefly before checking again
+                    time::sleep(Duration::from_millis(100)).await;
                 }
                 Err(e) => {
-                    error!(
-                        "Failed to read action log at offset {}: {}",
-                        self.reader.current_offset(),
-                        e
-                    );
-                    time::sleep(self.reader.poll_interval()).await;
+                    error!("Failed to refresh action log: {}", e);
+                    time::sleep(Duration::from_secs(1)).await;
                 }
             }
         }
@@ -268,16 +253,13 @@ impl ProverWorker {
     /// 1. Announce proof generation started
     /// 2. Generate proof
     /// 3. Broadcast ProofGenerated or ProofFailed event
-    /// 4. Update offset
+    /// 4. Update proof index
     async fn handle_action_entry(&mut self, entry: ActionLogEntry) {
-        let ActionLogEntry {
-            nonce,
-            clock,
-            action,
-            before_state,
-            after_state,
-            delta: _,
-        } = entry;
+        let nonce = entry.nonce;
+        let clock = entry.clock;
+        let action = entry.action.clone();
+        let before_state = &*entry.before_state;
+        let after_state = &*entry.after_state;
 
         debug!(
             "ProverWorker processing action nonce={} tick={}",
@@ -297,7 +279,7 @@ impl ProverWorker {
 
         // Generate proof
         match self
-            .generate_proof(&action, &before_state, &after_state)
+            .generate_proof(&action, before_state, after_state)
             .await
         {
             Ok((proof_data, proving_time)) => {
@@ -305,8 +287,8 @@ impl ProverWorker {
 
                 // Compute state hashes for logging
                 use crate::utils::hash::hash_game_state;
-                let before_hash = hash_game_state(&before_state);
-                let after_hash = hash_game_state(&after_state);
+                let before_hash = hash_game_state(before_state);
+                let after_hash = hash_game_state(after_state);
 
                 info!(
                     "Proof generated for nonce={} tick={} (proving: {}ms) | before={} after={}",
@@ -336,6 +318,9 @@ impl ProverWorker {
 
                 // Update proof index
                 self.proof_index.add_proof(proof_entry);
+
+                // Update action log offset for checkpoint/resume
+                self.proof_index.action_log_offset = self.reader.current_offset();
 
                 // Save proof index to disk (every proof for now, could batch later)
                 if let Err(e) = self.storage.save_index(&self.proof_index) {
@@ -381,8 +366,6 @@ impl ProverWorker {
                     }));
             }
         }
-
-        // Offset is already updated in the main loop after read_at_offset returns next_offset
     }
 
     /// Saves proof to file if directory is configured.
@@ -471,7 +454,8 @@ pub struct ProverWorkerBuilder {
     event_bus: Option<EventBus>,
     oracles: Option<OracleManager>,
     save_proofs_dir: Option<PathBuf>,
-    start_offset: u64,
+    #[allow(dead_code)]
+    start_offset: u64, // Deprecated: Use ProofIndex checkpoint instead
 }
 
 impl ProverWorkerBuilder {
@@ -520,14 +504,6 @@ impl ProverWorkerBuilder {
         self
     }
 
-    /// Set the starting byte offset in the action log (optional, default: 0).
-    ///
-    /// Use this to resume proof generation from a checkpoint.
-    pub fn start_offset(mut self, offset: u64) -> Self {
-        self.start_offset = offset;
-        self
-    }
-
     /// Build the ProverWorker.
     ///
     /// # Errors
@@ -537,7 +513,7 @@ impl ProverWorkerBuilder {
     /// - Repository creation fails
     /// - File I/O errors occur
     pub fn build(self) -> Result<ProverWorker, String> {
-        use crate::repository::{FileActionLog, FileProofIndexRepository};
+        use crate::repository::{FileProofIndexRepository, MmapActionLogReader};
 
         // Validate required fields
         let session_id = self
@@ -556,12 +532,16 @@ impl ProverWorkerBuilder {
         // Construct paths
         let session_dir = persistence_dir.join(&session_id);
         let action_filename = format!("actions_{}.log", session_id);
-        let actions_dir = session_dir.join("actions");
+        let action_log_path = session_dir.join("actions").join(&action_filename);
         let proof_index_dir = session_dir.join("proof_indices");
 
-        // Open action log repository
-        let action_log = FileActionLog::open(&actions_dir, &action_filename)
-            .map_err(|e| format!("Failed to open action log: {}", e))?;
+        // Create memory-mapped reader starting from beginning
+        // (will be seeked to checkpoint offset in ProverWorker::new)
+        let reader = MmapActionLogReader::new(action_log_path, session_id.clone(), 0)
+            .map_err(|e| format!("Failed to create mmap reader: {}", e))?;
+
+        // Box as trait object
+        let reader: Box<dyn ActionLogReader> = Box::new(reader);
 
         // Create proof index repository
         let proof_index_repo = FileProofIndexRepository::new(&proof_index_dir)
@@ -569,13 +549,12 @@ impl ProverWorkerBuilder {
 
         // Call the private constructor
         ProverWorker::new(
-            Box::new(action_log),
+            reader,
             event_bus,
             oracles,
             self.save_proofs_dir,
             Box::new(proof_index_repo),
             session_id,
-            self.start_offset,
         )
     }
 }

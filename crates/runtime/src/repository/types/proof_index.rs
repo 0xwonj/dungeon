@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{DurationMs, Nonce, ProofSize, SessionId, Timestamp};
+use crate::types::{ByteOffset, DurationMs, Nonce, ProofSize, SessionId, Timestamp};
 
 /// Index tracking proof generation progress for a session.
 ///
@@ -31,6 +31,14 @@ pub struct ProofIndex {
 
     /// Last update timestamp
     pub updated_at: Timestamp,
+
+    /// Action log byte offset after processing proven_up_to_nonce
+    ///
+    /// This is the byte position in the action log file where ProverWorker
+    /// should resume reading. Allows efficient checkpoint/resume without
+    /// scanning from the beginning of the file.
+    #[serde(default)]
+    pub action_log_offset: ByteOffset,
 
     /// Individual proof entries (sparse, only stores completed proofs)
     ///
@@ -76,6 +84,7 @@ impl ProofIndex {
             proven_up_to_nonce: 0,
             total_proofs: 0,
             updated_at: current_timestamp(),
+            action_log_offset: 0,
             proofs: BTreeMap::new(),
         }
     }

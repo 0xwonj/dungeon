@@ -16,3 +16,7 @@ anyhow = { workspace = true }
 game-core = { workspace = true }
 runtime = { workspace = true }
 game-content = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

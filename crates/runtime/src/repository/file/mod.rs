@@ -1,10 +1,12 @@
 //! File-based repository implementations.
 
+mod action_reader;
 mod checkpoint;
 mod log;
 mod proof_index;
 mod state;
 
+pub use action_reader::MmapActionLogReader;
 pub use checkpoint::FileCheckpointRepository;
 pub use proof_index::FileProofIndexRepository;
 pub use state::FileStateRepository;

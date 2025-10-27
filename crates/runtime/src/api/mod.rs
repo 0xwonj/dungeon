@@ -8,7 +8,7 @@ pub mod handle;
 pub mod providers;
 pub mod registry;
 
-pub use errors::{ProviderKind, Result, RuntimeError};
+pub use errors::{AiKind, InteractiveKind, ProviderKind, Result, RuntimeError};
 pub use handle::RuntimeHandle;
-pub use providers::{ActionProvider, WaitActionProvider};
+pub use providers::ActionProvider;
 pub use registry::ProviderRegistry;

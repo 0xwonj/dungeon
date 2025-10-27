@@ -50,7 +50,7 @@ pub use generated::{GAME_VERIFIER_ELF, GAME_VERIFIER_ID};
 // Oracle snapshot for serializable game content
 pub mod oracle;
 pub use oracle::{
-    ConfigSnapshot, ItemsSnapshot, MapSnapshot, NpcsSnapshot, OracleSnapshot, TablesSnapshot,
+    ActorsSnapshot, ConfigSnapshot, ItemsSnapshot, MapSnapshot, OracleSnapshot, TablesSnapshot,
 };
 
 // Prover module - universal interface and types for all proving backends

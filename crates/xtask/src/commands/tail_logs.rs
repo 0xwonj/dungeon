@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use console::style;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::io::{self, BufRead, BufReader, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -38,7 +38,7 @@ impl TailLogs {
             eprintln!("  Path: {}", style(log_dir.display()).dim());
             eprintln!();
             eprintln!("  Run the client first to generate logs:");
-            eprintln!("    {}", style("cargo run -p cli-client").cyan());
+            eprintln!("    {}", style("cargo run -p client-cli").cyan());
             anyhow::bail!("Log directory does not exist");
         }
 
@@ -78,9 +78,12 @@ impl TailLogs {
 
         // Read last N lines
         let last_lines = self.read_last_n_lines(&mut file, self.lines)?;
+        let mut stdout = io::stdout();
         for line in last_lines {
-            println!("{}", line);
+            // Write directly to stdout to preserve ANSI color codes
+            writeln!(stdout, "{}", line)?;
         }
+        stdout.flush()?;
 
         // Follow the file for new content
         let mut reader = BufReader::new(file);
@@ -94,8 +97,9 @@ impl TailLogs {
                     std::thread::sleep(poll_interval);
                 }
                 Ok(_) => {
-                    // New line available, print it
-                    print!("{}", line);
+                    // New line available, write directly to stdout to preserve colors
+                    write!(stdout, "{}", line)?;
+                    stdout.flush()?;
                 }
                 Err(e) => {
                     eprintln!("{}", style(format!("Error reading log file: {}", e)).red());

@@ -1,35 +1,30 @@
-//! Balance tables exposed via [`game_core::TablesOracle`].
-use game_core::{AttackProfile, AttackStyle, MovementRules, TablesOracle};
+//! Placeholder tables oracle implementation.
+//!
+//! This oracle is currently a no-op placeholder.
+//! See [`game_core::TablesOracle`] documentation for future use cases.
 
-/// TablesOracle implementation with static game rules
-pub struct TablesOracleImpl {
-    movement_rules: MovementRules,
-}
+use game_core::TablesOracle;
+
+/// Placeholder TablesOracle implementation.
+///
+/// This struct exists to satisfy the oracle manager requirements,
+/// but contains no data or logic. When TablesOracle gains methods,
+/// this implementation will be expanded.
+#[derive(Debug, Clone, Default)]
+pub struct TablesOracleImpl;
 
 impl TablesOracleImpl {
-    pub fn new(movement_rules: MovementRules) -> Self {
-        Self { movement_rules }
+    /// Create a new placeholder tables oracle.
+    pub fn new() -> Self {
+        Self
     }
 
-    /// Create with default test rules
+    /// Create with default (empty) rules.
     pub fn test_tables() -> Self {
-        Self::new(MovementRules::new(1, 1))
-    }
-}
-
-impl Default for TablesOracleImpl {
-    fn default() -> Self {
-        Self::test_tables()
+        Self::new()
     }
 }
 
 impl TablesOracle for TablesOracleImpl {
-    fn movement_rules(&self) -> MovementRules {
-        self.movement_rules
-    }
-
-    fn attack_profile(&self, _style: AttackStyle) -> Option<AttackProfile> {
-        // Basic melee attack
-        Some(AttackProfile::new(5, 0))
-    }
+    // No methods to implement yet - trait is empty
 }

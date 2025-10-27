@@ -35,9 +35,9 @@ impl SpeedStats {
     /// - Cognitive: 100 + INT × 0.6 + WIL × 0.4
     /// - Ritual: 100 + WIL × 0.5 + EGO × 0.5
     fn compute_base(core: &CoreEffective) -> Self {
-        let physical = 100 + (core.dex * 8 / 10) + (core.str * 2 / 10);
-        let cognitive = 100 + (core.int * 6 / 10) + (core.wil * 4 / 10);
-        let ritual = 100 + (core.wil * 5 / 10) + (core.ego * 5 / 10);
+        let physical = 50 + (core.dex * 8 / 10) + (core.str * 2 / 10);
+        let cognitive = 50 + (core.int * 6 / 10) + (core.wil * 4 / 10);
+        let ritual = 50 + (core.wil * 5 / 10) + (core.ego * 5 / 10);
 
         Self {
             physical,

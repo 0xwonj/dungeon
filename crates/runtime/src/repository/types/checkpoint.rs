@@ -7,21 +7,42 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::{ByteOffset, Nonce, SessionId, StateHash, Timestamp};
 
-/// Lightweight checkpoint with references to external data.
+/// Lightweight checkpoint for game state recovery.
+///
+/// # Purpose
+///
+/// Enables crash recovery and save/load by storing:
+/// - Reference to persisted game state (State[nonce])
+/// - Position in action log to resume from (Action[nonce+1..])
 ///
 /// # Data Layout
 ///
-/// checkpoint_{session}.json     ← This structure (metadata + indices)
-/// state_{nonce}.json            ← Full GameState (loaded on demand)
-/// proof_{nonce}.bin             ← ZK proof data (loaded on demand)
-/// events/{topic}_{session}.log  ← Event logs (already separate)
+/// ```text
+/// checkpoint_{session}_nonce_{nonce}.json  ← This structure (metadata + references)
+/// states/state_{nonce}.json                ← Full GameState (loaded on demand)
+/// actions/actions_{session}.log            ← Action log (resume from offset)
+/// proof_index_{session}.json               ← Proof tracking (see ProofIndex)
+/// ```
+///
+/// # Recovery
+///
+/// To recover game state:
+/// 1. Load State[nonce] from state repository
+/// 2. Seek to action_log_offset in actions.log
+/// 3. Replay Action[nonce+1..] to reach current state
+///
+/// # Proof Information
+///
+/// Checkpoint does NOT track proof status. For proof information, use ProofIndex:
+/// - `proof_index.has_proof(nonce)` - Check if proof exists
+/// - `proof_index.get_proof(nonce)` - Get proof metadata
+/// - `proof_index.proven_up_to_nonce` - Highest proven nonce
 ///
 /// # Design
 ///
-/// The `nonce` serves as the canonical index for all references:
-/// - State[nonce]: The current game state
-/// - Proof[nonce]: ZK proof for State[nonce] (if exists)
-/// - Events: Actions 0..nonce-1 have been processed
+/// The `nonce` serves as the canonical index:
+/// - State[nonce]: The game state saved at this checkpoint
+/// - Action[nonce+1..]: Actions to replay from action_log_offset
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Checkpoint {
     /// Session ID this checkpoint belongs to
@@ -33,18 +54,14 @@ pub struct Checkpoint {
     /// Optional human-readable label ("Boss defeated", "Before dungeon")
     pub label: Option<String>,
 
-    /// Current state index - canonical index for all references
-    /// State[nonce], Proof[nonce], and events up to Action[nonce-1]
+    /// Current state nonce (State[nonce] is saved at this checkpoint)
     pub nonce: Nonce,
 
     /// Reference to game state at State[nonce]
     pub state_ref: StateReference,
 
-    /// References to event logs (actions 0..nonce-1 have been processed)
-    pub event_ref: EventReference,
-
-    /// Reference to ZK proof for State[nonce] (if exists)
-    pub proof_ref: Option<ProofReference>,
+    /// Byte offset in actions.log to resume reading from.
+    pub action_log_offset: ByteOffset,
 }
 
 /// Reference to a persisted game state.
@@ -57,91 +74,45 @@ pub struct StateReference {
     pub is_persisted: bool,
 }
 
-/// Reference to event logs with byte offset.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EventReference {
-    /// Byte offset in events.log (next event to read)
-    /// Points to the next unprocessed event after Action[nonce-1]
-    pub offset: ByteOffset,
-
-    /// Total number of actions executed to reach State[nonce]
-    /// This should equal nonce (Action[0..nonce-1] have been processed)
-    pub action_count: Nonce,
-}
-
-/// Reference to a ZK proof.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProofReference {
-    /// Whether proof file exists on disk (proof_{nonce}.bin exists)
-    pub is_persisted: bool,
-
-    /// Proof verification status
-    pub is_verified: bool,
-}
-
 impl Checkpoint {
     /// Create a new checkpoint for State[0] (initial state).
     pub fn new(session_id: String) -> Self {
         Self {
             session_id,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
+            timestamp: current_timestamp(),
             label: None,
             nonce: 0,
             state_ref: StateReference {
                 state_hash: String::new(),
                 is_persisted: false,
             },
-            event_ref: EventReference {
-                offset: 0,
-                action_count: 0,
-            },
-            proof_ref: None,
+            action_log_offset: 0,
         }
     }
 
-    /// Create a checkpoint with state and event references.
+    /// Create a checkpoint with state reference and action log offset.
     pub fn with_state(
         session_id: SessionId,
         nonce: Nonce,
         state_hash: StateHash,
         is_persisted: bool,
-        action_count: Nonce,
+        action_log_offset: ByteOffset,
     ) -> Self {
         Self {
             session_id,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
+            timestamp: current_timestamp(),
             label: None,
             nonce,
             state_ref: StateReference {
                 state_hash,
                 is_persisted,
             },
-            event_ref: EventReference {
-                offset: 0,
-                action_count,
-            },
-            proof_ref: None,
+            action_log_offset,
         }
     }
 
-    /// Get the byte offset for resuming events.log.
-    pub fn event_offset(&self) -> ByteOffset {
-        self.event_ref.offset
-    }
-
-    /// Update byte offset for events.log.
-    pub fn set_event_offset(&mut self, offset: ByteOffset) {
-        self.event_ref.offset = offset;
-    }
-
-    /// Returns the current state index (State[n]).
-    pub fn state_index(&self) -> Nonce {
+    /// Returns the current state nonce (State[n]).
+    pub fn current_nonce(&self) -> Nonce {
         self.nonce
     }
 
@@ -152,19 +123,25 @@ impl Checkpoint {
         self.nonce + 1
     }
 
-    /// Check if this checkpoint has been verified with a ZK proof.
-    pub fn is_verified(&self) -> bool {
-        self.proof_ref.as_ref().is_some_and(|p| p.is_verified)
+    /// Get the action log byte offset for resuming actions.log.
+    pub fn action_log_offset(&self) -> ByteOffset {
+        self.action_log_offset
+    }
+
+    /// Set action log byte offset.
+    pub fn set_action_log_offset(&mut self, offset: ByteOffset) {
+        self.action_log_offset = offset;
     }
 
     /// Check if full game state is available.
-    pub fn has_full_state(&self) -> bool {
+    pub fn has_state(&self) -> bool {
         self.state_ref.is_persisted
     }
 
-    /// Check if ZK proof exists.
-    pub fn has_proof(&self) -> bool {
-        self.proof_ref.as_ref().is_some_and(|p| p.is_persisted)
+    /// Set human-readable label.
+    pub fn with_label(mut self, label: String) -> Self {
+        self.label = Some(label);
+        self
     }
 }
 
@@ -178,22 +155,10 @@ impl StateReference {
     }
 }
 
-impl EventReference {
-    /// Create a new event reference.
-    pub fn new(action_count: Nonce) -> Self {
-        Self {
-            offset: 0,
-            action_count,
-        }
-    }
-}
-
-impl ProofReference {
-    /// Create a new proof reference.
-    pub fn new(is_persisted: bool, is_verified: bool) -> Self {
-        Self {
-            is_persisted,
-            is_verified,
-        }
-    }
+/// Get current unix timestamp in seconds.
+fn current_timestamp() -> Timestamp {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
 }

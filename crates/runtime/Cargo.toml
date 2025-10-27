@@ -13,6 +13,7 @@ arkworks = ["zk/arkworks"]
 
 [dependencies]
 game-core = { workspace = true, features = ["serde"] }
+game-content = { workspace = true, features = ["serde"] }
 zk = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
@@ -22,6 +23,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true }
 directories = { workspace = true }
+memmap2 = "0.9"
+ron = "0.11"
 
 [dev-dependencies]
 client-bootstrap = { workspace = true }

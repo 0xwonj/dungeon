@@ -1,0 +1,76 @@
+// Item catalog
+// All item definitions for the game.
+
+ItemCatalog(
+    items: [
+        // Health Potion - stackable consumable
+        ItemDefinition(
+            handle: ItemHandle(1),
+            kind: Consumable(ConsumableData(
+                effect: HealHealth(50),
+                use_cost: 100,
+            )),
+            max_stack: 99,
+        ),
+
+        // Mana Potion - stackable consumable
+        ItemDefinition(
+            handle: ItemHandle(2),
+            kind: Consumable(ConsumableData(
+                effect: RestoreMana(30),
+                use_cost: 100,
+            )),
+            max_stack: 99,
+        ),
+
+        // Iron Sword - non-stackable weapon
+        ItemDefinition(
+            handle: ItemHandle(10),
+            kind: Weapon(WeaponData(
+                kind: Sword,
+                damage: 10,
+            )),
+            max_stack: 1,
+        ),
+
+        // Steel Axe - non-stackable weapon
+        ItemDefinition(
+            handle: ItemHandle(11),
+            kind: Weapon(WeaponData(
+                kind: Axe,
+                damage: 15,
+            )),
+            max_stack: 1,
+        ),
+
+        // Longbow - non-stackable weapon
+        ItemDefinition(
+            handle: ItemHandle(12),
+            kind: Weapon(WeaponData(
+                kind: Bow,
+                damage: 8,
+            )),
+            max_stack: 1,
+        ),
+
+        // Light Armor - non-stackable armor
+        ItemDefinition(
+            handle: ItemHandle(20),
+            kind: Armor(ArmorData(
+                kind: Light,
+                defense: 5,
+            )),
+            max_stack: 1,
+        ),
+
+        // Heavy Armor - non-stackable armor
+        ItemDefinition(
+            handle: ItemHandle(21),
+            kind: Armor(ArmorData(
+                kind: Heavy,
+                defense: 15,
+            )),
+            max_stack: 1,
+        ),
+    ],
+)

@@ -1,34 +1,22 @@
 //! Static dungeon layout served through [`game_core::MapOracle`].
-use game_core::{
-    EntityId, InitialEntityKind, InitialEntitySpec, MapDimensions, MapOracle, Position, StaticTile,
-    TerrainKind,
-};
+use game_core::{MapDimensions, MapOracle, Position, StaticTile, TerrainKind};
 use std::collections::HashMap;
 
-/// MapOracle implementation with static map data
+/// MapOracle implementation with static map data (terrain only).
 ///
 /// Holds immutable map structure that doesn't change during gameplay.
-/// For dynamic map changes (doors opening, etc.), that would go in GameState.
+/// Entity placement is handled separately via Scenario.
 pub struct MapOracleImpl {
     dimensions: MapDimensions,
     tiles: HashMap<Position, StaticTile>,
-    initial_entities: Vec<InitialEntitySpec>,
 }
 
 impl MapOracleImpl {
-    pub fn new(
-        dimensions: MapDimensions,
-        tiles: HashMap<Position, StaticTile>,
-        initial_entities: Vec<InitialEntitySpec>,
-    ) -> Self {
-        Self {
-            dimensions,
-            tiles,
-            initial_entities,
-        }
+    pub fn new(dimensions: MapDimensions, tiles: HashMap<Position, StaticTile>) -> Self {
+        Self { dimensions, tiles }
     }
 
-    /// Creates a simple test map (all floor tiles) with sample entities
+    /// Creates a simple test map (all floor tiles, no entities)
     pub fn test_map(width: u32, height: u32) -> Self {
         let dimensions = MapDimensions::new(width, height);
         let mut tiles = HashMap::new();
@@ -40,34 +28,7 @@ impl MapOracleImpl {
             }
         }
 
-        let initial_entities = vec![
-            // Player at origin
-            InitialEntitySpec {
-                id: EntityId::PLAYER,
-                position: Position::new(0, 0),
-                kind: InitialEntityKind::Player,
-            },
-            // Goblin NPC at (5, 5) using template 0
-            InitialEntitySpec {
-                id: EntityId(1),
-                position: Position::new(5, 5),
-                kind: InitialEntityKind::Npc { template: 0 },
-            },
-            // Orc NPC at (8, 3)
-            InitialEntitySpec {
-                id: EntityId(2),
-                position: Position::new(8, 3),
-                kind: InitialEntityKind::Npc { template: 1 },
-            },
-            // Boss NPC at (12, 8)
-            InitialEntitySpec {
-                id: EntityId(3),
-                position: Position::new(12, 8),
-                kind: InitialEntityKind::Npc { template: 2 },
-            },
-        ];
-
-        Self::new(dimensions, tiles, initial_entities)
+        Self::new(dimensions, tiles)
     }
 }
 
@@ -78,9 +39,5 @@ impl MapOracle for MapOracleImpl {
 
     fn tile(&self, position: Position) -> Option<StaticTile> {
         self.tiles.get(&position).copied()
-    }
-
-    fn initial_entities(&self) -> Vec<InitialEntitySpec> {
-        self.initial_entities.clone()
     }
 }

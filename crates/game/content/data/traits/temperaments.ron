@@ -1,0 +1,29 @@
+// Temperament trait layer presets
+// Each temperament defines individual personality traits (0-15 per trait)
+{
+    "neutral": [],  // Default neutral temperament
+
+    "cowardly": [
+        (Bravery, 2),         // Very low bravery
+        (Caution, 13),        // Highly cautious
+        (Mobility, 10),       // Runs away
+    ],
+
+    "aggressive": [
+        (Aggression, 13),     // Very aggressive
+        (Impulsivity, 10),    // Acts quickly
+        (Caution, 2),         // Little caution
+    ],
+
+    "cautious": [
+        (Caution, 12),        // Very careful
+        (Perception, 10),     // Alert
+        (Aggression, 4),      // Low aggression
+    ],
+
+    "fearless": [
+        (Bravery, 15),        // Maximum bravery
+        (Aggression, 11),     // High aggression
+        (Impulsivity, 8),     // Somewhat impulsive
+    ],
+}

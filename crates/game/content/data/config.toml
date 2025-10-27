@@ -1,0 +1,5 @@
+# Game configuration
+# This file defines runtime-tunable game settings.
+
+# Radius around player within which NPCs are activated
+activation_radius = 5

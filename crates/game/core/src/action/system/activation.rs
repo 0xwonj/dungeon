@@ -62,11 +62,11 @@ impl ActionTransition for ActivationAction {
         let activation_radius = env.activation_radius();
         let clock = state.turn.clock;
 
-        // Collect NPC data to avoid borrow checker issues
+        // Collect NPC data to avoid borrow checker issues (skip player at index 0)
         let npc_data: Vec<_> = state
             .entities
-            .npcs
-            .iter()
+            .all_actors()
+            .filter(|actor| actor.id != EntityId::PLAYER)
             .map(|npc| {
                 let is_active = state.turn.active_actors.contains(&npc.id);
                 (npc.id, npc.position, is_active, npc.is_alive())

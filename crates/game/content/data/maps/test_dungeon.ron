@@ -1,0 +1,38 @@
+// Test Dungeon - simple 20x20 map for testing
+// Format: Vec<(i32, i32, TerrainKind)> where (x, y, terrain)
+// Floor tiles are implicit (no need to specify), only walls and special terrain
+
+MapDataRon(
+    dimensions: (20, 20),
+    tiles: [
+        // Top wall
+        (0, 0, Wall), (1, 0, Wall), (2, 0, Wall), (3, 0, Wall), (4, 0, Wall),
+        (5, 0, Wall), (6, 0, Wall), (7, 0, Wall), (8, 0, Wall), (9, 0, Wall),
+        (10, 0, Wall), (11, 0, Wall), (12, 0, Wall), (13, 0, Wall), (14, 0, Wall),
+        (15, 0, Wall), (16, 0, Wall), (17, 0, Wall), (18, 0, Wall), (19, 0, Wall),
+
+        // Bottom wall
+        (0, 19, Wall), (1, 19, Wall), (2, 19, Wall), (3, 19, Wall), (4, 19, Wall),
+        (5, 19, Wall), (6, 19, Wall), (7, 19, Wall), (8, 19, Wall), (9, 19, Wall),
+        (10, 19, Wall), (11, 19, Wall), (12, 19, Wall), (13, 19, Wall), (14, 19, Wall),
+        (15, 19, Wall), (16, 19, Wall), (17, 19, Wall), (18, 19, Wall), (19, 19, Wall),
+
+        // Left wall
+        (0, 1, Wall), (0, 2, Wall), (0, 3, Wall), (0, 4, Wall), (0, 5, Wall),
+        (0, 6, Wall), (0, 7, Wall), (0, 8, Wall), (0, 9, Wall), (0, 10, Wall),
+        (0, 11, Wall), (0, 12, Wall), (0, 13, Wall), (0, 14, Wall), (0, 15, Wall),
+        (0, 16, Wall), (0, 17, Wall), (0, 18, Wall),
+
+        // Right wall
+        (19, 1, Wall), (19, 2, Wall), (19, 3, Wall), (19, 4, Wall), (19, 5, Wall),
+        (19, 6, Wall), (19, 7, Wall), (19, 8, Wall), (19, 9, Wall), (19, 10, Wall),
+        (19, 11, Wall), (19, 12, Wall), (19, 13, Wall), (19, 14, Wall), (19, 15, Wall),
+        (19, 16, Wall), (19, 17, Wall), (19, 18, Wall),
+
+        // Interior walls
+        (10, 5, Wall), (10, 6, Wall), (10, 7, Wall),
+
+        // Water hazard
+        (15, 10, Water), (15, 11, Water), (16, 10, Water), (16, 11, Water),
+    ],
+)

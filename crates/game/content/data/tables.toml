@@ -1,0 +1,16 @@
+# Game rules tables (PLACEHOLDER)
+#
+# TablesOracle is currently not used by the game engine.
+# This file is reserved for future global game rules.
+#
+# See game-core/src/env/tables.rs for potential future use cases:
+# - Combat formulas and damage calculations
+# - Resource regeneration and action costs
+# - Character progression and leveling
+# - Economy and trading rules
+# - Movement and terrain modifiers
+# - Status effects and durations
+# - AI behavior parameters
+# - Loot and drop tables
+# - Environmental effects
+# - Game mode rules

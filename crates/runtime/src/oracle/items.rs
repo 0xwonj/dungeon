@@ -1,5 +1,8 @@
 //! Minimal [`game_core::ItemOracle`] backed by an in-memory map.
-use game_core::{ItemCategory, ItemDefinition, ItemHandle, ItemOracle};
+use game_core::{
+    ArmorData, ArmorKind, ConsumableData, ConsumableEffect, ItemDefinition, ItemHandle, ItemKind,
+    ItemOracle, WeaponData, WeaponKind,
+};
 use std::collections::HashMap;
 
 /// ItemOracle implementation with static item definitions
@@ -23,12 +26,34 @@ impl ItemOracleImpl {
     pub fn test_items() -> Self {
         let mut oracle = Self::new();
 
-        // Add a basic potion
+        // Add a basic health potion (stackable, max 99)
         oracle.add_definition(ItemDefinition::new(
             ItemHandle(1),
-            ItemCategory::Utility,
-            None,
-            None,
+            ItemKind::Consumable(ConsumableData {
+                effect: ConsumableEffect::HealHealth(50),
+                use_cost: 100, // Takes 100 ticks to drink
+            }),
+            99, // max_stack
+        ));
+
+        // Add a basic sword (not stackable)
+        oracle.add_definition(ItemDefinition::new(
+            ItemHandle(2),
+            ItemKind::Weapon(WeaponData {
+                kind: WeaponKind::Sword,
+                damage: 10,
+            }),
+            1, // max_stack
+        ));
+
+        // Add basic armor (not stackable)
+        oracle.add_definition(ItemDefinition::new(
+            ItemHandle(3),
+            ItemKind::Armor(ArmorData {
+                kind: ArmorKind::Light,
+                defense: 5,
+            }),
+            1, // max_stack
         ));
 
         oracle

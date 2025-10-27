@@ -4,7 +4,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A deterministic, ZK-provable, turn-based 2D dungeon RPG built with Rust. The game uses light ZK proofs with a single server authority for NPC actions, targeting EVM chains. The core principle is **functional core, imperative shell**: pure deterministic gameplay logic in `game-core`, with all I/O, crypto, and side effects isolated in `runtime`.
+**Dungeon** is a deterministic, ZK-provable, turn-based 2D roguelike RPG built with Rust. The game demonstrates how zero-knowledge proofs enable **fairness without authority** and **secrecy without deceit** — every action, roll, and AI move can be cryptographically proven valid without revealing hidden information.
+
+### Core Philosophy
+
+- **Verifiable Computation**: ZK proofs ensure honest gameplay while preserving mystery (hidden maps, enemy intent, RNG seeds)
+- **Systems Over Scripts**: Emergent gameplay from interacting systems (AI, factions, procedural generation) rather than authored narratives
+- **Functional Core, Imperative Shell**: Pure deterministic logic in `game-core`, all I/O and side effects isolated in `runtime`
+- **Off-chain Play, On-chain Trust**: Rich local gameplay with succinct proof verification for legitimacy
+
+### Technical Architecture
+
+**Multi-Backend ZK System**: Supports RISC0 zkVM (production) and stub prover (testing), with planned SP1/Arkworks support
+
+**Three-Layer Design**:
+1. **game-core**: Pure state machine with 3-phase action pipeline (pre_validate → apply → post_validate)
+   - 5-layer stat system, oracle pattern, delta tracking, available actions query
+2. **runtime**: Orchestration layer with workers, event bus, hooks, AI, and persistence
+   - Topic-based events, utility AI (Intent → Tactic → Action), post-execution hooks
+3. **client**: Multi-frontend architecture with shared UX primitives
+   - Terminal UI with examine mode, cursor system, targeting
+
+**Current Features**:
+- ✅ Deterministic turn scheduling with entity activation
+- ✅ Action system (Move, Attack, UseItem, Interact, Wait + system actions)
+- ✅ Utility-based AI with trait composition (Species × Archetype × Faction × Temperament)
+- ✅ State persistence (checkpoints, action logs, event logs, proof indices)
+- ✅ CLI interface with examine panel and tactical targeting
+- ✅ Oracle system for static content (maps, items, NPCs, loot tables)
+- ✅ Stat system with unified bonus calculations
+- 🚧 ZK proof generation (ProverWorker infrastructure in place)
+- 📅 On-chain verification (planned)
+
+**Development Status**: Early-stage prototype with active iteration on core gameplay systems. Architecture is stabilizing, but expect breaking changes as we refine the proof generation pipeline and blockchain integration.
 
 ## Build & Test Commands
 
@@ -20,12 +52,12 @@ just build stub
 just run stub
 just test stub
 
-# RISC0 backend (production, but skip guest builds for speed)
-just build risc0-fast
-just run risc0-fast
+# Fast mode (no proof generation, no persistence)
+just run-fast stub
 
 # RISC0 backend (full production build with real proofs)
 just build risc0
+just run risc0
 
 # Set default backend via environment variable
 export ZK_BACKEND=stub
@@ -42,6 +74,7 @@ just help
 
 - `just build [backend]` - Build workspace with specified backend
 - `just run [backend]` - Run CLI client
+- `just run-fast [backend]` - Run in fast mode (no proof generation, no persistence)
 - `just test [backend]` - Run all tests
 - `just lint [backend]` - Run clippy lints
 - `just fmt` - Format all code
@@ -55,7 +88,6 @@ just help
 ### Available ZK Backends
 
 - `risc0` - RISC0 zkVM (production, real proofs, slow guest compilation)
-- `risc0-fast` - RISC0 with `RISC0_SKIP_BUILD=1` (fast iteration, skip guest builds)
 - `stub` - Stub prover (instant, no real proofs, testing only)
 - `sp1` - SP1 zkVM (not implemented yet)
 - `arkworks` - Arkworks circuits (not implemented yet)
@@ -67,7 +99,7 @@ If you prefer not to use Just, you can use cargo directly:
 ```bash
 # Stub backend (fast development)
 cargo build --workspace --no-default-features --features stub
-cargo run -p cli-client --no-default-features --features stub
+cargo run -p client-cli --no-default-features --features stub
 cargo test --workspace --no-default-features --features stub
 
 # RISC0 backend (default)
@@ -84,7 +116,7 @@ cargo fmt --all
 - `ZK_BACKEND` - Set default backend for Just commands (risc0, risc0-fast, stub, sp1, arkworks)
 - `RISC0_SKIP_BUILD=1` - Skip guest builds during cargo build (use for fast iteration)
 - `RISC0_DEV_MODE=1` - Fast dev proofs (when running with real RISC0 backend)
-- `RUST_LOG=info` - Logging level
+- `RUST_LOG=info` - Logging level (use `info` or `warn` only - `debug` causes RISC0 to pollute TUI output)
 
 ## Architecture
 
@@ -98,9 +130,9 @@ crates/
 ├── runtime/         # Public API (RuntimeHandle), orchestrator, workers, oracles, repositories
 ├── zk/              # Proving utilities reused by prover worker and off-chain services
 ├── client/
+│   ├── core/        # Cross-frontend primitives: event handling, message logging, view models (crate: client-core)
 │   ├── bootstrap/   # Bootstrap utilities: configuration, oracle factories, runtime setup (crate: client-bootstrap)
-│   └── frontend/
-│       └── cli/     # Async terminal application, event loop, action provider
+│   └── cli/         # Async terminal application with cursor system and examine UI (crate: client-cli)
 └── xtask/           # Development tools (cargo xtask pattern): tail-logs, clean-data
 ```
 
@@ -108,21 +140,65 @@ crates/
 
 ### game/core: Pure State Machine
 
-- **Responsibility**: Deterministic rules engine, domain models, and validation schema
-- **Entry point**: `GameEngine::execute(action) -> Result<State, Error>` and `GameEngine::prepare_next_turn()`
-- **Action system**: All actions implement validation and application logic with deterministic state transitions
-- **Environment**: Oracles for map data, item definitions, and game tables - core reads these but never implements them
+- **Responsibility**: Deterministic rules engine, domain models, state management, and pure action execution
+- **Architecture**: Three-phase action pipeline (pre_validate → apply → post_validate) with oracle-based environment
+- **Core Modules**:
+  - `action`: Action definitions and transitions (`Action`, `ActionTransition`, `CharacterActionKind`, `SystemActionKind`, `get_available_actions`)
+  - `engine`: Action execution pipeline (`GameEngine::execute`, `ExecuteError`, actor validation, delta generation)
+  - `state`: Canonical game state (`GameState`, `EntitiesState`, `WorldState`, `TurnState`, `StateDelta`)
+  - `env`: Oracle trait definitions (`Env`, `GameEnv`, `MapOracle`, `ItemOracle`, `ActorOracle`, `TablesOracle`, `ConfigOracle`)
+  - `stats`: Layered stat system (5 layers: Core → Derived → Speed → Modifiers → Resources with unified bonus calculation)
+  - `config`: Game configuration (`GameConfig`)
+- **Action System**:
+  - Character actions: `Move`, `Attack`, `UseItem`, `Interact`, `Wait`
+  - System actions: `PrepareTurn`, `ActionCost`, `Activation`
+  - Actor validation: System actions from `EntityId::SYSTEM`, character actions from `state.turn.current_actor`
+  - Available actions query: `get_available_actions(state, env, actor)` for AI and UI
+- **State Management**:
+  - Entity ID allocation with reserved IDs (0 = PLAYER, u32::MAX = SYSTEM)
+  - Delta tracking: `StateDelta::from_states` captures all changes (skipped in zkvm mode)
+  - Nonce increment after each successful execution
+  - Tile view merging: static map + runtime occupancy
+- **Stat System**:
+  - 5-layer architecture (Core → Derived → Speed → Modifiers → Resources)
+  - Unified bonus calculation: `Final = clamp((base + Flat) × (1 + %Inc/100) × More × Less, min, max)`
+  - Trait-based design: `StatLayer` trait for Base → Bonuses → Final pattern
+  - Snapshot consistency: All values locked at action initiation
+- **Oracle Pattern**: Core reads oracles but never implements them (implementations live in runtime)
 - **Constraints**: No I/O, no randomness, no floating point, no time/clocks, no crypto operations
-- **Exports**: All public types re-exported through `lib.rs`
+- **Exports**: All public types re-exported through `lib.rs` (60+ types including actions, state, env, stats)
 
 ### runtime: Imperative Shell
 
-- **Responsibility**: Orchestrates game loop, implements oracles, manages persistence, coordinates workers, and emits game events
-- **API**: Public surface consumed by clients (`RuntimeHandle`, `GameEvent`, `ActionProvider`)
-- **Workers**: `SimulationWorker` (owns canonical `GameState`, processes turns and actions), `ProverWorker` (planned), `SubmitWorker` (planned)
-- **Oracles**: Adapters exposing static game content (maps, NPC templates, loot tables) compatible with `game/core`
-- **Repositories**: All storage behind traits (`StateRepository`, etc.) with in-memory implementations for testing
-- **Message-driven**: Workers communicate via `tokio` channels, enabling concurrent pipelines
+- **Responsibility**: Orchestrates game loop, coordinates workers, manages persistence, implements oracles, and provides AI systems
+- **Architecture**: Message-driven worker system with `tokio` channels, topic-based event bus, and flexible hook system
+- **Core Modules**:
+  - `api`: Public surface (`RuntimeHandle`, `ActionProvider`, `ProviderRegistry`, error types)
+  - `runtime`: Runtime orchestrator with builder pattern (`Runtime`, `RuntimeBuilder`, config types)
+  - `workers`: Background task coordination (`SimulationWorker`, `ProverWorker`, `PersistenceWorker`)
+  - `events`: Topic-based event bus (`EventBus`, `Topic`, `GameStateEvent`, `ProofEvent`)
+  - `hooks`: Post-execution hook system for runtime orchestration (`HookRegistry`, `PostExecutionHook`, `ActionCostHook`, `ActivationHook`)
+  - `providers`: AI implementations (`UtilityAiProvider` with 3-layer utility scoring: Intent → Tactic → Action)
+  - `oracle`: Oracle adapters (`OracleManager`, `MapOracleImpl`, `ActorOracleImpl`, `ItemOracleImpl`, `TablesOracleImpl`, `ConfigOracleImpl`)
+  - `repository`: Persistence layer with trait-based storage (`StateRepository`, `CheckpointRepository`, `ActionLogReader`, `EventRepository` with file and in-memory implementations)
+  - `scenario`: Entity placement and game initialization (`Scenario`, `EntityPlacement`, `EntityKind`)
+- **Workers**: `SimulationWorker` (canonical state, action execution), `ProverWorker` (ZK proof generation), `PersistenceWorker` (state/event/proof persistence)
+- **Event System**: Topic-based subscriptions (GameState, Proof, Turn topics) for efficient event routing
+- **Hook System**: Post-execution hooks with priority ordering, chaining support, and criticality levels (Critical, Important, Optional)
+- **AI System**: 3-layer utility-based AI (Intent → Tactic → Action) using TraitProfile composition (Species × Archetype × Faction × Temperament)
+
+### client/core: Cross-Frontend Primitives
+
+- **Crate name**: `client-core` (located at `crates/client/core/`)
+- **Responsibility**: Shared UX glue for presenting the game across different frontend implementations
+- **Modules**:
+  - `event`: Event handling and consumption (`EventConsumer`, `EventImpact`)
+  - `frontend`: Frontend abstraction layer (FrontendApp trait, message routing)
+  - `message`: Message logging and formatting
+  - `targeting`: Targeting system for tactical interactions
+  - `view_model`: View models for rendering game state
+- **Purpose**: Reusable presentation logic shared across CLI, GUI, and other frontend crates
+- **Exports**: `EventConsumer`, `EventImpact`, frontend abstractions, view models
 
 ### client/bootstrap: Runtime Setup & Configuration
 
@@ -135,10 +211,16 @@ crates/
 - **Purpose**: Reusable setup code shared across CLI, UI, and other front-end crates
 - **Exports**: `RuntimeBuilder`, `RuntimeSetup`, `CliConfig`, `OracleBundle`, `OracleFactory`
 
-### client/frontend/cli: Terminal Interface
+### client/cli: Terminal Interface
 
-- **Responsibility**: Async terminal application with event loops and action providers
-- **Architecture**: Consumes `client-bootstrap` for setup, subscribes to runtime events, renders state
+- **Crate name**: `client-cli` (located at `crates/client/cli/`)
+- **Responsibility**: Async terminal application with cursor system, examine UI, and tactical interactions
+- **Architecture**: Consumes `client-core` and `client-bootstrap`, subscribes to runtime events, renders state
+- **Modules**:
+  - `app`: Main application loop and state management
+  - `cursor`: Cursor system for examine mode and targeting
+  - `input`: User input handling and command parsing
+  - `presentation`: Terminal rendering and UI components
 - **Interaction**: Collects player commands, validates entity/turn alignment, forwards actions to runtime
 
 ## Code Organization Patterns
@@ -166,8 +248,6 @@ crates/
 - Turn scheduling is managed by the simulation worker via `prepare_next_turn()` calls
 
 ## Testing Policy
-
-**IMPORTANT**: This project uses minimal testing to maximize development velocity.
 
 ### Testing Philosophy
 
@@ -225,11 +305,17 @@ Keep commits scoped to single concerns. Include doc updates when behavior change
 
 ### What belongs in game/core
 
-- State data structures and domain models
-- Action validation and execution logic
+- State data structures (`GameState`, `EntitiesState`, `WorldState`, `TurnState`)
+- Action definitions and transition traits (`Action`, `ActionTransition`, character/system action kinds)
+- Three-phase action pipeline (pre_validate, apply, post_validate)
+- Oracle trait definitions (`MapOracle`, `ItemOracle`, `ActorOracle`, `TablesOracle`, `ConfigOracle`)
+- Stat system (5-layer architecture with bonus calculations)
+- Game rules (combat, movement, inventory, interactions)
+- State delta tracking (`StateDelta` with field-level change detection)
+- Entity ID allocation and management
+- Available actions query system
 - Deterministic state transitions
-- Game rules (combat, movement, inventory, etc.)
-- Pure functional operations (no I/O, no side effects)
+- Pure functional operations (no I/O, no side effects, no randomness)
 
 ### What belongs in game/content
 
@@ -239,13 +325,28 @@ Keep commits scoped to single concerns. Include doc updates when behavior change
 
 ### What belongs in runtime
 
-- Runtime orchestration and worker coordination
-- Oracle implementations (backed by repositories)
-- State persistence and checkpoint management
-- Event broadcasting and subscription
+- Runtime orchestration and builder pattern (`Runtime`, `RuntimeBuilder`)
+- Worker coordination (`SimulationWorker`, `ProverWorker`, `PersistenceWorker`)
+- Topic-based event bus implementation (`EventBus`, topic subscriptions)
+- Post-execution hook system (`HookRegistry`, hook implementations)
+- Oracle implementations (`OracleManager`, oracle adapters for game-core traits)
+- AI provider implementations (`UtilityAiProvider`, utility scoring functions)
+- Repository traits and implementations (file-based and in-memory storage)
+- Persistence layer (state, checkpoints, action logs, event logs, proof indices)
+- Scenario system (entity placement, game initialization)
+- Provider registry (entity-to-provider mapping)
 - `RuntimeHandle` API for client interaction
-- Proof generation coordination (ProverWorker - planned)
-- Blockchain submission coordination (SubmitWorker - planned)
+- Configuration types (`RuntimeConfig`, `PersistenceSettings`, `ProvingSettings`)
+
+### What belongs in client/core (crate: client-core)
+
+- Cross-frontend presentation primitives
+- Event handling and consumption logic
+- Frontend abstraction layer (FrontendApp trait)
+- Message logging and formatting
+- Targeting system and tactical UI helpers
+- View models for rendering game state
+- Reusable UX logic shared across all frontends
 
 ### What belongs in client/bootstrap (crate: client-bootstrap)
 
@@ -255,10 +356,12 @@ Keep commits scoped to single concerns. Include doc updates when behavior change
 - Oracle bundle assembly (`OracleBundle`)
 - Reusable setup utilities for all client front-ends
 
-### What belongs in client/frontend/cli
+### What belongs in client/cli (crate: client-cli)
 
 - Async terminal application and event loop
 - User input collection and validation
+- Cursor system and examine mode
+- Terminal rendering and UI components
 - Event consumption and display
 - Player action provider implementation
 

@@ -3,10 +3,12 @@
 //! The runtime owns background workers, wires up command/event channels, and
 //! exposes a builder-based API for clients to drive the simulation.
 
+use std::sync::{Arc, RwLock};
+
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use game_core::{GameConfig, GameState};
+use game_core::{EntityId, GameConfig, GameState};
 
 use crate::api::{
     ActionProvider, ProviderKind, ProviderRegistry, Result, RuntimeError, RuntimeHandle,
@@ -131,15 +133,18 @@ pub struct Runtime {
     // Shared handle (can be cloned for clients)
     handle: RuntimeHandle,
 
-    // Action providers registry (Registry pattern)
-    providers: ProviderRegistry,
-
     // Background workers (managed as a group)
     workers: WorkerHandles,
 
     // Proof metrics (shared with ProverWorker if enabled)
     // Uses atomics for lock-free access
     proof_metrics: Option<ProofMetricsArc>,
+
+    // Provider registry (shared with RuntimeHandle via Arc)
+    providers: Arc<RwLock<ProviderRegistry>>,
+
+    // Oracle manager (cloned, cheap due to Arc internals)
+    oracles: OracleManager,
 }
 
 impl Runtime {
@@ -163,46 +168,66 @@ impl Runtime {
         self.proof_metrics.as_ref().map(std::sync::Arc::clone)
     }
 
-    /// Execute a single turn step
+    /// Execute a single turn step.
     ///
-    /// Requires both player and NPC providers to be configured.
+    /// This is a high-level game loop helper that:
+    /// 1. Prepares the next turn (determines which entity acts)
+    /// 2. Queries the entity's provider for an action
+    /// 3. Executes the action
+    ///
+    /// If the provider fails to generate an action, a fallback Wait action is used.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - No active entities are available
+    /// - The entity's provider kind is not registered
+    /// - Action execution fails
     pub async fn step(&mut self) -> Result<()> {
+        use game_core::{Action, CharacterActionKind};
+
+        // 1. Prepare turn (SimulationWorker determines which entity acts)
         let (entity, snapshot) = self.handle.prepare_next_turn().await?;
 
-        // Get the appropriate provider for this entity
-        let provider = self.providers.get_for_entity(entity)?;
-        let action = provider.provide_action(entity, &snapshot).await?;
+        // 2. Get provider for this entity (from Runtime's registry)
+        let provider = {
+            let registry = self
+                .providers
+                .read()
+                .map_err(|_| RuntimeError::LockPoisoned)?;
+            registry.get_for_entity(entity)?
+        };
 
+        // 3. Query provider for action (I/O operation at Runtime layer)
+        let env = self.oracles.as_game_env();
+        let action = match provider.provide_action(entity, &snapshot, env).await {
+            Ok(action) => action,
+            Err(e) => {
+                // Provider failed - log and fallback to Wait action
+                tracing::warn!(
+                    target: "runtime",
+                    entity = ?entity,
+                    error = %e,
+                    "Provider failed to generate action, falling back to Wait"
+                );
+                Action::character(entity, CharacterActionKind::Wait)
+            }
+        };
+
+        // 4. Execute the action (SimulationWorker applies pure game logic)
         self.handle.execute_action(action).await?;
 
         Ok(())
     }
 
-    /// Run the game loop continuously
+    /// Run the game loop continuously.
+    ///
+    /// This calls `step()` in a loop, automatically handling turn progression
+    /// and action execution for all entities via their registered providers.
     pub async fn run(&mut self) -> Result<()> {
         loop {
             self.step().await?;
         }
-    }
-
-    /// Set the player action provider
-    pub fn set_player_provider(&mut self, provider: impl ActionProvider + 'static) {
-        self.providers.register(ProviderKind::Player, provider);
-    }
-
-    /// Set the NPC action provider
-    pub fn set_npc_provider(&mut self, provider: impl ActionProvider + 'static) {
-        self.providers.register(ProviderKind::Npc, provider);
-    }
-
-    /// Get a reference to the provider registry
-    pub fn providers(&self) -> &ProviderRegistry {
-        &self.providers
-    }
-
-    /// Get a mutable reference to the provider registry
-    pub fn providers_mut(&mut self) -> &mut ProviderRegistry {
-        &mut self.providers
     }
 
     /// Shutdown the runtime gracefully
@@ -219,6 +244,7 @@ pub struct RuntimeBuilder {
     proving: ProvingSettings,
     state: Option<GameState>,
     oracles: Option<OracleManager>,
+    scenario: Option<crate::scenario::Scenario>,
     providers: ProviderRegistry,
     hooks: Option<HookRegistry>,
 }
@@ -231,6 +257,7 @@ impl RuntimeBuilder {
             proving: ProvingSettings::default(),
             state: None,
             oracles: None,
+            scenario: None,
             providers: ProviderRegistry::new(),
             hooks: None,
         }
@@ -266,15 +293,29 @@ impl RuntimeBuilder {
         self
     }
 
-    /// Set player action provider (optional)
-    pub fn player_provider(mut self, provider: impl ActionProvider + 'static) -> Self {
-        self.providers.register(ProviderKind::Player, provider);
+    /// Provide scenario for entity initialization.
+    ///
+    /// If both scenario and initial_state are provided, initial_state takes precedence.
+    pub fn scenario(mut self, scenario: crate::scenario::Scenario) -> Self {
+        self.scenario = Some(scenario);
         self
     }
 
-    /// Set NPC action provider (optional)
-    pub fn npc_provider(mut self, provider: impl ActionProvider + 'static) -> Self {
-        self.providers.register(ProviderKind::Npc, provider);
+    /// Register a provider for a specific kind.
+    pub fn provider(mut self, kind: ProviderKind, provider: impl ActionProvider + 'static) -> Self {
+        self.providers.register(kind, provider);
+        self
+    }
+
+    /// Bind an entity to a specific provider kind.
+    pub fn entity_provider(mut self, entity: EntityId, kind: ProviderKind) -> Self {
+        self.providers.bind_entity(entity, kind);
+        self
+    }
+
+    /// Set the default provider kind for unmapped entities.
+    pub fn default_provider(mut self, kind: ProviderKind) -> Self {
+        self.providers.set_default(kind);
         self
     }
 
@@ -422,6 +463,7 @@ impl RuntimeBuilder {
             proving,
             state,
             oracles,
+            scenario,
             providers,
             hooks,
         } = self;
@@ -429,21 +471,34 @@ impl RuntimeBuilder {
         let oracles = oracles.ok_or_else(|| RuntimeError::MissingOracles)?;
 
         let initial_state = if let Some(state) = state {
+            // Use provided state if available
+            tracing::info!("Using provided initial state");
             state
+        } else if let Some(scenario) = scenario {
+            // Initialize from scenario
+            tracing::info!("Initializing from scenario: {}", scenario.map_id);
+            scenario.create_initial_state(&oracles)?
         } else {
-            let env = oracles.as_game_env();
-            GameState::from_initial_entities(&env).map_err(RuntimeError::InitialState)?
+            // No state or scenario provided - start with empty state
+            tracing::warn!(
+                "No scenario or initial state provided - using default (player inactive)"
+            );
+            GameState::default()
         };
 
         let (command_tx, command_rx) = mpsc::channel::<Command>(config.command_buffer_size);
         let event_bus = EventBus::with_capacity(config.event_buffer_size);
 
-        let handle = RuntimeHandle::new(command_tx.clone(), event_bus.clone());
+        // Wrap providers in Arc<RwLock> for shared access
+        let providers = Arc::new(RwLock::new(providers));
+
+        let handle = RuntimeHandle::new(command_tx.clone(), event_bus.clone(), providers.clone());
 
         // Use provided hooks or default registry
         let hooks = hooks.unwrap_or_default();
 
         // Create workers using factory methods
+        // NOTE: SimulationWorker no longer owns providers (moved to Runtime)
         let sim_worker_handle = Self::create_simulation_worker(
             initial_state,
             oracles.clone(),
@@ -469,13 +524,14 @@ impl RuntimeBuilder {
 
         Ok(Runtime {
             handle,
-            providers,
             workers: WorkerHandles {
                 simulation: sim_worker_handle,
                 persistence: persistence_worker_handle,
                 prover: prover_worker_handle,
             },
             proof_metrics,
+            providers,
+            oracles,
         })
     }
 
@@ -561,12 +617,12 @@ impl RuntimeBuilder {
         let session_dir = persistence.base_dir.join(&config.session_id);
 
         // Build ProverWorker using its builder
+        // Note: ProverWorker automatically resumes from ProofIndex checkpoint
         let mut builder = ProverWorker::builder()
             .session_id(config.session_id.clone())
             .persistence_dir(&persistence.base_dir)
             .event_bus(event_bus)
-            .oracles(oracles)
-            .start_offset(0);
+            .oracles(oracles);
 
         // Optionally save proofs to disk
         if proving.save_proofs_dir.is_some() || persistence.enabled {
