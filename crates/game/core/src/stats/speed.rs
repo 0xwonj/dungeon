@@ -35,9 +35,9 @@ impl SpeedStats {
     /// - Cognitive: 100 + INT × 0.6 + WIL × 0.4
     /// - Ritual: 100 + WIL × 0.5 + EGO × 0.5
     fn compute_base(core: &CoreEffective) -> Self {
-        let physical = 50 + (core.dex * 8 / 10) + (core.str * 2 / 10);
-        let cognitive = 50 + (core.int * 6 / 10) + (core.wil * 4 / 10);
-        let ritual = 50 + (core.wil * 5 / 10) + (core.ego * 5 / 10);
+        let physical = 100 + (core.dex * 8 / 10) + (core.str * 2 / 10);
+        let cognitive = 100 + (core.int * 6 / 10) + (core.wil * 4 / 10);
+        let ritual = 100 + (core.wil * 5 / 10) + (core.ego * 5 / 10);
 
         Self {
             physical,
@@ -124,24 +124,26 @@ impl SpeedKind {
 
 /// Calculate the final action cost from base cost and speed.
 ///
-/// Formula: final_cost = base_cost × condition_multiplier × 100 / clamp(speed, 50, 200)
+/// Formula: final_cost = base_cost × 100 / clamp(speed, 50, 200)
+///
+/// Speed is already computed from core stats + bonuses (including status effects),
+/// so this function only handles the base_cost → final_cost transformation.
 ///
 /// # Arguments
-/// * `base_cost` - The base cost of the action (e.g., 100 for normal action)
-/// * `speed` - The speed value (already includes conditions, clamped to [50, 200])
-/// * `condition_multiplier` - Additional cost multiplier from conditions (100 = no change)
+/// * `base_cost` - The base cost of the action (e.g., 10 for movement)
+/// * `speed` - The speed value from snapshot (already includes bonuses/effects)
 ///
 /// # Returns
-/// The final cost in timeline units
+/// The final cost in timeline ticks
 ///
 /// # Examples
-/// - Normal action (cost 100, speed 100): 100 × 100 / 100 = 100
-/// - Fast action (cost 100, speed 200): 100 × 100 / 200 = 50
-/// - Slow action (cost 100, speed 50): 100 × 100 / 50 = 200
-pub fn calculate_action_cost(base_cost: i32, speed: i32, condition_multiplier: i32) -> i32 {
+/// - Normal action (cost 10, speed 100): 10 × 100 / 100 = 10
+/// - Fast action (cost 10, speed 200): 10 × 100 / 200 = 5
+/// - Slow action (cost 10, speed 50): 10 × 100 / 50 = 20
+pub fn calculate_action_cost(base_cost: u64, speed: i32) -> u64 {
     const MIN_SPEED: i32 = 50;
     const MAX_SPEED: i32 = 200;
 
-    let clamped_speed = speed.clamp(MIN_SPEED, MAX_SPEED);
-    (base_cost * condition_multiplier * 100) / (clamped_speed * 100)
+    let clamped_speed = speed.clamp(MIN_SPEED, MAX_SPEED).max(1) as u64;
+    (base_cost * 100) / clamped_speed
 }

@@ -59,7 +59,7 @@ pub fn score_for_aggressive_melee(action: &CharacterActionKind, ctx: &AiContext)
 
             Score::new(true, situation, 80, 100)
         }
-        CharacterActionKind::Wait => {
+        CharacterActionKind::Wait(_) => {
             // Wait is last resort
             Score::new(true, 20, 50, 100)
         }
@@ -115,7 +115,7 @@ pub fn score_for_defensive_melee(action: &CharacterActionKind, ctx: &AiContext) 
 
             Score::new(true, situation, 70, 100)
         }
-        CharacterActionKind::Wait => {
+        CharacterActionKind::Wait(_) => {
             // Wait is acceptable if already in good position
             Score::new(true, 30, 60, 100)
         }
@@ -173,7 +173,7 @@ pub fn score_for_ranged(action: &CharacterActionKind, ctx: &AiContext) -> Score 
             // Ranged units prioritize attacking over repositioning
             Score::new(true, situation, 50, 100)
         }
-        CharacterActionKind::Wait => {
+        CharacterActionKind::Wait(_) => {
             // Wait if already in good position
             Score::new(true, 40, 60, 100)
         }
@@ -237,7 +237,7 @@ pub fn score_for_kiting(action: &CharacterActionKind, ctx: &AiContext) -> Score 
                 Score::new(true, situation, 80, 100)
             }
         }
-        CharacterActionKind::Wait => {
+        CharacterActionKind::Wait(_) => {
             // Kiting should rarely wait
             Score::new(true, 20, 40, 100)
         }

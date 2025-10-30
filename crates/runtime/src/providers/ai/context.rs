@@ -457,7 +457,7 @@ impl<'a> AiContext<'a> {
     pub fn can_wait(&self) -> bool {
         self.available_actions
             .iter()
-            .any(|action| matches!(action, CharacterActionKind::Wait))
+            .any(|action| matches!(action, CharacterActionKind::Wait(_)))
     }
 
     /// Checks if any attack action is available.

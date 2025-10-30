@@ -271,7 +271,7 @@ pub fn is_move_action(action: &game_core::CharacterActionKind) -> bool {
 ///
 /// `true` if the action is Wait, `false` otherwise.
 pub fn is_wait_action(action: &game_core::CharacterActionKind) -> bool {
-    matches!(action, game_core::CharacterActionKind::Wait)
+    matches!(action, game_core::CharacterActionKind::Wait(_))
 }
 
 // ============================================================================

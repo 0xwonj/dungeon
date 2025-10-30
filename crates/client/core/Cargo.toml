@@ -6,5 +6,6 @@ edition = "2024"
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+bitflags = { workspace = true, features = ["std"] }
 game-core = { workspace = true }
 runtime = { workspace = true }

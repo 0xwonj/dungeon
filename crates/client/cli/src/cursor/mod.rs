@@ -4,7 +4,6 @@
 //! both Examine mode (free exploration) and Targeting mode (constrained selection).
 
 mod movement;
-mod targeting;
 
 pub use movement::CursorMovement;
 

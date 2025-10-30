@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use game_core::{EntityId, GameConfig, GameState};
+use game_core::{EntityId, GameConfig, GameState, WaitAction};
 
 use crate::api::{
     ActionProvider, ProviderKind, ProviderRegistry, Result, RuntimeError, RuntimeHandle,
@@ -210,7 +210,7 @@ impl Runtime {
                     error = %e,
                     "Provider failed to generate action, falling back to Wait"
                 );
-                Action::character(entity, CharacterActionKind::Wait)
+                Action::character(entity, CharacterActionKind::Wait(WaitAction::new(entity)))
             }
         };
 

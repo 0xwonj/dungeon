@@ -1,7 +1,7 @@
 //! Utility-based AI action provider.
 
 use async_trait::async_trait;
-use game_core::{Action, CharacterActionKind, EntityId, GameEnv, GameState};
+use game_core::{Action, CharacterActionKind, EntityId, GameEnv, GameState, WaitAction};
 
 use super::scoring::actions::ActionScorer;
 use super::scoring::selector::{IntentScorer, TacticScorer};
@@ -112,7 +112,7 @@ impl ActionProvider for UtilityAiProvider {
                     entity,
                     tactic
                 );
-                Action::character(entity, CharacterActionKind::Wait)
+                Action::character(entity, CharacterActionKind::Wait(WaitAction::new(entity)))
             }
         };
 

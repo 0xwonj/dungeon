@@ -2,7 +2,7 @@
 
 use crate::action::{
     ActionCostAction, ActionTransition, ActivationAction, AttackAction, InteractAction, MoveAction,
-    PrepareTurnAction, UseItemAction,
+    PrepareTurnAction, UseItemAction, WaitAction,
 };
 
 /// Identifies which stage of the transition pipeline produced an error.
@@ -64,6 +64,10 @@ pub enum ExecuteError {
     #[error("interact action failed: {0}")]
     #[cfg_attr(feature = "serde", serde(skip))]
     Interact(TransitionPhaseError<<InteractAction as ActionTransition>::Error>),
+
+    #[error("wait action failed: {0}")]
+    #[cfg_attr(feature = "serde", serde(skip))]
+    Wait(TransitionPhaseError<<WaitAction as ActionTransition>::Error>),
 
     #[error("prepare turn action failed: {0}")]
     PrepareTurn(TransitionPhaseError<<PrepareTurnAction as ActionTransition>::Error>),

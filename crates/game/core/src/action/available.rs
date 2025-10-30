@@ -6,7 +6,7 @@
 
 use crate::action::{
     AttackAction, CardinalDirection, CharacterActionKind, InteractAction, InventoryIndex,
-    MoveAction, UseItemAction,
+    MoveAction, UseItemAction, WaitAction,
 };
 use crate::env::GameEnv;
 use crate::state::{ActionKind, ActorState, EntityId, GameState, Position};
@@ -49,7 +49,7 @@ fn generate_from_ability(
 ) -> Vec<CharacterActionKind> {
     match kind {
         ActionKind::Move => generate_moves(actor, state, env),
-        ActionKind::Wait => vec![CharacterActionKind::Wait],
+        ActionKind::Wait => vec![CharacterActionKind::Wait(WaitAction::new(actor.id))],
         ActionKind::UseItem => generate_use_items(actor, state),
         ActionKind::Interact => generate_interacts(actor, state),
         ActionKind::MeleeAttack => generate_melee_attacks(actor, state),

@@ -13,7 +13,7 @@ pub mod stats;
 pub use action::{
     Action, ActionCostAction, ActionTransition, ActivationAction, AttackAction, AttackStyle,
     CardinalDirection, CharacterActionKind, InteractAction, InventoryIndex, ItemTarget, MoveAction,
-    MoveError, PrepareTurnAction, SystemActionKind, TurnError, UseItemAction,
+    MoveError, PrepareTurnAction, SystemActionKind, TurnError, UseItemAction, WaitAction,
     get_available_actions,
 };
 pub use config::GameConfig;

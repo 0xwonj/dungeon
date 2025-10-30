@@ -5,7 +5,8 @@
 pub mod event;
 pub mod frontend;
 pub mod message;
-pub mod targeting;
+pub mod services;
 pub mod view_model;
 
 pub use event::{EventConsumer, EventImpact};
+pub use services::{UpdateScope, ViewModelUpdater, targeting};

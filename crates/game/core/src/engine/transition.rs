@@ -28,7 +28,9 @@ macro_rules! dispatch_transition {
                 CharacterActionKind::Interact(transition) => {
                     drive_transition(transition, $reducer, $env).map_err(ExecuteError::Interact)
                 }
-                CharacterActionKind::Wait => Ok(()),
+                CharacterActionKind::Wait(transition) => {
+                    drive_transition(transition, $reducer, $env).map_err(ExecuteError::Wait)
+                }
             },
             Action::System { kind } => match kind {
                 SystemActionKind::PrepareTurn(transition) => {

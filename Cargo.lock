@@ -662,6 +662,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "bitflags 2.10.0",
  "game-core",
  "runtime",
 ]
