@@ -26,7 +26,7 @@ use crate::providers::ai::AiContext;
 /// - All other actions: impossible
 pub fn score_for_wait(action: &CharacterActionKind, _ctx: &AiContext) -> Score {
     match action {
-        CharacterActionKind::Wait => Score::new(true, 100, 100, 100),
+        CharacterActionKind::Wait(_) => Score::new(true, 100, 100, 100),
         _ => Score::impossible(),
     }
 }

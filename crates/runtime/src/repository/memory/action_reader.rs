@@ -124,13 +124,16 @@ impl ActionLogReader for InMemoryActionLogReader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use game_core::{Action, CharacterActionKind, EntityId, GameState};
+    use game_core::{Action, CharacterActionKind, EntityId, GameState, WaitAction};
 
     fn create_test_entry(nonce: u64) -> ActionLogEntry {
         ActionLogEntry {
             nonce,
             clock: nonce,
-            action: Action::character(EntityId::PLAYER, CharacterActionKind::Wait),
+            action: Action::character(
+                EntityId::PLAYER,
+                CharacterActionKind::Wait(WaitAction::new(EntityId::PLAYER)),
+            ),
             before_state: Box::new(GameState::default()),
             after_state: Box::new(GameState::default()),
             delta: None,

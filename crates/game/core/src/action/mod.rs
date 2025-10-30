@@ -7,6 +7,7 @@ pub mod interact;
 pub mod inventory;
 pub mod movement;
 pub mod system;
+pub mod wait;
 
 use crate::env::GameEnv;
 use crate::state::{EntityId, GameState, Tick};
@@ -17,6 +18,7 @@ pub use interact::InteractAction;
 pub use inventory::{InventoryIndex, ItemTarget, UseItemAction};
 pub use movement::{CardinalDirection, MoveAction, MoveError};
 pub use system::{ActionCostAction, ActivationAction, PrepareTurnAction, TurnError};
+pub use wait::WaitAction;
 
 /// Defines how a concrete action variant mutates game state while mirroring
 /// the constraint checks enforced inside zk circuits.
@@ -59,7 +61,7 @@ pub enum CharacterActionKind {
     Attack(AttackAction),
     UseItem(UseItemAction),
     Interact(InteractAction),
-    Wait,
+    Wait(WaitAction),
 }
 
 /// Action variants for system operations.
@@ -96,7 +98,7 @@ impl Action {
             CharacterActionKind::Attack(attack_action) => attack_action.actor == actor,
             CharacterActionKind::UseItem(use_item_action) => use_item_action.actor == actor,
             CharacterActionKind::Interact(interact_action) => interact_action.actor == actor,
-            _ => true,
+            CharacterActionKind::Wait(wait_action) => wait_action.actor == actor,
         });
         Self::Character { actor, kind }
     }
@@ -119,6 +121,7 @@ impl Action {
     /// Cost is scaled by the actor's speed stat (from snapshot).
     pub fn cost(&self, snapshot: &crate::stats::StatsSnapshot) -> Tick {
         use crate::action::ActionTransition;
+        use crate::stats::calculate_action_cost;
 
         let base_cost = match self {
             Action::Character { kind, .. } => match kind {
@@ -126,7 +129,7 @@ impl Action {
                 CharacterActionKind::Attack(action) => action.cost(),
                 CharacterActionKind::UseItem(action) => action.cost(),
                 CharacterActionKind::Interact(action) => action.cost(),
-                CharacterActionKind::Wait => 100,
+                CharacterActionKind::Wait(action) => action.cost(),
             },
             Action::System { kind } => match kind {
                 SystemActionKind::PrepareTurn(action) => action.cost(),
@@ -135,8 +138,7 @@ impl Action {
             },
         };
 
-        let speed = snapshot.speed.physical.max(1) as u64;
-        base_cost * 100 / speed
+        calculate_action_cost(base_cost, snapshot.speed.physical)
     }
 
     /// Returns the snake_case string representation of the action.
@@ -147,7 +149,7 @@ impl Action {
                 CharacterActionKind::Attack(_) => "attack",
                 CharacterActionKind::UseItem(_) => "use_item",
                 CharacterActionKind::Interact(_) => "interact",
-                CharacterActionKind::Wait => "wait",
+                CharacterActionKind::Wait(_) => "wait",
             },
             Action::System { kind } => match kind {
                 SystemActionKind::PrepareTurn(_) => "prepare_turn",
@@ -179,6 +181,12 @@ impl From<UseItemAction> for CharacterActionKind {
 impl From<InteractAction> for CharacterActionKind {
     fn from(action: InteractAction) -> Self {
         Self::Interact(action)
+    }
+}
+
+impl From<WaitAction> for CharacterActionKind {
+    fn from(action: WaitAction) -> Self {
+        Self::Wait(action)
     }
 }
 

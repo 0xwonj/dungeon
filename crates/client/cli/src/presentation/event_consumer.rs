@@ -22,7 +22,7 @@ impl CliEventConsumer {
                 CharacterActionKind::Move(movement) => {
                     format!("{} moves {:?}", actor, movement.direction)
                 }
-                CharacterActionKind::Wait => format!("{} waits", actor),
+                CharacterActionKind::Wait(_) => format!("{} waits", actor),
                 other => format!("{} performs {:?}", actor, other),
             },
             Action::System { kind } => format!("System: {:?}", kind),

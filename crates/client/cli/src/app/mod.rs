@@ -100,6 +100,9 @@ impl CliApp {
             tx_action,
             initial_state.entities.player().id,
             consumer,
+            &initial_state,
+            oracles.map.as_ref(),
+            None, // Use default targeting strategy (ThreatBased)
         );
 
         // Start runtime.run() BEFORE terminal init to avoid deadlock
@@ -114,9 +117,7 @@ impl CliApp {
         let mut terminal = terminal::init()?;
         let _guard = terminal::TerminalGuard;
 
-        let _consumer = event_loop
-            .run(&mut terminal, oracles.map.as_ref(), initial_state)
-            .await?;
+        let _consumer = event_loop.run(&mut terminal, oracles.map.as_ref()).await?;
 
         runtime_task.abort();
         let _ = runtime_task.await;

@@ -1,7 +1,7 @@
 //! Application state for mode management and UI context.
 
 use crate::cursor::CursorState;
-use game_core::Position;
+use game_core::{EntityId, Position};
 
 /// Top-level application mode determining input handling and UI layout.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,27 +28,35 @@ pub enum TargetingAction {
 }
 
 /// Mutable application state tracking current mode and cursor.
+///
+/// **Design Philosophy:**
+/// - Single source of truth: `highlighted_entity` drives all highlighting
+/// - EntityId-based tracking: survives entity movement and state changes
+/// - Mode-specific behavior: Normal (auto-target) vs Manual (cursor-based)
 #[derive(Clone, Debug)]
 pub struct AppState {
     /// Current application mode.
     pub mode: AppMode,
-    /// Auto-target position (always present, computed each frame in Normal mode).
-    pub auto_target_position: Option<Position>,
+    /// Currently highlighted entity (synchronized with map highlight and examine panel).
+    ///
+    /// - **Normal mode**: Set by auto-targeting logic, cycled with Tab key
+    /// - **Manual mode**: Set by cursor position, cycled with Tab for entities at same position
+    pub highlighted_entity: Option<EntityId>,
     /// Manual cursor (only present in ExamineManual or Targeting mode).
     pub manual_cursor: Option<CursorState>,
-    /// Index of currently selected entity at cursor position (for cycling with Tab).
-    pub entity_index: usize,
 }
 
 impl AppState {
-    /// Returns the current examine position based on mode.
+    /// Returns the current examine position based on highlighted entity or cursor.
+    ///
+    /// This is used by examine panel to show tile information.
+    /// Returns the position of the highlighted entity, or cursor position in manual mode.
     pub fn examine_position(&self) -> Option<Position> {
         match self.mode {
-            AppMode::Normal => self.auto_target_position,
             AppMode::ExamineManual | AppMode::Targeting { .. } => {
                 self.manual_cursor.as_ref().map(|c| c.position)
             }
-            AppMode::Inventory => None,
+            AppMode::Normal | AppMode::Inventory => None,
         }
     }
 
@@ -65,9 +73,8 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             mode: AppMode::Normal,
-            auto_target_position: None,
+            highlighted_entity: None,
             manual_cursor: None,
-            entity_index: 0,
         }
     }
 }
@@ -77,25 +84,27 @@ impl AppState {
         Self::default()
     }
 
-    /// Updates auto-target position (called each frame in Normal mode).
-    pub fn set_auto_target(&mut self, position: Option<Position>) {
-        self.auto_target_position = position;
+    /// Sets the highlighted entity (used by auto-targeting and entity cycling).
+    pub fn set_highlighted_entity(&mut self, entity_id: Option<EntityId>) {
+        self.highlighted_entity = entity_id;
     }
 
     /// Enters manual Examine mode with cursor at the given position.
-    pub fn enter_examine_manual(&mut self, position: Position) {
+    pub fn enter_examine_manual(&mut self, position: Position, entity_at_cursor: Option<EntityId>) {
         self.mode = AppMode::ExamineManual;
         self.manual_cursor = Some(CursorState::new(position));
-        self.entity_index = 0;
+        self.highlighted_entity = entity_at_cursor;
     }
 
     /// Toggles between Normal (auto-target) and ExamineManual mode.
+    ///
+    /// When entering manual mode, cursor is placed at highlighted entity's position (or fallback).
     pub fn toggle_examine(&mut self, fallback_position: Position) {
         match self.mode {
             AppMode::Normal => {
-                // Enter manual mode at current auto-target or fallback
-                let pos = self.auto_target_position.unwrap_or(fallback_position);
-                self.enter_examine_manual(pos);
+                // Enter manual mode at current highlighted entity's position or fallback
+                let pos = fallback_position; // Will be set properly by caller
+                self.enter_examine_manual(pos, self.highlighted_entity);
             }
             AppMode::ExamineManual => {
                 // Return to auto-target mode
@@ -110,28 +119,18 @@ impl AppState {
     pub fn enter_targeting(&mut self, position: Position, action_type: TargetingAction) {
         self.mode = AppMode::Targeting { action_type };
         self.manual_cursor = Some(CursorState::new(position));
-        self.entity_index = 0;
+        self.highlighted_entity = None;
     }
 
     /// Exits to Normal mode (auto-target).
     pub fn exit_to_normal(&mut self) {
         self.mode = AppMode::Normal;
         self.manual_cursor = None;
-        self.entity_index = 0;
+        // Keep highlighted_entity - will be recomputed by auto-targeting
     }
 
     /// Returns true if currently in a modal mode requiring manual input.
     pub fn is_modal(&self) -> bool {
         !matches!(self.mode, AppMode::Normal)
-    }
-
-    /// Cycles to the next entity at the current cursor position.
-    pub fn next_entity(&mut self) {
-        self.entity_index = self.entity_index.wrapping_add(1);
-    }
-
-    /// Cycles to the previous entity at the current cursor position.
-    pub fn prev_entity(&mut self) {
-        self.entity_index = self.entity_index.wrapping_sub(1);
     }
 }
