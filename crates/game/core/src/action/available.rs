@@ -148,52 +148,37 @@ fn generate_interacts(actor: &ActorState, state: &GameState) -> Vec<CharacterAct
 // ============================================================================
 
 fn generate_melee_attacks(actor: &ActorState, state: &GameState) -> Vec<CharacterActionKind> {
-    // TODO: Calculate damage from actor stats + weapon
-    let base_damage = 10;
     find_adjacent_enemies(actor, state)
-        .map(|target| CharacterActionKind::Attack(AttackAction::new(actor.id, target, base_damage)))
+        .map(|target| CharacterActionKind::Attack(AttackAction::new(actor.id, target)))
         .collect()
 }
 
 fn generate_power_attacks(actor: &ActorState, state: &GameState) -> Vec<CharacterActionKind> {
-    // TODO: Calculate damage from actor stats + weapon with power modifier
-    let power_damage = 20;
+    // TODO: Implement PowerAttackAction
     find_adjacent_enemies(actor, state)
-        .map(|target| {
-            CharacterActionKind::Attack(AttackAction::new(actor.id, target, power_damage))
-        })
+        .map(|target| CharacterActionKind::Attack(AttackAction::new(actor.id, target)))
         .collect()
 }
 
 fn generate_backstabs(actor: &ActorState, state: &GameState) -> Vec<CharacterActionKind> {
+    // TODO: Implement BackstabAction
     // TODO: Check if enemy is facing away
-    // TODO: Calculate backstab damage multiplier
-    let backstab_damage = 30;
     find_adjacent_enemies(actor, state)
-        .map(|target| {
-            CharacterActionKind::Attack(AttackAction::new(actor.id, target, backstab_damage))
-        })
+        .map(|target| CharacterActionKind::Attack(AttackAction::new(actor.id, target)))
         .collect()
 }
 
-fn generate_cleaves(actor: &ActorState, state: &GameState) -> Vec<CharacterActionKind> {
-    // TODO: Cleave hits all adjacent enemies at once
-    // For now, generate attack for each enemy
-    let cleave_damage = 15;
-    find_adjacent_enemies(actor, state)
-        .map(|target| {
-            CharacterActionKind::Attack(AttackAction::new(actor.id, target, cleave_damage))
-        })
-        .collect()
+fn generate_cleaves(_actor: &ActorState, _state: &GameState) -> Vec<CharacterActionKind> {
+    // TODO: Implement CleaveAction (hits all adjacent enemies at once)
+    // For now, just return empty since basic Attack only hits one target
+    vec![]
 }
 
 fn generate_sneak_attacks(actor: &ActorState, state: &GameState) -> Vec<CharacterActionKind> {
+    // TODO: Implement SneakAttackAction
     // TODO: Check if actor is stealthed/invisible
-    let sneak_damage = 25;
     find_adjacent_enemies(actor, state)
-        .map(|target| {
-            CharacterActionKind::Attack(AttackAction::new(actor.id, target, sneak_damage))
-        })
+        .map(|target| CharacterActionKind::Attack(AttackAction::new(actor.id, target)))
         .collect()
 }
 
@@ -203,21 +188,15 @@ fn generate_sneak_attacks(actor: &ActorState, state: &GameState) -> Vec<Characte
 
 fn generate_ranged_attacks(actor: &ActorState, state: &GameState) -> Vec<CharacterActionKind> {
     // TODO: Check line of sight and range
-    let ranged_damage = 8;
     find_visible_enemies(actor, state)
-        .map(|target| {
-            CharacterActionKind::Attack(AttackAction::new(actor.id, target, ranged_damage))
-        })
+        .map(|target| CharacterActionKind::Attack(AttackAction::new(actor.id, target)))
         .collect()
 }
 
 fn generate_aimed_shots(actor: &ActorState, state: &GameState) -> Vec<CharacterActionKind> {
-    // TODO: Calculate aimed shot damage bonus
-    let aimed_damage = 15;
+    // TODO: Implement AimedShotAction
     find_visible_enemies(actor, state)
-        .map(|target| {
-            CharacterActionKind::Attack(AttackAction::new(actor.id, target, aimed_damage))
-        })
+        .map(|target| CharacterActionKind::Attack(AttackAction::new(actor.id, target)))
         .collect()
 }
 

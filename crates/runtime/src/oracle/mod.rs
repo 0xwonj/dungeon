@@ -10,7 +10,7 @@ mod items;
 mod map;
 mod tables;
 
-use game_core::{Env, GameEnv};
+use game_core::{Env, GameEnv, PcgRng};
 use std::sync::Arc;
 
 pub use actors::{ActorOracleImpl, AiConfig};
@@ -27,6 +27,7 @@ pub struct OracleManager {
     pub(crate) tables: Arc<TablesOracleImpl>,
     pub(crate) actors: Arc<ActorOracleImpl>,
     pub(crate) config: Arc<ConfigOracleImpl>,
+    pub(crate) rng: PcgRng,
 }
 
 impl OracleManager {
@@ -44,6 +45,7 @@ impl OracleManager {
             tables,
             actors,
             config,
+            rng: PcgRng, // PcgRng is stateless
         }
     }
 
@@ -55,6 +57,7 @@ impl OracleManager {
             self.tables.as_ref(),
             self.actors.as_ref(),
             self.config.as_ref(),
+            &self.rng,
         )
         .into_game_env()
     }

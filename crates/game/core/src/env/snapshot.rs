@@ -358,6 +358,7 @@ pub struct SnapshotOracleBundle<'a> {
     pub tables: SnapshotTablesOracle<'a>,
     pub actors: SnapshotActorOracle<'a>,
     pub config: SnapshotConfigOracle<'a>,
+    pub rng: super::PcgRng,
 }
 
 impl<'a> SnapshotOracleBundle<'a> {
@@ -369,6 +370,7 @@ impl<'a> SnapshotOracleBundle<'a> {
             tables: SnapshotTablesOracle::new(&snapshot.tables),
             actors: SnapshotActorOracle::new(&snapshot.actors),
             config: SnapshotConfigOracle::new(&snapshot.config),
+            rng: super::PcgRng, // PcgRng is stateless
         }
     }
 
@@ -382,6 +384,7 @@ impl<'a> SnapshotOracleBundle<'a> {
         SnapshotTablesOracle<'a>,
         SnapshotActorOracle<'a>,
         SnapshotConfigOracle<'a>,
+        super::PcgRng,
     > {
         super::Env::with_all(
             &self.map,
@@ -389,6 +392,7 @@ impl<'a> SnapshotOracleBundle<'a> {
             &self.tables,
             &self.actors,
             &self.config,
+            &self.rng,
         )
     }
 }

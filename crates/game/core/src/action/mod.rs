@@ -13,7 +13,7 @@ use crate::env::GameEnv;
 use crate::state::{EntityId, GameState, Tick};
 
 pub use available::get_available_actions;
-pub use combat::{AttackAction, AttackStyle};
+pub use combat::AttackAction;
 pub use interact::InteractAction;
 pub use inventory::{InventoryIndex, ItemTarget, UseItemAction};
 pub use movement::{CardinalDirection, MoveAction, MoveError};

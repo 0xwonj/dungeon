@@ -111,6 +111,46 @@ pub enum WeaponKind {
     Unarmed,
 }
 
+/// Attack type determined by weapon.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum AttackType {
+    /// Melee attack (adjacent range).
+    Melee,
+    /// Ranged attack (long distance).
+    Ranged,
+    /// Magic attack (varies by spell).
+    Magic,
+}
+
+impl WeaponKind {
+    /// Get the attack type for this weapon.
+    pub fn attack_type(&self) -> AttackType {
+        match self {
+            WeaponKind::Sword
+            | WeaponKind::Dagger
+            | WeaponKind::Axe
+            | WeaponKind::Spear
+            | WeaponKind::Unarmed => AttackType::Melee,
+
+            WeaponKind::Bow | WeaponKind::Crossbow => AttackType::Ranged,
+
+            WeaponKind::Staff | WeaponKind::Wand => AttackType::Magic,
+        }
+    }
+
+    /// Get the melee range for this weapon (in tiles).
+    ///
+    /// Most melee weapons have range 1 (adjacent only).
+    /// Spears have extended range of 2.
+    pub fn melee_range(&self) -> u32 {
+        match self {
+            WeaponKind::Spear => 2,
+            _ => 1,
+        }
+    }
+}
+
 /// Armor types that provide defense and may restrict certain actions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
