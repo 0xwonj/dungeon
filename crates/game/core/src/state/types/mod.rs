@@ -14,7 +14,7 @@ pub use entities::{
     ActorState, EntitiesState, InventorySlot, InventoryState, ItemHandle, ItemState, PropKind,
     PropState,
 };
-pub use equipment::{ArmorKind, Equipment, EquipmentBuilder, WeaponKind};
+pub use equipment::{ArmorKind, AttackType, Equipment, EquipmentBuilder, WeaponKind};
 pub use status::{StatusEffect, StatusEffectKind, StatusEffects};
 pub use turn::TurnState;
 pub use world::{TileMap, TileView, WorldState};

@@ -115,32 +115,29 @@ impl StatLayer for ResourceMaximums {
     type Final = Self;
 
     fn compute(base: &Self::Base, bonuses: &Self::Bonuses) -> Self::Final {
-        let bounds = StatBounds::RESOURCE_MAXIMUMS;
+        const BOUNDS: StatBounds = StatBounds::RESOURCE_MAX;
+
         let base_resources = Self::compute_base(base);
 
         Self {
             hp_max: bonuses
                 .hp_max
-                .apply(base_resources.hp_max as i32, bounds.min, bounds.max)
+                .apply(base_resources.hp_max as i32, BOUNDS.min, BOUNDS.max)
                 as u32,
             mp_max: bonuses
                 .mp_max
-                .apply(base_resources.mp_max as i32, bounds.min, bounds.max)
+                .apply(base_resources.mp_max as i32, BOUNDS.min, BOUNDS.max)
                 as u32,
             lucidity_max: bonuses.lucidity_max.apply(
                 base_resources.lucidity_max as i32,
-                bounds.min,
-                bounds.max,
+                BOUNDS.min,
+                BOUNDS.max,
             ) as u32,
         }
     }
 
     fn empty_bonuses() -> Self::Bonuses {
         ResourceBonuses::new()
-    }
-
-    fn bounds() -> Option<StatBounds> {
-        Some(StatBounds::RESOURCE_MAXIMUMS)
     }
 }
 

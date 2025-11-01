@@ -88,8 +88,9 @@ impl EntitiesState {
     }
 }
 
-impl Default for EntitiesState {
-    fn default() -> Self {
+impl EntitiesState {
+    /// Create a new entities state with a default player actor.
+    pub fn with_player() -> Self {
         // Create default player actor
         let player = ActorState::new(
             EntityId::PLAYER,
@@ -205,6 +206,8 @@ impl ActorState {
     ///
     /// This is the primary way external code should access actor stats.
     /// Ensures consistency between stored state and computed values.
+    ///
+    /// Create a complete stats snapshot
     pub fn snapshot(&self) -> StatsSnapshot {
         StatsSnapshot::create(&self.core_stats, &self.bonuses, &self.resources)
     }
@@ -269,16 +272,8 @@ impl ActorState {
     }
 }
 
-impl Default for ActorState {
-    fn default() -> Self {
-        Self::new(
-            EntityId::default(),
-            Position::default(),
-            CoreStats::default(),
-            InventoryState::default(),
-        )
-    }
-}
+// Note: ActorState no longer has Default impl because it requires TablesOracle.
+// Use ActorState::new() with appropriate oracle instead.
 
 /// Inventory slot containing an item and its quantity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -16,7 +16,7 @@
                 level: 1,
             ),
             equipment: Equipment(
-                weapon: None,
+                weapon: Some(ItemHandle(10)), // Iron Sword (10 damage)
                 armor: None,
                 accessory: None,
             ),
@@ -52,7 +52,7 @@
                 level: 1,
             ),
             equipment: Equipment(
-                weapon: None,
+                weapon: Some(ItemHandle(10)), // Iron Sword (10 damage)
                 armor: None,
                 accessory: None,
             ),
@@ -90,7 +90,7 @@
                 level: 2,
             ),
             equipment: Equipment(
-                weapon: None,
+                weapon: Some(ItemHandle(11)), // Steel Axe (15 damage)
                 armor: None,
                 accessory: None,
             ),

@@ -11,28 +11,6 @@ use game_core::{PropKind, TerrainKind, stats::StatsSnapshot};
 ///
 /// This trait allows each frontend to define its own visual style
 /// (colors, fonts, icons) while sharing the same view model logic.
-///
-/// # Example
-///
-/// ```ignore
-/// // TUI implementation with Ratatui
-/// impl PresentationMapper for RatatuiTheme {
-///     type Style = ratatui::style::Style;
-///
-///     fn render_actor(&self, stats: &StatsSnapshot, is_player: bool, is_current: bool) -> (String, Self::Style) {
-///         let (glyph, color) = if is_player {
-///             ("@", Color::Yellow)
-///         } else {
-///             ("n", Color::LightRed)
-///         };
-///         let mut style = Style::default().fg(color);
-///         if is_current {
-///             style = style.add_modifier(Modifier::BOLD);
-///         }
-///         (glyph.to_string(), style)
-///     }
-/// }
-/// ```
 pub trait PresentationMapper {
     /// Style type for this frontend (e.g., `ratatui::style::Style`).
     type Style: Clone;

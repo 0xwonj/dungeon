@@ -17,22 +17,6 @@
 //! - **Utilities**: Common helper functions for action evaluation
 //! - **Tactic Modules**: Specific scoring logic for each tactic category
 //! - **ActionScorer**: Orchestrator that dispatches to appropriate scorer
-//!
-//! # Example Usage
-//!
-//! ```rust,ignore
-//! use runtime::providers::ai::scoring::actions::ActionScorer;
-//! use runtime::providers::ai::{Intent, Tactic, IntentScorer, TacticScorer};
-//!
-//! // Full 3-layer pipeline
-//! let (intent, _) = IntentScorer::select(&ctx);
-//! let (tactic, _) = TacticScorer::select(intent, &ctx);
-//! let action = ActionScorer::select(tactic, ctx.available_actions(), &ctx);
-//!
-//! if let Some(action) = action {
-//!     println!("NPC decided to: {:?}", action);
-//! }
-//! ```
 
 pub mod combat;
 pub mod idle;
@@ -85,34 +69,6 @@ impl ActionScorer {
     ///
     /// - `Some(CharacterActionKind)` - The best action to perform
     /// - `None` - If no actions are available or all score 0
-    ///
-    /// # Examples
-    ///
-    /// ```rust,ignore
-    /// let action = ActionScorer::select(
-    ///     Tactic::Kiting,
-    ///     ctx.available_actions(),
-    ///     &ctx
-    /// );
-    ///
-    /// match action {
-    ///     Some(CharacterActionKind::Attack(_)) => println!("Shooting!"),
-    ///     Some(CharacterActionKind::Move(m)) => println!("Retreating {:?}!", m.direction),
-    ///     _ => println!("No good action available"),
-    /// }
-    /// ```
-    ///
-    /// # Debugging
-    ///
-    /// To debug action selection, use `evaluate_all`:
-    ///
-    /// ```rust,ignore
-    /// let all_scores = ActionScorer::evaluate_all(Tactic::Kiting, &available, &ctx);
-    /// for (action, score) in all_scores {
-    ///     println!("{:?}: {} (sit={}, pers={}, mod={})",
-    ///         action, score.value(), score.situation, score.personality, score.modifier);
-    /// }
-    /// ```
     pub fn select(
         tactic: Tactic,
         available_actions: &[CharacterActionKind],

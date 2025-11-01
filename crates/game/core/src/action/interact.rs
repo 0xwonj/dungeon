@@ -1,7 +1,6 @@
-use core::convert::Infallible;
-
 use crate::action::ActionTransition;
 use crate::env::GameEnv;
+use crate::error::NeverError;
 use crate::state::{EntityId, GameState, Tick};
 
 /// Performs an interaction with a nearby prop or entity.
@@ -19,14 +18,17 @@ impl InteractAction {
 }
 
 impl ActionTransition for InteractAction {
-    type Error = Infallible;
+    type Error = NeverError;
+    type Result = ();
 
     fn actor(&self) -> EntityId {
         self.actor
     }
 
-    fn cost(&self) -> Tick {
-        5
+    fn cost(&self, env: &GameEnv<'_>) -> Tick {
+        env.tables()
+            .map(|t| t.action_costs().interact)
+            .unwrap_or(100)
     }
 
     fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {

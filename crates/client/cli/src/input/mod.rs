@@ -86,10 +86,6 @@ impl InputHandler {
         let ch = raw.to_ascii_lowercase();
         match ch {
             'q' => KeyAction::Quit,
-            'h' | 'a' => self.movement(CardinalDirection::West),
-            'j' | 's' => self.movement(CardinalDirection::South),
-            'k' | 'w' => self.movement(CardinalDirection::North),
-            'l' | 'd' => self.movement(CardinalDirection::East),
             '.' | ' ' => self.wait(),
             'x' => KeyAction::ToggleExamine,
             _ => KeyAction::None,
@@ -108,16 +104,7 @@ impl InputHandler {
                 }
             }
             KeyCode::BackTab => KeyAction::PrevEntity,
-            KeyCode::Char(ch) => {
-                let ch = ch.to_ascii_lowercase();
-                match ch {
-                    'h' | 'a' => KeyAction::MoveCursor(CardinalDirection::West),
-                    'j' | 's' => KeyAction::MoveCursor(CardinalDirection::South),
-                    'k' | 'w' => KeyAction::MoveCursor(CardinalDirection::North),
-                    'l' | 'd' => KeyAction::MoveCursor(CardinalDirection::East),
-                    _ => KeyAction::None,
-                }
-            }
+            KeyCode::Char(_ch) => KeyAction::None,
             KeyCode::Left => KeyAction::MoveCursor(CardinalDirection::West),
             KeyCode::Right => KeyAction::MoveCursor(CardinalDirection::East),
             KeyCode::Up => KeyAction::MoveCursor(CardinalDirection::North),

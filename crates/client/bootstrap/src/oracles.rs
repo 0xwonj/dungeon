@@ -7,8 +7,6 @@ use runtime::{
     TablesOracleImpl,
 };
 
-use crate::config::MapSize;
-
 /// Bundle of oracle implementations that the runtime consumes.
 #[derive(Clone)]
 pub struct OracleBundle {
@@ -33,80 +31,6 @@ impl OracleBundle {
 
 pub trait OracleFactory: Send + Sync {
     fn build(&self) -> OracleBundle;
-}
-
-/// Temporary factory that relies on runtime-provided test fixtures.
-///
-/// As `game-content` becomes populated this will move to use real data.
-#[derive(Clone, Debug)]
-pub struct TestOracleFactory {
-    size: MapSize,
-}
-
-impl TestOracleFactory {
-    pub const fn new(size: MapSize) -> Self {
-        Self { size }
-    }
-}
-
-impl OracleFactory for TestOracleFactory {
-    fn build(&self) -> OracleBundle {
-        use game_content::traits::{TraitKind, TraitLayer, TraitProfile, TraitWeights};
-        use game_core::{
-            ActionAbilities, ActionAbility, ActionKind, ActorTemplate, PassiveAbilities,
-            PassiveAbility, PassiveKind,
-        };
-        use runtime::AiConfig;
-
-        let map = Arc::new(MapOracleImpl::test_map(self.size.width, self.size.height));
-        let items = Arc::new(ItemOracleImpl::test_items());
-        let tables = Arc::new(TablesOracleImpl::test_tables());
-        let config = Arc::new(ConfigOracleImpl::new(game_core::GameConfig::default()));
-
-        // Build actor oracle with test actors
-        let mut oracle = ActorOracleImpl::new();
-
-        // Add test NPCs (using string IDs now)
-        // NPC 0: Weak goblin (cowardly, fast)
-        let mut goblin_actions = ActionAbilities::new();
-        goblin_actions.push(ActionAbility::new(ActionKind::Move));
-        goblin_actions.push(ActionAbility::new(ActionKind::MeleeAttack));
-        goblin_actions.push(ActionAbility::new(ActionKind::Wait));
-
-        let mut goblin_passives = PassiveAbilities::new();
-        goblin_passives.push(PassiveAbility::new(PassiveKind::Darkvision));
-
-        oracle.add(
-            "0",
-            ActorTemplate::builder()
-                .actions(goblin_actions)
-                .passives(goblin_passives)
-                .build(),
-            AiConfig {
-                traits: TraitProfile::compose(
-                    &TraitLayer::builder()
-                        .set(TraitKind::Bravery, 3)
-                        .set(TraitKind::Mobility, 12)
-                        .set(TraitKind::Perception, 8)
-                        .set(TraitKind::Aggression, 5)
-                        .build(),
-                    &TraitLayer::zero(),
-                    &TraitLayer::zero(),
-                    &TraitLayer::zero(),
-                    &TraitWeights::default_weights(),
-                ),
-                default_provider: runtime::ProviderKind::Ai(runtime::AiKind::Utility),
-            },
-        );
-
-        OracleBundle {
-            map,
-            items,
-            tables,
-            actors: Arc::new(oracle),
-            config,
-        }
-    }
 }
 
 /// Oracle factory that loads game content from data files.

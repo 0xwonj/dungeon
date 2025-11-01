@@ -19,26 +19,6 @@
 //!
 //! All tactics follow the same structured scoring approach:
 //!
-//! ```rust,ignore
-//! pub fn tactic_name(ctx: &AiContext) -> Score {
-//!     // 1. Feasibility check
-//!     if !required_actions_available(ctx) {
-//!         return Score::impossible();
-//!     }
-//!
-//!     // 2. Situational favorability (0-100)
-//!     let situation = compute_situation_score(ctx);
-//!
-//!     // 3. Personality alignment (0-100)
-//!     let personality = compute_personality_score(ctx);
-//!
-//!     // 4. Contextual modifiers (0-200, typically 100)
-//!     let modifier = compute_modifier(ctx);
-//!
-//!     Score::new(true, situation, personality, modifier)
-//! }
-//! ```
-//!
 //! # Combat Tactics Design
 //!
 //! Combat tactics are differentiated along three axes:
@@ -99,7 +79,7 @@ use super::Score;
 use crate::providers::ai::AiContext;
 
 // ============================================================================
-// Combat Tactics (Fully Implemented)
+// Combat Tactics
 // ============================================================================
 
 /// Rush into melee range and overwhelm with aggression.
@@ -133,17 +113,6 @@ use crate::providers::ai::AiContext;
 /// - HP < 40%: 50 (risky)
 /// - HP < 70%: 80
 /// - HP >= 70%: 100
-///
-/// # Example
-///
-/// ```rust,ignore
-/// // High-aggression berserker at close range with 80% HP
-/// let score = aggressive_melee(&ctx);
-/// // situation = 100 (distance 1)
-/// // personality = 90 (aggression 200, bravery 150, caution 50)
-/// // modifier = 100 (HP 80%)
-/// // value = (100 * 90 * 100) / 10000 = 90
-/// ```
 pub fn aggressive_melee(ctx: &AiContext) -> Score {
     // Feasibility: Need attack actions (if adjacent) OR movement actions (if far)
     let has_capabilities = ctx.has_attack_actions() || ctx.has_movement_actions();
@@ -220,17 +189,6 @@ pub fn aggressive_melee(ctx: &AiContext) -> Score {
 /// - HP < 85%: 90
 /// - HP >= 85%: 110 (bonus for full health)
 /// - Has movement actions: +10 modifier (escape route available)
-///
-/// # Example
-///
-/// ```rust,ignore
-/// // Cautious guard at distance 2 with 90% HP and movement options
-/// let score = defensive_melee(&ctx);
-/// // situation = 100 (distance 2)
-/// // personality = 75 (caution 180, bravery 120, discipline 100)
-/// // modifier = 110 + 10 = 120 (high HP + movement)
-/// // value = (100 * 75 * 120) / 10000 = 90
-/// ```
 pub fn defensive_melee(ctx: &AiContext) -> Score {
     // Feasibility: Need attack actions (if adjacent) OR movement actions (if far)
     let has_capabilities = ctx.has_attack_actions() || ctx.has_movement_actions();
@@ -314,17 +272,6 @@ pub fn defensive_melee(ctx: &AiContext) -> Score {
 /// Currently cannot distinguish ranged attacks from melee attacks.
 /// For now, assumes any attack action can be used at range.
 /// Future: Add `ActionKind::RangedAttack` distinction.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// // Archer at distance 5 with 70% HP
-/// let score = ranged(&ctx);
-/// // situation = 100 (distance 5)
-/// // personality = 85 (preferred_range 200, tactical 120, low aggression)
-/// // modifier = 105 (HP 70%)
-/// // value = (100 * 85 * 105) / 10000 = 89
-/// ```
 pub fn ranged(ctx: &AiContext) -> Score {
     // Feasibility: Need attack actions
     // TODO: Distinguish ranged from melee attacks
@@ -398,17 +345,6 @@ pub fn ranged(ctx: &AiContext) -> Score {
 /// - HP < 30%: 80 (risky)
 /// - HP < 70%: 100
 /// - HP >= 70%: 110
-///
-/// # Example
-///
-/// ```rust,ignore
-/// // Tactical archer at distance 5, retreating as player advances
-/// let score = kiting(&ctx);
-/// // situation = 100 (distance 5)
-/// // personality = 92 (tactical 220, preferred_range 200, caution 150)
-/// // modifier = 110 (HP 85%)
-/// // value = (100 * 92 * 110) / 10000 = 101 (exceeds 100, capped)
-/// ```
 pub fn kiting(ctx: &AiContext) -> Score {
     // Feasibility: Need BOTH attack and movement
     if !ctx.has_attack_actions() || !ctx.has_movement_actions() {
@@ -474,17 +410,6 @@ pub fn kiting(ctx: &AiContext) -> Score {
 /// - Good ambush position available? (situation +30)
 /// - High TacticalSense? (personality boost)
 /// - Low Honor? (personality boost - dishonorable tactic)
-///
-/// # Example (Future)
-///
-/// ```rust,ignore
-/// // Assassin waiting in shadows with high tactical sense
-/// let score = ambush(&ctx);
-/// // situation = 80 (player unaware + good position)
-/// // personality = 85 (tactical 220, low honor 40)
-/// // modifier = 100
-/// // value = (80 * 85 * 100) / 10000 = 68
-/// ```
 pub fn ambush(ctx: &AiContext) -> Score {
     // TODO: Implement when stealth system is added to game-core
     // Required capabilities:

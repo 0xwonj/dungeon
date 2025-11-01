@@ -121,8 +121,8 @@ impl SimulationWorker {
         )
         .map_err(|e| match e {
             ExecuteError::PrepareTurn(phase_error) => match phase_error.error {
-                game_core::TurnError::NoActiveEntities => RuntimeError::NoActiveEntities,
-                game_core::TurnError::NotSystemActor => {
+                game_core::TurnError::NoActiveEntities { .. } => RuntimeError::NoActiveEntities,
+                game_core::TurnError::NotSystemActor { .. } => {
                     unreachable!("PrepareTurnAction is constructed with SYSTEM actor")
                 }
             },
@@ -177,7 +177,7 @@ impl SimulationWorker {
 
         // Execute action through GameEngine (this will increment nonce)
         let mut engine = GameEngine::new(state);
-        let delta = engine.execute(env, action)?;
+        let outcome = engine.execute(env, action)?;
 
         // Capture state after execution
         let after_state = state.clone();
@@ -187,13 +187,14 @@ impl SimulationWorker {
         event_bus.publish(Event::GameState(GameStateEvent::ActionExecuted {
             nonce,
             action: action.clone(),
-            delta: Box::new(delta.clone()),
+            delta: Box::new(outcome.delta.clone()),
             clock,
             before_state: Box::new(before_state),
             after_state: Box::new(after_state),
+            action_result: outcome.action_result.clone(),
         }));
 
-        Ok(delta)
+        Ok(outcome.delta)
     }
 
     /// Handles player/NPC action with full workflow:
@@ -267,10 +268,12 @@ impl SimulationWorker {
     ) -> std::result::Result<(), ExecuteError> {
         const MAX_DEPTH: usize = 50;
         if depth > MAX_DEPTH {
-            return Err(ExecuteError::HookChainTooDeep {
-                hook_name: hook.name().to_string(),
+            let nonce = state.turn.nonce;
+            return Err(ExecuteError::hook_chain_too_deep(
+                hook.name().to_string(),
                 depth,
-            });
+                nonce,
+            ));
         }
 
         // 1. Check trigger condition
@@ -391,7 +394,9 @@ impl SimulationWorker {
             ExecuteError::Activation(phase_error) => {
                 (phase_error.phase, phase_error.error.to_string())
             }
-            ExecuteError::HookChainTooDeep { hook_name, depth } => {
+            ExecuteError::HookChainTooDeep {
+                hook_name, depth, ..
+            } => {
                 error!(
                     target: "runtime::worker",
                     hook_name = %hook_name,
@@ -400,7 +405,7 @@ impl SimulationWorker {
                 );
                 return;
             }
-            ExecuteError::SystemActionNotFromSystem { actor } => {
+            ExecuteError::SystemActionNotFromSystem { actor, .. } => {
                 error!(
                     target: "runtime::worker",
                     actor = ?actor,
@@ -411,6 +416,7 @@ impl SimulationWorker {
             ExecuteError::ActorNotCurrent {
                 actor,
                 current_actor,
+                ..
             } => {
                 error!(
                     target: "runtime::worker",

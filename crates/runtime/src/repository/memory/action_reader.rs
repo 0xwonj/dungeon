@@ -134,8 +134,8 @@ mod tests {
                 EntityId::PLAYER,
                 CharacterActionKind::Wait(WaitAction::new(EntityId::PLAYER)),
             ),
-            before_state: Box::new(GameState::default()),
-            after_state: Box::new(GameState::default()),
+            before_state: Box::new(GameState::with_player()),
+            after_state: Box::new(GameState::with_player()),
             delta: None,
         }
     }

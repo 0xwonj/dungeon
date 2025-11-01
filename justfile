@@ -26,14 +26,23 @@
 #   arkworks    - Arkworks circuits (not implemented yet)
 
 # ============================================================================
-# Configuration
+# Configuration & Settings
 # ============================================================================
 
 # Use bash for all recipe scripts
 set shell := ["bash", "-c"]
 
-# Enable .env file loading (optional)
+# Enable .env file loading
 set dotenv-load := true
+
+# Use positional arguments ($1, $2) instead of interpolation for safety
+set positional-arguments := true
+
+# Prevent duplicate recipe definitions
+set allow-duplicate-recipes := false
+
+# Export all variables as environment variables
+set export := true
 
 # Default backend from environment variable or fallback to risc0
 default_backend := env_var_or_default('ZK_BACKEND', 'risc0')
@@ -72,6 +81,15 @@ help:
     @echo "  just clean-logs          Clean only logs"
     @echo "  just rebuild-guest       Rebuild guest program (fixes malformed binary)"
     @echo ""
+    @echo "Quick aliases (frequently used):"
+    @echo "  b     Build workspace            (just build)"
+    @echo "  r     Run CLI client             (just run)"
+    @echo "  t     Run tests                  (just test)"
+    @echo "  l     Run clippy lints           (just lint)"
+    @echo "  f     Format code                (just fmt)"
+    @echo "  fl    Format + lint              (just fmt-lint)"
+    @echo "  c     Run all checks             (just check)"
+    @echo ""
     @echo "Set default backend:"
     @echo "  export ZK_BACKEND=stub"
     @echo "  just build               # Uses stub automatically"
@@ -92,17 +110,19 @@ info:
 # Build Commands
 # ============================================================================
 
-# Build workspace with specified backend (default: from ZK_BACKEND env or risc0)
+# Build workspace with specified backend
 build backend=default_backend:
-    @just _exec {{backend}} "build --workspace"
+    @just _exec {{backend}} build --workspace
+
+alias b := build
 
 # Build specific package with specified backend
 build-package package backend=default_backend:
-    @just _exec {{backend}} "build -p {{package}}"
+    @just _exec {{backend}} build -p {{package}}
 
 # Build in release mode with specified backend
 build-release backend=default_backend:
-    @just _exec {{backend}} "build --workspace --release"
+    @just _exec {{backend}} build --workspace --release
 
 # Clean build artifacts
 clean:
@@ -120,18 +140,23 @@ build-guest:
 
 # Run CLI client with specified backend
 run backend=default_backend *args='':
-    @just _exec {{backend}} "run -p client-cli {{args}}"
+    @just _exec {{backend}} run -p client-cli {{args}}
+
+alias r := run
 
 # Run CLI in fast mode (no proof generation, no persistence)
 run-fast backend=default_backend *args='':
     #!/usr/bin/env bash
+    set -euo pipefail
     export ENABLE_ZK_PROVING=false
     export ENABLE_PERSISTENCE=false
-    just _exec {{backend}} "run -p client-cli {{args}}"
+    backend="$1"
+    shift
+    just _exec "$backend" run -p client-cli "$@"
 
 # Run CLI in release mode
 run-release backend=default_backend *args='':
-    @just _exec {{backend}} "run -p client-cli --release {{args}}"
+    @just _exec {{backend}} run -p client-cli --release {{args}}
 
 # ============================================================================
 # Test Commands
@@ -139,23 +164,47 @@ run-release backend=default_backend *args='':
 
 # Run all tests with specified backend
 test backend=default_backend *args='':
-    @just _exec {{backend}} "test --workspace {{args}}"
+    @just _exec {{backend}} test --workspace {{args}}
+
+alias t := test
 
 # Run tests for specific package
 test-package package backend=default_backend *args='':
-    @just _exec {{backend}} "test -p {{package}} {{args}}"
+    @just _exec {{backend}} test -p {{package}} {{args}}
 
 # Run integration tests only
 test-integration backend=default_backend:
-    @just _exec {{backend}} "test --workspace --test '*'"
+    @just _exec {{backend}} test --workspace --test '*'
 
 # Run lib tests only
 test-lib backend=default_backend:
-    @just _exec {{backend}} "test --workspace --lib"
+    @just _exec {{backend}} test --workspace --lib
 
 # Run tests with output visible (nocapture)
 test-verbose backend=default_backend:
-    @just _exec {{backend}} "test --workspace -- --nocapture"
+    @just _exec {{backend}} test --workspace -- --nocapture
+
+# Watch tests and re-run on file changes (requires cargo-watch)
+watch-test backend=default_backend:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cargo-watch &> /dev/null; then
+        echo "⚠️  cargo-watch not found. Installing..."
+        cargo install cargo-watch
+    fi
+    echo "👀 Watching for changes and running tests..."
+    case "$1" in
+        risc0)
+            cargo watch -x "test --workspace"
+            ;;
+        stub)
+            cargo watch -x "test --workspace --no-default-features --features stub"
+            ;;
+        *)
+            echo "❌ Backend '$1' not supported for watch mode"
+            exit 1
+            ;;
+    esac
 
 # ============================================================================
 # Code Quality Commands
@@ -163,28 +212,37 @@ test-verbose backend=default_backend:
 
 # Run clippy lints with specified backend
 lint backend=default_backend:
-    @just _exec {{backend}} "clippy --workspace --all-targets"
+    @just _exec {{backend}} clippy --workspace --all-targets -- -D warnings
+
+alias l := lint
 
 # Run clippy with automatic fixes
 lint-fix backend=default_backend:
-    @just _exec {{backend}} "clippy --workspace --all-targets --fix --allow-dirty"
+    @just _exec {{backend}} clippy --workspace --all-targets --fix --allow-dirty --allow-staged
 
 # Format all code
 fmt:
     @echo "🎨 Formatting code..."
     cargo fmt --all
 
+alias f := fmt
+
 # Check formatting without modifying files
 fmt-check:
     @echo "🔍 Checking code formatting..."
     cargo fmt --all --check
 
+# Format code and run lints together
+fmt-lint backend=default_backend: fmt (lint backend)
+    @echo "✅ Format and lint complete for {{backend}} backend!"
+
+alias fl := fmt-lint
+
 # Run all checks (format, clippy, tests)
-check backend=default_backend:
-    @echo "🔍 Running all checks with {{backend}} backend..."
-    @just fmt-check
-    @just lint {{backend}}
-    @just test {{backend}}
+check backend=default_backend: fmt-check (lint backend) (test backend)
+    @echo "✅ All checks passed for {{backend}} backend!"
+
+alias c := check
 
 # ============================================================================
 # Multi-Backend Verification
@@ -195,11 +253,11 @@ check-all:
     @echo "🔍 Verifying all implemented backends compile..."
     @echo ""
     @echo "Checking risc0 backend..."
-    @just _exec risc0 "check --workspace"
+    @just _exec risc0 check --workspace
     @echo "✅ RISC0 verified"
     @echo ""
     @echo "Checking stub backend..."
-    @just _exec stub "check --workspace"
+    @just _exec stub check --workspace
     @echo "✅ Stub verified"
     @echo ""
     @echo "✅ All implemented backends verified!"
@@ -207,10 +265,7 @@ check-all:
     @echo "Note: SP1 and Arkworks backends are not yet implemented"
 
 # Lint all backends (comprehensive check)
-lint-all:
-    @echo "🔍 Linting all backends..."
-    @just lint risc0
-    @just lint stub
+lint-all: (lint "risc0") (lint "stub")
     @echo "✅ All backends linted!"
 
 # ============================================================================
@@ -219,38 +274,49 @@ lint-all:
 
 # Generate and open documentation
 doc backend=default_backend:
-    @just _exec {{backend}} "doc --workspace --no-deps --open"
+    @just _exec {{backend}} doc --workspace --no-deps --open
 
 # Generate documentation without opening
 doc-build backend=default_backend:
-    @just _exec {{backend}} "doc --workspace --no-deps"
+    @just _exec {{backend}} doc --workspace --no-deps
 
 # ============================================================================
 # Development Workflows
 # ============================================================================
 
 # Fast development loop: format, lint, test (stub backend)
-dev:
-    @echo "🚀 Running fast development loop (stub backend)..."
-    @just fmt
-    @just lint stub
-    @just test stub
+dev: fmt (lint "stub") (test "stub")
+    @echo "✅ Development checks passed!"
 
 # Pre-commit checks (recommended before committing)
-pre-commit:
-    @echo "🔍 Running pre-commit checks..."
-    @just fmt
-    @just lint stub
-    @just test stub
+pre-commit: fmt (lint "stub") (test "stub")
     @echo "✅ Pre-commit checks passed!"
 
 # Full CI simulation (what CI runs)
-ci:
-    @echo "🤖 Running full CI simulation..."
-    @just fmt-check
-    @just check-all
-    @just test stub
+ci: fmt-check check-all (test "stub")
     @echo "✅ CI simulation passed!"
+
+# Watch mode for continuous development (format + test on changes)
+watch backend=default_backend:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cargo-watch &> /dev/null; then
+        echo "⚠️  cargo-watch not found. Installing..."
+        cargo install cargo-watch
+    fi
+    echo "👀 Watching for changes (format + test)..."
+    case "$1" in
+        risc0)
+            cargo watch -x fmt -x "test --workspace"
+            ;;
+        stub)
+            cargo watch -x fmt -x "test --workspace --no-default-features --features stub"
+            ;;
+        *)
+            echo "❌ Backend '$1' not supported for watch mode"
+            exit 1
+            ;;
+    esac
 
 # ============================================================================
 # Benchmarking & Performance
@@ -258,7 +324,7 @@ ci:
 
 # Run benchmarks (when implemented)
 bench backend=default_backend:
-    @just _exec {{backend}} "bench --workspace"
+    @just _exec {{backend}} bench --workspace
 
 # ============================================================================
 # Utility Commands
@@ -266,10 +332,12 @@ bench backend=default_backend:
 
 # Show dependency tree for a package
 tree package='':
-    @if [ -z "{{package}}" ]; then \
-        cargo tree --workspace; \
-    else \
-        cargo tree -p {{package}}; \
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "$1" ]; then
+        cargo tree --workspace
+    else
+        cargo tree -p "$1"
     fi
 
 # Update dependencies
@@ -279,7 +347,13 @@ update:
 
 # Check for outdated dependencies
 outdated:
-    @echo "🔍 Checking for outdated dependencies..."
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cargo-outdated &> /dev/null; then
+        echo "⚠️  cargo-outdated not found. Installing..."
+        cargo install cargo-outdated
+    fi
+    echo "🔍 Checking for outdated dependencies..."
     cargo outdated
 
 # ============================================================================
@@ -327,28 +401,94 @@ _exec backend *args:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    case "{{backend}}" in
+    backend_name="$1"
+    shift
+
+    # Separate cargo args before and after '--'
+    cargo_args=()
+    rustc_args=()
+    found_separator=false
+
+    for arg in "$@"; do
+        if [ "$arg" = "--" ]; then
+            found_separator=true
+        elif [ "$found_separator" = true ]; then
+            rustc_args+=("$arg")
+        else
+            cargo_args+=("$arg")
+        fi
+    done
+
+    case "$backend_name" in
         risc0)
             echo "🔧 Using RISC0 backend (production mode)"
-            cargo {{args}}
+            if [ "$found_separator" = true ]; then
+                cargo "${cargo_args[@]}" -- "${rustc_args[@]}"
+            else
+                cargo "${cargo_args[@]}"
+            fi
             ;;
         stub)
             echo "🎭 Using Stub backend (no real proofs)"
-            cargo {{args}} --no-default-features --features stub
+            if [ "$found_separator" = true ]; then
+                cargo "${cargo_args[@]}" --no-default-features --features stub -- "${rustc_args[@]}"
+            else
+                cargo "${cargo_args[@]}" --no-default-features --features stub
+            fi
             ;;
         sp1)
             echo "🔧 Using SP1 backend"
-            cargo {{args}} --no-default-features --features sp1
+            if [ "$found_separator" = true ]; then
+                cargo "${cargo_args[@]}" --no-default-features --features sp1 -- "${rustc_args[@]}"
+            else
+                cargo "${cargo_args[@]}" --no-default-features --features sp1
+            fi
             ;;
         arkworks)
             echo "🔧 Using Arkworks backend"
-            cargo {{args}} --no-default-features --features arkworks
+            if [ "$found_separator" = true ]; then
+                cargo "${cargo_args[@]}" --no-default-features --features arkworks -- "${rustc_args[@]}"
+            else
+                cargo "${cargo_args[@]}" --no-default-features --features arkworks
+            fi
             ;;
         *)
-            echo "❌ Error: Unknown backend '{{backend}}'"
+            echo "❌ Error: Unknown backend '$backend_name'"
             echo ""
             echo "Available backends:"
             echo "  risc0, stub, sp1, arkworks"
             exit 1
             ;;
     esac
+
+# Install common development tools
+[private]
+install-dev-tools:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "🔧 Installing common development tools..."
+    tools=(
+        "cargo-watch"
+        "cargo-outdated"
+    )
+
+    for tool in "${tools[@]}"; do
+        if ! command -v "$tool" &> /dev/null; then
+            echo "  Installing $tool..."
+            cargo install "$tool"
+        else
+            echo "  ✓ $tool already installed"
+        fi
+    done
+
+    echo "✅ All development tools installed!"
+
+# Bootstrap development environment
+bootstrap: install-dev-tools
+    @echo "🚀 Development environment ready!"
+    @echo ""
+    @echo "Try these commands:"
+    @echo "  just dev          # Fast development loop"
+    @echo "  just watch stub   # Watch mode with auto-testing"
+    @echo "  just help         # See all available commands"

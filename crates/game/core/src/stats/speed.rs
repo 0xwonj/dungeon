@@ -4,8 +4,8 @@
 //! Action costs are computed from base costs and speed values.
 //!
 //! Formulas:
-//! - SpeedKind = base + weighted(CoreEffective) - penalties
-//! - final_cost = base_cost × Conditions × 100 / clamp(SpeedKind, 50, 200)
+//! - SpeedKind = 20 + weighted(CoreEffective)
+//! - final_cost = base_cost × 100 / clamp(SpeedKind, 1, 10000)
 
 use super::bonus::{BonusStack, StatBounds, StatLayer};
 use super::core::CoreEffective;
@@ -31,13 +31,13 @@ impl SpeedStats {
     /// Compute base speed stats from CoreEffective (internal helper)
     ///
     /// Formulas:
-    /// - Physical: 100 + DEX × 0.8 + STR × 0.2 - ArmorPenalty
-    /// - Cognitive: 100 + INT × 0.6 + WIL × 0.4
-    /// - Ritual: 100 + WIL × 0.5 + EGO × 0.5
+    /// - Physical: 20 + DEX × 4 + STR × 1
+    /// - Cognitive: 20 + INT × 3 + WIL × 2
+    /// - Ritual: 20 + WIL × 2.5 + EGO × 2.5
     fn compute_base(core: &CoreEffective) -> Self {
-        let physical = 100 + (core.dex * 8 / 10) + (core.str * 2 / 10);
-        let cognitive = 100 + (core.int * 6 / 10) + (core.wil * 4 / 10);
-        let ritual = 100 + (core.wil * 5 / 10) + (core.ego * 5 / 10);
+        let physical = 20 + (core.dex * 4) + core.str;
+        let cognitive = 20 + (core.int * 3) + (core.wil * 2);
+        let ritual = 20 + (core.wil * 5 / 2) + (core.ego * 5 / 2);
 
         Self {
             physical,
@@ -77,28 +77,25 @@ impl StatLayer for SpeedStats {
     type Final = Self;
 
     fn compute(base: &Self::Base, bonuses: &Self::Bonuses) -> Self::Final {
-        let bounds = StatBounds::SPEED_STATS;
+        const BOUNDS: StatBounds = StatBounds::SPEED;
+
         let base_speed = Self::compute_base(base);
 
         Self {
             physical: bonuses
                 .physical
-                .apply(base_speed.physical, bounds.min, bounds.max),
+                .apply(base_speed.physical, BOUNDS.min, BOUNDS.max),
             cognitive: bonuses
                 .cognitive
-                .apply(base_speed.cognitive, bounds.min, bounds.max),
+                .apply(base_speed.cognitive, BOUNDS.min, BOUNDS.max),
             ritual: bonuses
                 .ritual
-                .apply(base_speed.ritual, bounds.min, bounds.max),
+                .apply(base_speed.ritual, BOUNDS.min, BOUNDS.max),
         }
     }
 
     fn empty_bonuses() -> Self::Bonuses {
         SpeedBonuses::new()
-    }
-
-    fn bounds() -> Option<StatBounds> {
-        Some(StatBounds::SPEED_STATS)
     }
 }
 
@@ -135,14 +132,9 @@ impl SpeedKind {
 ///
 /// # Returns
 /// The final cost in timeline ticks
-///
-/// # Examples
-/// - Normal action (cost 10, speed 100): 10 × 100 / 100 = 10
-/// - Fast action (cost 10, speed 200): 10 × 100 / 200 = 5
-/// - Slow action (cost 10, speed 50): 10 × 100 / 50 = 20
 pub fn calculate_action_cost(base_cost: u64, speed: i32) -> u64 {
-    const MIN_SPEED: i32 = 50;
-    const MAX_SPEED: i32 = 200;
+    const MIN_SPEED: i32 = 1;
+    const MAX_SPEED: i32 = 10000;
 
     let clamped_speed = speed.clamp(MIN_SPEED, MAX_SPEED).max(1) as u64;
     (base_cost * 100) / clamped_speed

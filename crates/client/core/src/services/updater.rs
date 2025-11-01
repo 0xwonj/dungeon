@@ -7,18 +7,6 @@
 //!
 //! - `UpdateScope`: Bitflags tracking which parts of ViewModel changed (for selective rendering)
 //! - `ViewModelUpdater`: Stateless service for applying runtime Events to ViewModel
-//!
-//! # Usage
-//!
-//! ```ignore
-//! let scope = ViewModelUpdater::update(&mut view_model, &event, state, map_oracle);
-//!
-//! if scope.contains(UpdateScope::PLAYER_ONLY) {
-//!     render_player_stats_only();
-//! } else if scope.contains(UpdateScope::ACTORS) {
-//!     render_full_map();
-//! }
-//! ```
 
 use bitflags::bitflags;
 use game_core::{GameState, StateDelta, env::MapOracle};
@@ -43,20 +31,6 @@ bitflags! {
     /// - Each flag represents a logical section of ViewModel
     /// - Flags can be combined (e.g., `ACTORS | ITEMS`)
     /// - Composite flags like `ENTITIES` and `ALL` provide convenient shortcuts
-    ///
-    /// # Performance Optimization
-    ///
-    /// Widgets can check specific flags to avoid expensive re-renders:
-    ///
-    /// ```ignore
-    /// if scope.contains(UpdateScope::PLAYER_ONLY) {
-    ///     // Only player changed → cheap stats update
-    ///     render_player_panel();
-    /// } else if scope.intersects(UpdateScope::ACTORS) {
-    ///     // Actors changed → expensive map re-render
-    ///     render_full_map();
-    /// }
-    /// ```
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct UpdateScope: u32 {
         /// Turn metadata changed (clock, current actor, active actors).
@@ -155,21 +129,6 @@ impl ViewModelUpdater {
     /// # Returns
     ///
     /// UpdateScope flags indicating which ViewModel fields were updated.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let scope = ViewModelUpdater::update(
-    ///     &mut view_model,
-    ///     &event,
-    ///     state,
-    ///     map_oracle,
-    /// );
-    ///
-    /// if scope.contains(UpdateScope::ACTORS) {
-    ///     // Re-render actor positions
-    /// }
-    /// ```
     pub fn update<M: MapOracle + ?Sized>(
         view_model: &mut ViewModel,
         event: &Event,

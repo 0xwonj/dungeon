@@ -1,5 +1,5 @@
 //! Maintains the CLI message log in response to runtime events.
-use game_core::{Action, CharacterActionKind};
+use game_core::{Action, ActionResult, AttackOutcome, CharacterActionKind, EntityId};
 use runtime::{Event, GameStateEvent};
 
 use client_core::{
@@ -16,17 +16,73 @@ impl CliEventConsumer {
         Self { log }
     }
 
-    fn push_action(&mut self, action: &Action, timestamp: u64) {
-        let text = match action {
-            Action::Character { actor, kind } => match kind {
-                CharacterActionKind::Move(movement) => {
-                    format!("{} moves {:?}", actor, movement.direction)
+    fn push_action(&mut self, action: &Action, action_result: &ActionResult, timestamp: u64) {
+        let text = match (action, action_result) {
+            // Attack with result
+            (
+                Action::Character {
+                    actor,
+                    kind: CharacterActionKind::Attack(attack),
+                },
+                ActionResult::Attack(attack_result),
+            ) => {
+                let attacker_name = self.actor_name(*actor);
+                let defender_name = self.actor_name(attack.target);
+
+                match attack_result.outcome {
+                    AttackOutcome::Miss => {
+                        format!("{} attacks {} but misses!", attacker_name, defender_name)
+                    }
+                    AttackOutcome::Hit => {
+                        let damage = attack_result.damage.unwrap_or(0);
+                        format!(
+                            "{} attacks {} for {} damage",
+                            attacker_name, defender_name, damage
+                        )
+                    }
+                    AttackOutcome::Critical => {
+                        let damage = attack_result.damage.unwrap_or(0);
+                        format!(
+                            "{} CRITICALLY hits {} for {} damage!",
+                            attacker_name, defender_name, damage
+                        )
+                    }
                 }
-                CharacterActionKind::Wait(_) => format!("{} waits", actor),
-                other => format!("{} performs {:?}", actor, other),
-            },
-            Action::System { kind } => format!("System: {:?}", kind),
+            }
+
+            // Move
+            (
+                Action::Character {
+                    actor,
+                    kind: CharacterActionKind::Move(movement),
+                },
+                ActionResult::Move,
+            ) => {
+                format!("{} moves {:?}", self.actor_name(*actor), movement.direction)
+            }
+
+            // Wait
+            (
+                Action::Character {
+                    actor,
+                    kind: CharacterActionKind::Wait(_),
+                },
+                ActionResult::Wait,
+            ) => {
+                format!("{} waits", self.actor_name(*actor))
+            }
+
+            // Other actions (UseItem, Interact, etc.)
+            (Action::Character { actor, kind }, _) => {
+                format!("{} performs {:?}", self.actor_name(*actor), kind)
+            }
+
+            // System actions
+            (Action::System { kind }, _) => {
+                format!("System: {:?}", kind)
+            }
         };
+
         self.log
             .push(MessageEntry::new(text, Some(timestamp), MessageLevel::Info));
     }
@@ -39,24 +95,30 @@ impl CliEventConsumer {
             MessageLevel::Error,
         ));
     }
+
+    fn actor_name(&self, id: EntityId) -> String {
+        if id == EntityId::PLAYER {
+            "Player".to_string()
+        } else {
+            // TODO: Get actor name from oracle
+            format!("NPC#{}", id.0)
+        }
+    }
 }
 
 impl EventConsumer for CliEventConsumer {
     fn on_event(&mut self, event: &Event) -> EventImpact {
         match event {
             Event::GameState(GameStateEvent::ActionExecuted {
-                nonce: _,
                 action,
-                delta: _,
+                action_result,
                 clock,
-                before_state: _,
-                after_state: _,
+                ..
             }) => {
                 // Filter out system actions from message log
                 if !action.actor().is_system() {
-                    self.push_action(action, *clock);
+                    self.push_action(action, action_result, *clock);
                 }
-                // TODO: Use delta for more detailed feedback (e.g., "HP -5", "Item acquired")
                 EventImpact::redraw()
             }
             Event::GameState(GameStateEvent::ActionFailed {

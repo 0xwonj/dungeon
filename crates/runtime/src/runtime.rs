@@ -479,11 +479,9 @@ impl RuntimeBuilder {
             tracing::info!("Initializing from scenario: {}", scenario.map_id);
             scenario.create_initial_state(&oracles)?
         } else {
-            // No state or scenario provided - start with empty state
-            tracing::warn!(
-                "No scenario or initial state provided - using default (player inactive)"
-            );
-            GameState::default()
+            // No state or scenario provided - start with player state
+            tracing::warn!("No scenario or initial state provided - using default with player");
+            GameState::with_player()
         };
 
         let (command_tx, command_rx) = mpsc::channel::<Command>(config.command_buffer_size);

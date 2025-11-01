@@ -1,7 +1,6 @@
-use core::convert::Infallible;
-
 use crate::action::ActionTransition;
 use crate::env::GameEnv;
+use crate::error::NeverError;
 use crate::state::{EntityId, GameState, Tick};
 
 /// Wait action - actor passes their turn without performing any action.
@@ -18,14 +17,15 @@ impl WaitAction {
 }
 
 impl ActionTransition for WaitAction {
-    type Error = Infallible;
+    type Error = NeverError;
+    type Result = ();
 
     fn actor(&self) -> EntityId {
         self.actor
     }
 
-    fn cost(&self) -> Tick {
-        10
+    fn cost(&self, env: &GameEnv<'_>) -> Tick {
+        env.tables().map(|t| t.action_costs().wait).unwrap_or(100)
     }
 
     fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {

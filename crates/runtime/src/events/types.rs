@@ -1,7 +1,8 @@
 //! Event types for different topics.
 
 use game_core::{
-    Action, CharacterActionKind, EntityId, GameState, StateDelta, Tick, engine::TransitionPhase,
+    Action, ActionResult, CharacterActionKind, EntityId, GameState, StateDelta, Tick,
+    engine::TransitionPhase,
 };
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +20,8 @@ pub enum GameStateEvent {
         clock: Tick,
         before_state: Box<GameState>,
         after_state: Box<GameState>,
+        /// Action-specific execution result (e.g., combat outcome, item effects)
+        action_result: ActionResult,
     },
 
     /// An action failed during execution pipeline
@@ -58,29 +61,6 @@ pub enum ProofEvent {
 /// This is a lightweight reference stored in the events.log to maintain the
 /// complete event timeline without duplicating the full action data.
 /// The full `ActionLogEntry` can be retrieved from actions.log using the offset.
-///
-/// # Purpose
-///
-/// - Keeps events.log small and fast to scan
-/// - Maintains chronological event ordering
-/// - Allows filtering events by actor without loading full action data
-/// - Provides unique nonce for tracking proof generation
-///
-/// # Example
-///
-/// ```rust,ignore
-/// // In events.log
-/// let action_ref = ActionRef {
-///     nonce: 42,  // Unique action identifier
-///     action_offset: 12345,  // Byte offset in actions.log
-///     clock: 10,
-///     actor: EntityId::PLAYER,
-///     action_kind: Some(ActionKind::Move),
-/// };
-///
-/// // To get full data:
-/// let full_entry = actions_log.read_at_offset(action_ref.action_offset)?;
-/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionRef {
     /// Unique sequential action identifier from GameState.turn.action_nonce

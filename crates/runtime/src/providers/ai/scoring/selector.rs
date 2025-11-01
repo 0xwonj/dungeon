@@ -15,20 +15,6 @@
 //!
 //! The [`TacticScorer`] evaluates all tactics for a given intent using
 //! scoring functions from [`super::tactics`] and selects the highest-scoring tactic.
-//!
-//! # Example
-//!
-//! ```rust,ignore
-//! use runtime::providers::ai::scoring::selector::{IntentScorer, TacticScorer};
-//!
-//! // Layer 1: Select intent
-//! let (intent, _) = IntentScorer::select(&ctx);
-//!
-//! // Layer 2: Select tactic for that intent
-//! let (tactic, _) = TacticScorer::select(intent, &ctx);
-//!
-//! println!("Intent: {:?}, Tactic: {:?}", intent, tactic);
-//! ```
 
 use super::Score;
 use super::{intents, tactics};
@@ -72,29 +58,6 @@ impl IntentScorer {
     /// # Returns
     ///
     /// The selected `Intent` and its detailed `Score`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,ignore
-    /// let (intent, score) = IntentScorer::select(&ctx);
-    ///
-    /// println!("Selected: {:?}", intent);
-    /// println!("Score breakdown: is_possible={}, situation={}, personality={}, modifier={}",
-    ///     score.is_possible, score.situation, score.personality, score.modifier);
-    /// println!("Final value: {}", score.value());
-    /// ```
-    ///
-    /// # Debugging
-    ///
-    /// To debug intent selection, you can evaluate all intents explicitly:
-    ///
-    /// ```rust,ignore
-    /// for intent in Intent::all() {
-    ///     let score = IntentScorer::score_intent(intent, &ctx);
-    ///     println!("{:?}: {} (sit={}, pers={}, mod={})",
-    ///         intent, score.value(), score.situation, score.personality, score.modifier);
-    /// }
-    /// ```
     pub fn select(ctx: &AiContext) -> (Intent, Score) {
         let mut best_intent = Intent::Idle;
         let mut best_score = Score::impossible();
@@ -144,17 +107,6 @@ impl IntentScorer {
     /// # Returns
     ///
     /// The detailed `Score` for this intent.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let combat_score = IntentScorer::score_intent(Intent::Combat, &ctx);
-    /// let survival_score = IntentScorer::score_intent(Intent::Survival, &ctx);
-    ///
-    /// if combat_score.value() > survival_score.value() {
-    ///     println!("NPC prefers combat over survival");
-    /// }
-    /// ```
     pub fn score_intent(intent: Intent, ctx: &AiContext) -> Score {
         match intent {
             Intent::Combat => intents::combat(ctx),
@@ -178,17 +130,6 @@ impl IntentScorer {
     /// # Returns
     ///
     /// Array of all 6 intents paired with their scores, in declaration order.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let all_scores = IntentScorer::evaluate_all(&ctx);
-    ///
-    /// for (intent, score) in all_scores {
-    ///     println!("{:?}: {} (sit={}, pers={}, mod={})",
-    ///         intent, score.value(), score.situation, score.personality, score.modifier);
-    /// }
-    /// ```
     pub fn evaluate_all(ctx: &AiContext) -> [(Intent, Score); 6] {
         [
             (Intent::Combat, Self::score_intent(Intent::Combat, ctx)),
@@ -253,29 +194,6 @@ impl TacticScorer {
     /// # Returns
     ///
     /// The selected `Tactic` and its detailed `Score`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,ignore
-    /// let (tactic, score) = TacticScorer::select(Intent::Combat, &ctx);
-    ///
-    /// println!("Selected: {:?}", tactic);
-    /// println!("Score breakdown: is_possible={}, situation={}, personality={}, modifier={}",
-    ///     score.is_possible, score.situation, score.personality, score.modifier);
-    /// println!("Final value: {}", score.value());
-    /// ```
-    ///
-    /// # Debugging
-    ///
-    /// To debug tactic selection, you can evaluate all tactics explicitly:
-    ///
-    /// ```rust,ignore
-    /// for &tactic in Tactic::for_intent(Intent::Combat) {
-    ///     let score = TacticScorer::score_tactic(tactic, &ctx);
-    ///     println!("{:?}: {} (sit={}, pers={}, mod={})",
-    ///         tactic, score.value(), score.situation, score.personality, score.modifier);
-    /// }
-    /// ```
     pub fn select(intent: Intent, ctx: &AiContext) -> (Tactic, Score) {
         let candidates = Tactic::for_intent(intent);
 
@@ -347,17 +265,6 @@ impl TacticScorer {
     /// # Returns
     ///
     /// The detailed `Score` for this tactic.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let aggressive_score = TacticScorer::score_tactic(Tactic::AggressiveMelee, &ctx);
-    /// let defensive_score = TacticScorer::score_tactic(Tactic::DefensiveMelee, &ctx);
-    ///
-    /// if aggressive_score.value() > defensive_score.value() {
-    ///     println!("NPC prefers aggressive over defensive melee");
-    /// }
-    /// ```
     pub fn score_tactic(tactic: Tactic, ctx: &AiContext) -> Score {
         match tactic {
             // Combat tactics (fully implemented)
@@ -406,17 +313,6 @@ impl TacticScorer {
     /// # Returns
     ///
     /// Vector of all tactics for this intent paired with their scores.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let all_scores = TacticScorer::evaluate_all(Intent::Combat, &ctx);
-    ///
-    /// for (tactic, score) in all_scores {
-    ///     println!("{:?}: {} (sit={}, pers={}, mod={})",
-    ///         tactic, score.value(), score.situation, score.personality, score.modifier);
-    /// }
-    /// ```
     pub fn evaluate_all(intent: Intent, ctx: &AiContext) -> Vec<(Tactic, Score)> {
         Tactic::for_intent(intent)
             .iter()

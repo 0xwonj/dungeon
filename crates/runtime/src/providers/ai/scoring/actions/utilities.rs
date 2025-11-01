@@ -33,14 +33,6 @@ use crate::providers::ai::AiContext;
 /// # Returns
 ///
 /// `true` if the move reduces distance to player, `false` otherwise.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// if move_towards_player(&move_action, &ctx) {
-///     // This move closes the gap - good for aggressive tactics
-/// }
-/// ```
 pub fn move_towards_player(move_action: &MoveAction, ctx: &AiContext) -> bool {
     let new_pos = ctx.position_after_move(move_action.direction);
     let current_dist = ctx.distance_to_player();
@@ -58,14 +50,6 @@ pub fn move_towards_player(move_action: &MoveAction, ctx: &AiContext) -> bool {
 /// # Returns
 ///
 /// `true` if the move increases distance to player, `false` otherwise.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// if move_away_from_player(&move_action, &ctx) {
-///     // This move creates distance - good for kiting/fleeing
-/// }
-/// ```
 pub fn move_away_from_player(move_action: &MoveAction, ctx: &AiContext) -> bool {
     let new_pos = ctx.position_after_move(move_action.direction);
     let current_dist = ctx.distance_to_player();
@@ -85,14 +69,6 @@ pub fn move_away_from_player(move_action: &MoveAction, ctx: &AiContext) -> bool 
 /// # Returns
 ///
 /// `true` if the move maintains distance (±1 tile), `false` otherwise.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// if move_maintains_distance(&move_action, &ctx) {
-///     // This move circles around - could be tactical positioning
-/// }
-/// ```
 pub fn move_maintains_distance(move_action: &MoveAction, ctx: &AiContext) -> bool {
     let new_pos = ctx.position_after_move(move_action.direction);
     let current_dist = ctx.distance_to_player();
@@ -122,16 +98,6 @@ pub fn move_maintains_distance(move_action: &MoveAction, ctx: &AiContext) -> boo
 /// - 40: Within 3 tiles of ideal range
 /// - 20: Within 4 tiles of ideal range
 /// - 0: 5+ tiles away from ideal range
-///
-/// # Example
-///
-/// ```rust,ignore
-/// // Kiting prefers 4-6 tile range
-/// let score = score_distance_to_ideal(&move_action, &ctx, 4, 6);
-/// if score >= 80 {
-///     println!("This move gets us close to ideal kiting range!");
-/// }
-/// ```
 pub fn score_distance_to_ideal(
     move_action: &MoveAction,
     ctx: &AiContext,
@@ -182,13 +148,6 @@ pub fn score_distance_to_ideal(
 /// - 30: Distance 5
 /// - 20: Distance 6-7
 /// - 10: Distance 8+
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let dist = ctx.distance_to_player();
-/// let attack_score = score_attack_by_distance(dist);
-/// ```
 pub fn score_attack_by_distance(distance: u32) -> u32 {
     match distance {
         0..=1 => 100,
@@ -215,17 +174,6 @@ pub fn score_attack_by_distance(distance: u32) -> u32 {
 ///
 /// - `Some(CardinalDirection)` if the action is a Move
 /// - `None` otherwise
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use game_core::CharacterActionKind;
-///
-/// if let Some(direction) = extract_move_direction(&action) {
-///     let new_pos = ctx.position_after_move(direction);
-///     // ...
-/// }
-/// ```
 pub fn extract_move_direction(
     action: &game_core::CharacterActionKind,
 ) -> Option<CardinalDirection> {
@@ -294,15 +242,6 @@ pub fn is_wait_action(action: &game_core::CharacterActionKind) -> bool {
 /// - 40-60: Medium threat
 /// - 10-30: Low threat
 /// - 0: No threat
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let threat = calculate_threat_level(&ctx);
-/// if threat > 70 {
-///     // Consider defensive or survival tactics
-/// }
-/// ```
 pub fn calculate_threat_level(ctx: &AiContext) -> u32 {
     let distance = ctx.distance_to_player();
     let hp = ctx.hp_ratio();

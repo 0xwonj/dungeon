@@ -13,11 +13,14 @@ use crate::env::GameEnv;
 use crate::state::{EntityId, GameState, Tick};
 
 pub use available::get_available_actions;
-pub use combat::{AttackAction, AttackStyle};
+pub use combat::{AttackAction, AttackError};
 pub use interact::InteractAction;
 pub use inventory::{InventoryIndex, ItemTarget, UseItemAction};
 pub use movement::{CardinalDirection, MoveAction, MoveError};
-pub use system::{ActionCostAction, ActivationAction, PrepareTurnAction, TurnError};
+pub use system::{
+    ActionCostAction, ActionCostError, ActivationAction, ActivationError, PrepareTurnAction,
+    TurnError,
+};
 pub use wait::WaitAction;
 
 /// Defines how a concrete action variant mutates game state while mirroring
@@ -27,16 +30,26 @@ pub use wait::WaitAction;
 /// post-conditions that must hold around the state mutation. All hooks receive
 /// read-only access to deterministic environment facts via `Env` and must stay
 /// side-effect free.
+///
+/// # Associated Types
+///
+/// - `Error`: Error type for validation and execution failures
+/// - `Result`: Execution result metadata (e.g., combat outcome, movement penalties)
+///   - Use `()` for actions with no meaningful result
+///   - Use specific result types (e.g., `AttackResult`) for actions with outcomes
 pub trait ActionTransition {
     type Error;
+    type Result;
 
     /// Returns the entity performing this action.
     /// For system actions, this should return `EntityId::SYSTEM`.
     fn actor(&self) -> EntityId;
 
-    /// Returns the time cost of this action in ticks.
-    /// This cost is used to advance the actor's ready_at value.
-    fn cost(&self) -> Tick;
+    /// Returns the base time cost of this action in ticks (before speed scaling).
+    ///
+    /// This cost is retrieved from the TablesOracle to enable runtime balancing.
+    /// The final cost is calculated by applying speed scaling via `calculate_action_cost()`.
+    fn cost(&self, env: &GameEnv<'_>) -> Tick;
 
     /// Validates pre-conditions using the state **before** mutation.
     fn pre_validate(&self, _state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
@@ -45,7 +58,9 @@ pub trait ActionTransition {
 
     /// Applies the action by mutating the game state directly. Implementations should
     /// assume that `pre_validate` has already run successfully.
-    fn apply(&self, state: &mut GameState, env: &GameEnv<'_>) -> Result<(), Self::Error>;
+    ///
+    /// Returns action-specific execution metadata (e.g., combat results, item effects).
+    fn apply(&self, state: &mut GameState, env: &GameEnv<'_>) -> Result<Self::Result, Self::Error>;
 
     /// Validates post-conditions using the state **after** mutation.
     fn post_validate(&self, _state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
@@ -118,23 +133,25 @@ impl Action {
     }
 
     /// Returns the time cost (in ticks) for this action.
+    ///
     /// Cost is scaled by the actor's speed stat (from snapshot).
-    pub fn cost(&self, snapshot: &crate::stats::StatsSnapshot) -> Tick {
+    /// Base costs are retrieved from TablesOracle.
+    pub fn cost(&self, snapshot: &crate::stats::StatsSnapshot, env: &GameEnv<'_>) -> Tick {
         use crate::action::ActionTransition;
         use crate::stats::calculate_action_cost;
 
         let base_cost = match self {
             Action::Character { kind, .. } => match kind {
-                CharacterActionKind::Move(action) => action.cost(),
-                CharacterActionKind::Attack(action) => action.cost(),
-                CharacterActionKind::UseItem(action) => action.cost(),
-                CharacterActionKind::Interact(action) => action.cost(),
-                CharacterActionKind::Wait(action) => action.cost(),
+                CharacterActionKind::Move(action) => action.cost(env),
+                CharacterActionKind::Attack(action) => action.cost(env),
+                CharacterActionKind::UseItem(action) => action.cost(env),
+                CharacterActionKind::Interact(action) => action.cost(env),
+                CharacterActionKind::Wait(action) => action.cost(env),
             },
             Action::System { kind } => match kind {
-                SystemActionKind::PrepareTurn(action) => action.cost(),
-                SystemActionKind::ActionCost(action) => action.cost(),
-                SystemActionKind::Activation(action) => action.cost(),
+                SystemActionKind::PrepareTurn(action) => action.cost(env),
+                SystemActionKind::ActionCost(action) => action.cost(env),
+                SystemActionKind::Activation(action) => action.cost(env),
             },
         };
 

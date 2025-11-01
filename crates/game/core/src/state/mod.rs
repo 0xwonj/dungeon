@@ -13,8 +13,8 @@ pub use delta::{
     OccupancyChanges, PropChanges, PropFields, StateDelta, TurnChanges, TurnFields, WorldChanges,
 };
 pub use types::{
-    ActionAbilities, ActionAbility, ActionKind, ActorState, ArmorKind, EntitiesState, EntityId,
-    Equipment, EquipmentBuilder, InventorySlot, InventoryState, ItemHandle, ItemState,
+    ActionAbilities, ActionAbility, ActionKind, ActorState, ArmorKind, AttackType, EntitiesState,
+    EntityId, Equipment, EquipmentBuilder, InventorySlot, InventoryState, ItemHandle, ItemState,
     PassiveAbilities, PassiveAbility, PassiveKind, Position, PropKind, PropState, StatusEffect,
     StatusEffectKind, StatusEffects, Tick, TileMap, TileView, TurnState, WeaponKind, WorldState,
 };
@@ -23,6 +23,12 @@ pub use types::{
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GameState {
+    /// RNG seed for deterministic random generation.
+    ///
+    /// Set once at game initialization and never modified.
+    /// Combined with `turn.nonce` to generate unique seeds for each random event.
+    pub game_seed: u64,
+
     /// Sequential entity ID allocator (monotonically increasing).
     ///
     /// Never reused. IDs 0 (PLAYER) and u32::MAX (SYSTEM) are reserved.
@@ -40,7 +46,24 @@ impl GameState {
     /// Creates a fresh state from the provided sub-components.
     pub fn new(turn: TurnState, entities: EntitiesState, world: WorldState) -> Self {
         Self {
+            game_seed: 0,      // Default seed (should be set explicitly)
             next_entity_id: 1, // Start at 1 (0 is reserved for PLAYER)
+            turn,
+            entities,
+            world,
+        }
+    }
+
+    /// Creates a fresh state with a specific game seed.
+    pub fn with_seed(
+        game_seed: u64,
+        turn: TurnState,
+        entities: EntitiesState,
+        world: WorldState,
+    ) -> Self {
+        Self {
+            game_seed,
+            next_entity_id: 1,
             turn,
             entities,
             world,
@@ -53,6 +76,7 @@ impl GameState {
     /// Use this when you'll be adding all entities explicitly (e.g., from a scenario).
     pub fn empty() -> Self {
         Self {
+            game_seed: 0,
             next_entity_id: 1, // Start at 1 (0 is reserved for PLAYER)
             turn: TurnState::default(),
             entities: EntitiesState::empty(),
@@ -119,13 +143,6 @@ impl GameState {
     ///
     /// - `Ok(())` if player was added successfully
     /// - `Err` if the actors list is full
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let template = oracles.actors().template("player")?;
-    /// state.add_player(template, Position::new(5, 5))?;
-    /// ```
     pub fn add_player(
         &mut self,
         template: &crate::env::ActorTemplate,
@@ -164,13 +181,6 @@ impl GameState {
     ///
     /// - `Ok(EntityId)` - The allocated entity ID for this NPC
     /// - `Err` if the actors list is full
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let template = oracles.actors().template("goblin_scout")?;
-    /// let npc_id = state.add_npc(template, Position::new(10, 10))?;
-    /// ```
     pub fn add_npc(
         &mut self,
         template: &crate::env::ActorTemplate,
@@ -198,17 +208,19 @@ impl GameState {
     }
 }
 
-impl Default for GameState {
-    fn default() -> Self {
+impl GameState {
+    /// Create a default game state with a player.
+    pub fn with_player() -> Self {
         let mut state = Self {
+            game_seed: 0,      // Default seed
             next_entity_id: 1, // Start at 1 (0 is reserved for PLAYER)
             turn: TurnState::default(),
-            entities: EntitiesState::default(),
+            entities: EntitiesState::with_player(),
             world: WorldState::default(),
         };
 
         // IMPORTANT: Activate the default player so they can act
-        // EntitiesState::default() creates a player actor, but doesn't add to active_actors
+        // EntitiesState::with_player() creates a player actor, but doesn't add to active_actors
         // We need to ensure player is ready to act
         if let Some(player) = state.entities.actors.first_mut() {
             player.ready_at = Some(0);

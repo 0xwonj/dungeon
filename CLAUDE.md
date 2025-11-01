@@ -207,9 +207,9 @@ crates/
 - **Modules**:
   - `builder`: `RuntimeBuilder` builder pattern for assembling runtime with configuration
   - `config`: `CliConfig` and environment variable loading for client configuration
-  - `oracles`: `OracleBundle`, `OracleFactory` trait, and `TestOracleFactory` implementation
+  - `oracles`: `OracleBundle`, `OracleFactory` trait, and `ContentOracleFactory` implementation
 - **Purpose**: Reusable setup code shared across CLI, UI, and other front-end crates
-- **Exports**: `RuntimeBuilder`, `RuntimeSetup`, `CliConfig`, `OracleBundle`, `OracleFactory`
+- **Exports**: `RuntimeBuilder`, `RuntimeSetup`, `CliConfig`, `OracleBundle`, `OracleFactory`, `ContentOracleFactory`
 
 ### client/cli: Terminal Interface
 
@@ -352,7 +352,7 @@ Keep commits scoped to single concerns. Include doc updates when behavior change
 
 - Runtime configuration and bootstrap logic (`RuntimeBuilder`, `RuntimeSetup`)
 - Configuration loading from environment variables (`CliConfig`)
-- Oracle factory trait and implementations (`OracleFactory`, `TestOracleFactory`)
+- Oracle factory trait and implementations (`OracleFactory`, `ContentOracleFactory`)
 - Oracle bundle assembly (`OracleBundle`)
 - Reusable setup utilities for all client front-ends
 

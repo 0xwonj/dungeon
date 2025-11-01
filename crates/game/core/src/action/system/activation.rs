@@ -5,7 +5,9 @@
 
 use crate::action::ActionTransition;
 use crate::env::GameEnv;
+use crate::error::{ErrorContext, ErrorSeverity, GameError};
 use crate::state::{EntityId, GameState, Position, Tick};
+use crate::stats::calculate_action_cost;
 
 /// System action that updates entity activation status based on player proximity.
 ///
@@ -44,22 +46,25 @@ impl ActivationAction {
 
 impl ActionTransition for ActivationAction {
     type Error = ActivationError;
+    type Result = ();
 
     fn actor(&self) -> EntityId {
         EntityId::SYSTEM
     }
 
-    fn pre_validate(&self, _state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
+    fn pre_validate(&self, state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
+        let nonce = state.turn.nonce;
+
         // Verify this action is executed by the SYSTEM actor
         if self.actor() != EntityId::SYSTEM {
-            return Err(ActivationError::NotSystemActor);
+            return Err(ActivationError::not_system_actor(nonce));
         }
 
         Ok(())
     }
 
     fn apply(&self, state: &mut GameState, env: &GameEnv<'_>) -> Result<(), Self::Error> {
-        let activation_radius = env.activation_radius();
+        let activation_radius = env.activation_radius().unwrap_or(0);
         let clock = state.turn.clock;
 
         // Collect NPC data to avoid borrow checker issues (skip player at index 0)
@@ -82,12 +87,15 @@ impl ActionTransition for ActivationAction {
                 if !is_active && is_alive {
                     state.turn.active_actors.insert(entity_id);
 
-                    // Set initial ready_at using Wait action cost (100 ticks scaled by speed)
-                    // This gives the NPC time to "wake up" before acting
+                    // Set initial ready_at using activation cost from oracle scaled by speed
+                    // This gives the NPC a brief "wake up" delay before acting
                     if let Some(actor) = state.entities.actor_mut(entity_id) {
                         let snapshot = actor.snapshot();
-                        let speed = snapshot.speed.physical.max(1) as u64;
-                        let delay = 100 * 100 / speed;
+                        let base_cost = env
+                            .tables()
+                            .map(|t| t.action_costs().activation)
+                            .unwrap_or(100);
+                        let delay = calculate_action_cost(base_cost, snapshot.speed.physical);
                         actor.ready_at = Some(clock + delay);
                     }
                 }
@@ -119,19 +127,67 @@ impl ActionTransition for ActivationAction {
         Ok(())
     }
 
-    fn cost(&self) -> Tick {
+    fn cost(&self, _env: &GameEnv<'_>) -> Tick {
         // System actions have no time cost
         0
     }
 }
 
 /// Errors that can occur during activation updates.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ActivationError {
+    /// System actor validation failed.
     #[error("activation action must be executed by SYSTEM actor")]
-    NotSystemActor,
+    NotSystemActor {
+        #[cfg_attr(feature = "serde", serde(skip))]
+        context: ErrorContext,
+    },
 
+    /// Player not found in game state.
     #[error("player not found in game state")]
-    PlayerNotFound,
+    PlayerNotFound {
+        #[cfg_attr(feature = "serde", serde(skip))]
+        context: ErrorContext,
+    },
+}
+
+impl ActivationError {
+    /// Creates a NotSystemActor error with context.
+    pub fn not_system_actor(nonce: u64) -> Self {
+        Self::NotSystemActor {
+            context: ErrorContext::new(nonce)
+                .with_message("system action executed by non-system actor"),
+        }
+    }
+
+    /// Creates a PlayerNotFound error with context.
+    pub fn player_not_found(nonce: u64) -> Self {
+        Self::PlayerNotFound {
+            context: ErrorContext::new(nonce).with_message("player entity not found"),
+        }
+    }
+}
+
+impl GameError for ActivationError {
+    fn severity(&self) -> ErrorSeverity {
+        match self {
+            Self::NotSystemActor { .. } => ErrorSeverity::Validation,
+            Self::PlayerNotFound { .. } => ErrorSeverity::Fatal,
+        }
+    }
+
+    fn context(&self) -> Option<&ErrorContext> {
+        match self {
+            Self::NotSystemActor { context } => Some(context),
+            Self::PlayerNotFound { context } => Some(context),
+        }
+    }
+
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::NotSystemActor { .. } => "ACTIVATION_NOT_SYSTEM_ACTOR",
+            Self::PlayerNotFound { .. } => "ACTIVATION_PLAYER_NOT_FOUND",
+        }
+    }
 }

@@ -88,34 +88,31 @@ impl StatLayer for DerivedStats {
     type Final = Self;
 
     fn compute(base: &Self::Base, bonuses: &Self::Bonuses) -> Self::Final {
-        let bounds = StatBounds::DERIVED_STATS;
+        const BOUNDS: StatBounds = StatBounds::DERIVED;
+
         let base_stats = Self::compute_base(base);
 
         Self {
             attack: bonuses
                 .attack
-                .apply(base_stats.attack, bounds.min, bounds.max),
+                .apply(base_stats.attack, BOUNDS.min, BOUNDS.max),
             accuracy: bonuses
                 .accuracy
-                .apply(base_stats.accuracy, bounds.min, bounds.max),
+                .apply(base_stats.accuracy, BOUNDS.min, BOUNDS.max),
             evasion: bonuses
                 .evasion
-                .apply(base_stats.evasion, bounds.min, bounds.max),
-            ac: bonuses.ac.apply(base_stats.ac, bounds.min, bounds.max),
+                .apply(base_stats.evasion, BOUNDS.min, BOUNDS.max),
+            ac: bonuses.ac.apply(base_stats.ac, BOUNDS.min, BOUNDS.max),
             psi_power: bonuses
                 .psi_power
-                .apply(base_stats.psi_power, bounds.min, bounds.max),
+                .apply(base_stats.psi_power, BOUNDS.min, BOUNDS.max),
             focus_eff: bonuses
                 .focus_eff
-                .apply(base_stats.focus_eff, bounds.min, bounds.max),
+                .apply(base_stats.focus_eff, BOUNDS.min, BOUNDS.max),
         }
     }
 
     fn empty_bonuses() -> Self::Bonuses {
         DerivedBonuses::new()
-    }
-
-    fn bounds() -> Option<StatBounds> {
-        Some(StatBounds::DERIVED_STATS)
     }
 }

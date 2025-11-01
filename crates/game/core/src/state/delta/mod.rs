@@ -17,74 +17,7 @@ use collection::diff_collection;
 /// Minimal description of an executed action's impact on the deterministic state.
 ///
 /// The delta system uses **bitmask-based change tracking** to capture metadata about
-/// state transitions without storing actual values. This design supports:
-///
-/// - **ZK proof generation**: Efficiently encode only state changes in the proof circuit
-/// - **Bandwidth optimization**: Transmit minimal diffs over network
-/// - **Memory efficiency**: ~30 bytes per action vs. ~20KB with full state clone
-/// - **Audit trails**: Capture precise state transitions for replay and debugging
-///
-/// # Design Philosophy
-///
-/// **Deltas store metadata, not values**:
-/// - Changed values exist in before/after `GameState`
-/// - Bitmasks indicate *which* fields changed
-/// - ZK layer queries actual values during witness generation
-///
-/// # Current Implementation: Post-hoc Diffing
-///
-/// Phase 1 uses **post-hoc state comparison** for simplicity and minimal invasiveness:
-/// ```rust,ignore
-/// let before = state.clone();
-/// let after = engine.execute(action, state)?;
-/// let delta = StateDelta::from_states(action, &before, &after);
-/// ```
-///
-/// **Trade-offs:**
-/// - ✅ Non-invasive: Game logic remains unchanged
-/// - ✅ Simple: Single comparison pass after execution
-/// - ✅ Maintainable: Delta generation isolated from game code
-/// - ⚠️ Requires `clone()`: ~1-2μs overhead per action
-/// - ⚠️ O(n) comparison: Scales with entity count
-///
-/// # Future Optimization: Inline Change Tracking
-///
-/// **Planned for Phase 4+**: Record changes during state mutations for zero-overhead deltas:
-/// ```rust,ignore
-/// impl GameState {
-///     pub fn move_actor(&mut self, id: EntityId, pos: Position) {
-///         self.entities.actor_mut(id).position = pos;
-///         self.delta_tracker.mark(id, ActorFields::POSITION); // O(1) bit set
-///     }
-/// }
-/// ```
-///
-/// **Benefits:**
-/// - Eliminates `clone()` requirement
-/// - O(1) per change instead of O(n) comparison
-/// - Suitable for large state (10K+ entities)
-///
-/// **Challenges:**
-/// - Invasive: Requires modifying all mutators
-/// - Coupling: State becomes aware of delta tracking
-/// - Complexity: Must ensure tracking consistency
-///
-/// **When to implement:** If profiling shows `clone()` or `from_states()` as bottleneck.
-///
-/// # Architecture
-///
-/// ```text
-/// GameEngine::execute() → StateDelta (bitmasks only)
-///                              ↓
-///                    Runtime broadcasts to:
-///                    - Clients (UI updates)
-///                    - ProverWorker (ZK generation)
-///                              ↓
-///              ProverWorker queries before/after states
-///                    using delta as a guide
-/// ```
-///
-/// See: `docs/state-delta-architecture.md` for detailed design rationale.
+/// state transitions without storing actual values.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StateDelta {
@@ -120,14 +53,6 @@ impl StateDelta {
     ///
     /// - Time: O(n) where n = number of entities
     /// - Space: O(k) where k = number of changed entities (typically k << n)
-    ///
-    /// # Examples
-    ///
-    /// ```rust,ignore
-    /// let before = state.clone();
-    /// let after = engine.execute(action, state)?;
-    /// let delta = StateDelta::from_states(action, &before, &after);
-    /// ```
     pub fn from_states(action: Action, before: &GameState, after: &GameState) -> Self {
         Self {
             action,

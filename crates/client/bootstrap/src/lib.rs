@@ -8,4 +8,4 @@ pub mod oracles;
 
 pub use builder::{RuntimeBuilder, RuntimeSetup};
 pub use config::CliConfig;
-pub use oracles::{ContentOracleFactory, OracleBundle, OracleFactory, TestOracleFactory};
+pub use oracles::{ContentOracleFactory, OracleBundle, OracleFactory};
