@@ -35,18 +35,6 @@ use crate::state::{ItemHandle, Position};
 /// Oracle errors indicate that required game data is unavailable or invalid.
 /// These are typically fatal errors since the game engine cannot proceed without
 /// access to maps, items, or balance tables.
-///
-/// # Examples
-///
-/// ```rust
-/// use game_core::env::{GameEnv, OracleError};
-///
-/// fn get_map_size(env: &GameEnv) -> Result<(u32, u32), OracleError> {
-///     let map = env.map()?;
-///     let dims = map.dimensions();
-///     Ok((dims.width, dims.height))
-/// }
-/// ```
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum OracleError {

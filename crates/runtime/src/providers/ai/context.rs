@@ -299,13 +299,6 @@ impl<'a> AiContext<'a> {
     /// # Returns
     ///
     /// The new position after moving in the specified direction.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let new_pos = ctx.position_after_move(CardinalDirection::North);
-    /// let new_dist = ctx.distance_from_to_player(new_pos);
-    /// ```
     pub fn position_after_move(
         &self,
         direction: game_core::CardinalDirection,
@@ -325,18 +318,6 @@ impl<'a> AiContext<'a> {
     /// # Returns
     ///
     /// Manhattan distance to the player.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// // Check if moving north brings us closer to the player
-    /// let new_pos = ctx.position_after_move(CardinalDirection::North);
-    /// let new_dist = ctx.distance_from_to_player(new_pos);
-    /// let current_dist = ctx.distance_to_player();
-    /// if new_dist < current_dist {
-    ///     println!("Moving north closes the gap!");
-    /// }
-    /// ```
     pub fn distance_from_to_player(&self, pos: game_core::Position) -> u32 {
         let player_pos = self.player_position();
         let dx = (pos.x - player_pos.x).abs();
@@ -378,15 +359,6 @@ impl<'a> AiContext<'a> {
     /// # Returns
     ///
     /// Slice of all actions this entity can currently execute.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// for action in ctx.available_actions() {
-    ///     let score = score_action(action, &ctx);
-    ///     // ...
-    /// }
-    /// ```
     pub fn available_actions(&self) -> &[CharacterActionKind] {
         &self.available_actions
     }
@@ -396,13 +368,6 @@ impl<'a> AiContext<'a> {
     /// # Returns
     ///
     /// Iterator over attack actions (melee, ranged, special attacks).
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let best_attack = ctx.attack_actions()
-    ///     .max_by_key(|a| score_attack(a, &ctx));
-    /// ```
     pub fn attack_actions(&self) -> impl Iterator<Item = &CharacterActionKind> {
         self.available_actions
             .iter()
@@ -414,13 +379,6 @@ impl<'a> AiContext<'a> {
     /// # Returns
     ///
     /// Iterator over movement actions (Move in various directions).
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let best_move = ctx.movement_actions()
-    ///     .max_by_key(|m| score_movement(m, &ctx));
-    /// ```
     pub fn movement_actions(&self) -> impl Iterator<Item = &CharacterActionKind> {
         self.available_actions
             .iter()

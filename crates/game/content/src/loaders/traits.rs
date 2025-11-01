@@ -39,7 +39,7 @@ fn load_layer_presets(path: &Path) -> LoadResult<HashMap<String, TraitLayer>> {
 /// Loads all trait layer presets from the traits directory.
 ///
 /// Expected directory structure:
-/// ```
+/// ```text
 /// traits/
 ///   ├── species.ron
 ///   ├── archetypes.ron

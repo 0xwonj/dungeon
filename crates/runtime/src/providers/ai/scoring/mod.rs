@@ -25,45 +25,6 @@
 //! ```text
 //! final_score = is_possible × situation × personality × modifier / 10000
 //! ```
-//!
-//! This formula ensures:
-//! - Impossible actions score 0
-//! - Typical range is 0-100
-//! - Each component is independently tunable
-//!
-//! # Example Usage
-//!
-//! ```rust,ignore
-//! use runtime::providers::ai::scoring;
-//!
-//! // Layer 1: Intent scoring
-//! let combat = scoring::intents::combat(&ctx);
-//! println!("Combat: {} (sit={}, pers={}, mod={})",
-//!     combat.value(), combat.situation, combat.personality, combat.modifier);
-//!
-//! // Layer 2: Tactic scoring (future)
-//! let kiting = scoring::tactics::kiting(&ctx);
-//!
-//! // Layer 3: Action scoring (future)
-//! let attack_score = scoring::actions::score_attack(&action, &ctx);
-//! ```
-//!
-//! # Debugging
-//!
-//! The structured [`Score`] enables detailed debugging:
-//!
-//! ```rust,ignore
-//! let score = intents::combat(&ctx);
-//!
-//! if score.value() == 0 {
-//!     if !score.is_possible {
-//!         println!("Combat impossible: no enemies or no attacks");
-//!     } else {
-//!         println!("Combat unfavorable: sit={}, pers={}",
-//!             score.situation, score.personality);
-//!     }
-//! }
-//! ```
 
 pub mod actions;
 pub mod intents;
@@ -85,21 +46,6 @@ pub mod tactics;
 /// # Computing Final Score
 ///
 /// Use the `value()` method to compute the final 0-100 score.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use runtime::providers::ai::scoring::Score;
-///
-/// let score = Score::new(
-///     true,  // is_possible
-///     90,    // situation (close to enemy)
-///     70,    // personality (aggressive)
-///     100,   // modifier (healthy HP)
-/// );
-///
-/// assert_eq!(score.value(), 63); // 90 × 70 × 100 / 10000
-/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Score {
     /// Is this option feasible at all?
@@ -151,13 +97,6 @@ impl Score {
     /// * `situation` - Game state favorability (0-100)
     /// * `personality` - NPC trait preference (0-100)
     /// * `modifier` - Contextual adjustments (0-200, typically 100)
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let score = Score::new(true, 90, 70, 100);
-    /// assert_eq!(score.value(), 63);
-    /// ```
     pub const fn new(is_possible: bool, situation: u32, personality: u32, modifier: u32) -> Self {
         Self {
             is_possible,
@@ -170,15 +109,6 @@ impl Score {
     /// Creates an impossible score (all components zero).
     ///
     /// Use this when an option cannot be executed at all.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// // No ranged weapon available
-    /// if !has_ranged_weapon {
-    ///     return Score::impossible();
-    /// }
-    /// ```
     pub const fn impossible() -> Self {
         Self {
             is_possible: false,
@@ -199,16 +129,6 @@ impl Score {
     /// # Returns
     ///
     /// Final score 0-100 (or 0 if impossible).
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let score = Score::new(true, 90, 70, 100);
-    /// assert_eq!(score.value(), 63); // 90 × 70 × 100 / 10000
-    ///
-    /// let impossible = Score::impossible();
-    /// assert_eq!(impossible.value(), 0);
-    /// ```
     pub const fn value(&self) -> u32 {
         if !self.is_possible {
             return 0;

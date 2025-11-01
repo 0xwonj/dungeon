@@ -8,16 +8,6 @@
 //!
 //! All intent scoring functions return [`Score`] from the parent module.
 //! See [`super::Score`] for details on the scoring structure.
-//!
-//! # Example
-//!
-//! ```rust,ignore
-//! use runtime::providers::ai::scoring::intents;
-//!
-//! let combat = intents::combat(&ctx);
-//! println!("Combat: {} (sit={}, pers={}, mod={})",
-//!     combat.value(), combat.situation, combat.personality, combat.modifier);
-//! ```
 
 use game_content::traits::TraitKind;
 

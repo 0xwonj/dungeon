@@ -69,24 +69,6 @@ impl Default for AiConfig {
 ///
 /// Both players and NPCs are stored here uniformly. The only difference
 /// is their AI config's default_provider field.
-///
-/// # Usage
-///
-/// ```rust
-/// let mut oracle = ActorOracleImpl::new();
-///
-/// // Add player
-/// oracle.add("player", player_template, player_ai_config);
-///
-/// // Add NPC
-/// oracle.add("goblin_scout", goblin_template, goblin_ai_config);
-///
-/// // game-core accesses templates only (via ActorOracle trait)
-/// let template = oracle.template("goblin_scout");
-///
-/// // runtime accesses AI configs
-/// let ai_config = oracle.ai_config("goblin_scout");
-/// ```
 pub struct ActorOracleImpl {
     templates: HashMap<String, ActorTemplate>,
     ai_configs: HashMap<String, AiConfig>,

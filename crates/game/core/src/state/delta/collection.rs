@@ -75,17 +75,6 @@ impl<TChanges> CollectionChanges<TChanges> {
 /// - `before`, `after`: Slices of entities to compare
 /// - `id_fn`: Function extracting entity ID (for matching entities across states)
 /// - `changes_fn`: Function comparing two entities and generating change metadata
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// let delta = diff_collection(
-///     &before.npcs,
-///     &after.npcs,
-///     |npc| npc.id,
-///     ActorChanges::from_states,
-/// );
-/// ```
 pub(super) fn diff_collection<T, TChanges, FId, FChanges>(
     before: &[T],
     after: &[T],

@@ -23,23 +23,6 @@ use game_core::Position;
 /// **Relationship to Runtime:**
 /// Similar to `runtime::ProviderRegistry` which manages `ActionProvider` instances,
 /// but for UI target selection instead of entity AI.
-///
-/// # Examples
-///
-/// ```ignore
-/// // Default (ThreatBased)
-/// let selector = TargetSelector::with_default();
-///
-/// // Named strategy
-/// let selector = TargetSelector::with_strategy_name("nearest")?;
-///
-/// // Custom strategy
-/// let strategy = Box::new(MyCustomStrategy);
-/// let selector = TargetSelector::new(strategy);
-///
-/// // Change at runtime
-/// selector.set_strategy(Box::new(FastestStrategy::default()));
-/// ```
 pub struct TargetSelector {
     strategy: Box<dyn TargetingStrategy>,
 }

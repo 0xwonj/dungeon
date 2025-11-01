@@ -36,13 +36,6 @@ use crate::providers::ai::scoring::Score;
 /// - **Move(towards)**: situation=100, personality=80, modifier=100 → value=80
 /// - **Move(away)**: situation=20, personality=80, modifier=100 → value=16
 /// - **Wait**: situation=20, personality=50, modifier=100 → value=10
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let score = score_for_aggressive_melee(&CharacterActionKind::Attack(...), &ctx);
-/// // Attack always scores 100
-/// ```
 pub fn score_for_aggressive_melee(action: &CharacterActionKind, ctx: &AiContext) -> Score {
     match action {
         CharacterActionKind::Attack(_) => {
@@ -87,13 +80,6 @@ pub fn score_for_aggressive_melee(action: &CharacterActionKind, ctx: &AiContext)
 /// - **Attack (dist 3+)**: situation=40, personality=90, modifier=100 → value=36
 /// - **Move(to ideal)**: situation=90-100, personality=70, modifier=100 → value=63-70
 /// - **Wait**: situation=30, personality=60, modifier=100 → value=18
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let score = score_for_defensive_melee(&action, &ctx);
-/// // Attack at distance 1-2 scores highest
-/// ```
 pub fn score_for_defensive_melee(action: &CharacterActionKind, ctx: &AiContext) -> Score {
     match action {
         CharacterActionKind::Attack(_) => {
@@ -143,13 +129,6 @@ pub fn score_for_defensive_melee(action: &CharacterActionKind, ctx: &AiContext) 
 /// - **Attack (dist 0-2)**: situation=20, personality=100, modifier=100 → value=20
 /// - **Move(to ideal)**: situation=80-100, personality=50, modifier=100 → value=40-50
 /// - **Wait**: situation=40, personality=60, modifier=100 → value=24
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let score = score_for_ranged(&action, &ctx);
-/// // Attack at distance 4-6 scores 100
-/// ```
 pub fn score_for_ranged(action: &CharacterActionKind, ctx: &AiContext) -> Score {
     match action {
         CharacterActionKind::Attack(_) => {
@@ -202,13 +181,6 @@ pub fn score_for_ranged(action: &CharacterActionKind, ctx: &AiContext) -> Score 
 /// - **Move(away, dist <4)**: situation=100, personality=90, modifier=100 → value=90
 /// - **Move(to ideal)**: situation=80-100, personality=80, modifier=100 → value=64-80
 /// - **Wait**: situation=20, personality=40, modifier=100 → value=8
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let score = score_for_kiting(&action, &ctx);
-/// // At distance 2: Move(away) scores 90, Attack scores only 20
-/// ```
 pub fn score_for_kiting(action: &CharacterActionKind, ctx: &AiContext) -> Score {
     let current_dist = ctx.distance_to_player();
 

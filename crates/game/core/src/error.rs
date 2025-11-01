@@ -165,34 +165,6 @@ pub trait GameError: core::fmt::Display + core::fmt::Debug {
 }
 
 /// Error type for actions that never fail.
-///
-/// This type is used for actions like Wait, Interact (stub), UseItem (stub)
-/// that have no failure conditions in their current implementation.
-///
-/// # Why not `core::convert::Infallible`?
-///
-/// Unlike `core::convert::Infallible`, `NeverError` implements the `GameError` trait,
-/// providing consistency with the error handling infrastructure. This ensures:
-/// - Uniform trait bounds across all action errors
-/// - Consistent error handling in generic code
-/// - Future-proof API (can add error cases without breaking changes)
-///
-/// # Usage
-///
-/// ```rust
-/// use game_core::error::NeverError;
-/// use game_core::action::ActionTransition;
-///
-/// impl ActionTransition for WaitAction {
-///     type Error = NeverError;
-///     type Result = ();
-///
-///     fn apply(&self, state: &mut GameState, env: &GameEnv<'_>) -> Result<(), NeverError> {
-///         // Wait action never fails
-///         Ok(())
-///     }
-/// }
-/// ```
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("this error should never be constructed")]
 pub enum NeverError {}

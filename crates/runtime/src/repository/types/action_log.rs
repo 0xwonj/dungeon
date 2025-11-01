@@ -20,19 +20,6 @@ use game_core::{Action, GameState, StateDelta, Tick};
 /// ```text
 /// [u32 length][bincode serialized ActionLogEntry]
 /// ```
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let entry = ActionLogEntry {
-///     nonce: 5,
-///     clock: 42,
-///     action: player_move_action,
-///     before_state: Box::new(state_before),
-///     after_state: Box::new(state_after),
-///     delta: Some(Box::new(state_delta)),
-/// };
-/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionLogEntry {
     /// Sequential action nonce
