@@ -117,6 +117,8 @@ impl<'a> GameEngine<'a> {
 
     /// Validates action actor matches turn state.
     fn validate_actor(&self, action: &Action) -> Result<(), ExecuteError> {
+        let nonce = self.state.turn.nonce;
+
         match action {
             Action::System { .. } => {
                 // System actions are always valid (actor is implicitly SYSTEM)
@@ -125,10 +127,11 @@ impl<'a> GameEngine<'a> {
             Action::Character { actor, .. } => {
                 let current_actor = self.state.turn.current_actor;
                 if *actor != current_actor {
-                    return Err(ExecuteError::ActorNotCurrent {
-                        actor: *actor,
+                    return Err(ExecuteError::actor_not_current(
+                        *actor,
                         current_actor,
-                    });
+                        nonce,
+                    ));
                 }
                 Ok(())
             }

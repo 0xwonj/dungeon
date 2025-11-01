@@ -1,7 +1,6 @@
-use core::convert::Infallible;
-
 use crate::action::ActionTransition;
 use crate::env::GameEnv;
+use crate::error::NeverError;
 use crate::state::{EntityId, GameState, Position, Tick};
 
 /// Consumes or activates an item from the actor's inventory.
@@ -44,15 +43,17 @@ pub enum ItemTarget {
 }
 
 impl ActionTransition for UseItemAction {
-    type Error = Infallible;
+    type Error = NeverError;
     type Result = ();
 
     fn actor(&self) -> EntityId {
         self.actor
     }
 
-    fn cost(&self) -> Tick {
-        8
+    fn cost(&self, env: &GameEnv<'_>) -> Tick {
+        env.tables()
+            .map(|t| t.action_costs().use_item)
+            .unwrap_or(100)
     }
 
     fn apply(&self, _state: &mut GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {

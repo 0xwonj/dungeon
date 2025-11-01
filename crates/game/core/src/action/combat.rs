@@ -5,7 +5,8 @@
 
 use crate::action::ActionTransition;
 use crate::combat;
-use crate::env::{GameEnv, ItemKind};
+use crate::env::{GameEnv, ItemKind, OracleError};
+use crate::error::{ErrorContext, ErrorSeverity, GameError};
 use crate::state::{AttackType, EntityId, GameState, Position, Tick, WeaponKind};
 
 /// Basic attack action - works with any equipped weapon.
@@ -34,23 +35,120 @@ impl AttackAction {
     }
 }
 
-/// Error types for attack validation.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Errors that can occur during attack actions.
+#[derive(Clone, Debug, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AttackError {
-    ActorNotFound,
-    TargetNotFound,
-    OutOfRange,
-    InvalidTarget,
+    /// Oracle error (items/tables not available, etc.)
+    #[error(transparent)]
+    Oracle(#[from] OracleError),
+
+    /// Attacker not found in game state.
+    #[error("attacker {actor:?} not found")]
+    ActorNotFound {
+        actor: EntityId,
+        #[cfg_attr(feature = "serde", serde(skip))]
+        context: ErrorContext,
+    },
+
+    /// Target not found in game state.
+    #[error("target {target:?} not found")]
+    TargetNotFound {
+        target: EntityId,
+        #[cfg_attr(feature = "serde", serde(skip))]
+        context: ErrorContext,
+    },
+
+    /// Target is out of range for the weapon.
+    #[error("target at {target_pos:?} out of range (max: {max_range}, distance: {distance})")]
+    OutOfRange {
+        target_pos: Position,
+        max_range: u32,
+        distance: u32,
+        #[cfg_attr(feature = "serde", serde(skip))]
+        context: ErrorContext,
+    },
+
+    /// Target is invalid (already dead, etc.).
+    #[error("invalid target: {reason}")]
+    InvalidTarget {
+        reason: &'static str,
+        #[cfg_attr(feature = "serde", serde(skip))]
+        context: ErrorContext,
+    },
 }
 
-impl core::fmt::Display for AttackError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl AttackError {
+    /// Creates an ActorNotFound error with context.
+    pub fn actor_not_found(actor: EntityId, nonce: u64) -> Self {
+        Self::ActorNotFound {
+            actor,
+            context: ErrorContext::new(nonce).with_actor(actor),
+        }
+    }
+
+    /// Creates a TargetNotFound error with context.
+    pub fn target_not_found(target: EntityId, actor: EntityId, nonce: u64) -> Self {
+        Self::TargetNotFound {
+            target,
+            context: ErrorContext::new(nonce).with_actor(actor),
+        }
+    }
+
+    /// Creates an OutOfRange error with context.
+    pub fn out_of_range(
+        target_pos: Position,
+        max_range: u32,
+        distance: u32,
+        actor: EntityId,
+        nonce: u64,
+    ) -> Self {
+        Self::OutOfRange {
+            target_pos,
+            max_range,
+            distance,
+            context: ErrorContext::new(nonce)
+                .with_actor(actor)
+                .with_position(target_pos),
+        }
+    }
+
+    /// Creates an InvalidTarget error with context.
+    pub fn invalid_target(reason: &'static str, actor: EntityId, nonce: u64) -> Self {
+        Self::InvalidTarget {
+            reason,
+            context: ErrorContext::new(nonce).with_actor(actor),
+        }
+    }
+}
+
+impl GameError for AttackError {
+    fn severity(&self) -> ErrorSeverity {
         match self {
-            AttackError::ActorNotFound => write!(f, "actor not found"),
-            AttackError::TargetNotFound => write!(f, "target not found"),
-            AttackError::OutOfRange => write!(f, "target out of range"),
-            AttackError::InvalidTarget => write!(f, "invalid target"),
+            Self::Oracle(e) => e.severity(),
+            Self::ActorNotFound { .. } | Self::TargetNotFound { .. } => ErrorSeverity::Validation,
+            Self::OutOfRange { .. } => ErrorSeverity::Recoverable,
+            Self::InvalidTarget { .. } => ErrorSeverity::Validation,
+        }
+    }
+
+    fn context(&self) -> Option<&ErrorContext> {
+        match self {
+            Self::Oracle(_) => None,
+            Self::ActorNotFound { context, .. }
+            | Self::TargetNotFound { context, .. }
+            | Self::OutOfRange { context, .. }
+            | Self::InvalidTarget { context, .. } => Some(context),
+        }
+    }
+
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Oracle(_) => "ATTACK_ORACLE",
+            Self::ActorNotFound { .. } => "ATTACK_ACTOR_NOT_FOUND",
+            Self::TargetNotFound { .. } => "ATTACK_TARGET_NOT_FOUND",
+            Self::OutOfRange { .. } => "ATTACK_OUT_OF_RANGE",
+            Self::InvalidTarget { .. } => "ATTACK_INVALID_TARGET",
         }
     }
 }
@@ -63,20 +161,22 @@ impl ActionTransition for AttackAction {
         self.actor
     }
 
-    fn cost(&self) -> Tick {
-        6 // Base cost (modified by speed stats)
+    fn cost(&self, env: &GameEnv<'_>) -> Tick {
+        env.tables().map(|t| t.action_costs().attack).unwrap_or(100)
     }
 
     fn pre_validate(&self, state: &GameState, env: &GameEnv<'_>) -> Result<(), Self::Error> {
+        let nonce = state.turn.nonce;
+
         let attacker = state
             .entities
             .actor(self.actor)
-            .ok_or(AttackError::ActorNotFound)?;
+            .ok_or_else(|| AttackError::actor_not_found(self.actor, nonce))?;
 
         let defender = state
             .entities
             .actor(self.target)
-            .ok_or(AttackError::TargetNotFound)?;
+            .ok_or_else(|| AttackError::target_not_found(self.target, self.actor, nonce))?;
 
         // Get weapon info to determine attack type
         let weapon_kind = get_weapon_kind(attacker, env)?;
@@ -87,7 +187,14 @@ impl ActionTransition for AttackAction {
             AttackType::Melee => {
                 let range = weapon_kind.melee_range();
                 if !is_within_range(attacker.position, defender.position, range) {
-                    return Err(AttackError::OutOfRange);
+                    let distance = chebyshev_distance(attacker.position, defender.position);
+                    return Err(AttackError::out_of_range(
+                        defender.position,
+                        range,
+                        distance,
+                        self.actor,
+                        nonce,
+                    ));
                 }
             }
             AttackType::Ranged => {
@@ -105,16 +212,17 @@ impl ActionTransition for AttackAction {
 
     fn apply(&self, state: &mut GameState, env: &GameEnv<'_>) -> Result<Self::Result, Self::Error> {
         // === Pass 1: Gather data (immutable) ===
+        let nonce = state.turn.nonce;
 
         let attacker = state
             .entities
             .actor(self.actor)
-            .ok_or(AttackError::ActorNotFound)?;
+            .ok_or_else(|| AttackError::actor_not_found(self.actor, nonce))?;
 
         let defender = state
             .entities
             .actor(self.target)
-            .ok_or(AttackError::TargetNotFound)?;
+            .ok_or_else(|| AttackError::target_not_found(self.target, self.actor, nonce))?;
 
         // Snapshot stats
         let attacker_stats = attacker.snapshot();
@@ -124,7 +232,7 @@ impl ActionTransition for AttackAction {
         let weapon_damage = get_weapon_damage(attacker, env)?;
 
         // Generate deterministic seed for this attack roll
-        let roll = if let Some(rng_oracle) = env.rng() {
+        let roll = if let Ok(rng_oracle) = env.rng() {
             use crate::env::compute_seed;
             let seed = compute_seed(
                 state.game_seed,
@@ -140,7 +248,7 @@ impl ActionTransition for AttackAction {
 
         // === Combat resolution (pure function) ===
 
-        let tables = env.tables().expect("TablesOracle required for combat");
+        let tables = env.tables()?;
         let result = combat::resolve_attack(
             &attacker_stats,
             &defender_stats,
@@ -155,7 +263,7 @@ impl ActionTransition for AttackAction {
             let defender = state
                 .entities
                 .actor_mut(self.target)
-                .ok_or(AttackError::TargetNotFound)?;
+                .ok_or_else(|| AttackError::target_not_found(self.target, self.actor, nonce))?;
 
             defender.resources.hp = combat::apply_damage(defender.resources.hp, damage);
         }
@@ -174,8 +282,8 @@ fn get_weapon_kind(
     env: &GameEnv<'_>,
 ) -> Result<WeaponKind, AttackError> {
     if let Some(weapon_handle) = actor.equipment.weapon {
-        // env.items() returns Option<&dyn ItemOracle>, need to unwrap first
-        if let Some(items_oracle) = env.items()
+        // env.items() returns Result<&dyn ItemOracle, OracleError>
+        if let Ok(items_oracle) = env.items()
             && let Some(item_def) = items_oracle.definition(weapon_handle)
             && let ItemKind::Weapon(weapon_data) = item_def.kind
         {
@@ -196,8 +304,8 @@ fn get_weapon_damage(
     env: &GameEnv<'_>,
 ) -> Result<u32, AttackError> {
     if let Some(weapon_handle) = actor.equipment.weapon {
-        // env.items() returns Option<&dyn ItemOracle>, need to unwrap first
-        if let Some(items_oracle) = env.items()
+        // env.items() returns Result<&dyn ItemOracle, OracleError>
+        if let Ok(items_oracle) = env.items()
             && let Some(item_def) = items_oracle.definition(weapon_handle)
             && let ItemKind::Weapon(weapon_data) = item_def.kind
         {
@@ -210,12 +318,16 @@ fn get_weapon_damage(
     Ok(1 + str_bonus as u32)
 }
 
-/// Check if target is within range using Chebyshev distance.
+/// Calculate Chebyshev distance between two positions.
 ///
 /// Chebyshev distance = max(|dx|, |dy|) (8-directional movement)
+fn chebyshev_distance(from: Position, to: Position) -> u32 {
+    let dx = (from.x - to.x).unsigned_abs();
+    let dy = (from.y - to.y).unsigned_abs();
+    dx.max(dy)
+}
+
+/// Check if target is within range using Chebyshev distance.
 fn is_within_range(from: Position, to: Position, range: u32) -> bool {
-    let dx = (from.x - to.x).abs();
-    let dy = (from.y - to.y).abs();
-    let distance = dx.max(dy); // Chebyshev distance
-    distance <= range as i32
+    chebyshev_distance(from, to) <= range
 }

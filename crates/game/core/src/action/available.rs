@@ -92,8 +92,8 @@ fn generate_moves(
     env: &GameEnv,
 ) -> Vec<CharacterActionKind> {
     let map = match env.map() {
-        Some(m) => m,
-        None => return vec![],
+        Ok(m) => m,
+        Err(_) => return vec![],
     };
 
     CardinalDirection::ALL

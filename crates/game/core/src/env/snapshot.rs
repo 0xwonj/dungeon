@@ -232,44 +232,6 @@ impl TablesSnapshot {
     }
 }
 
-impl Default for TablesSnapshot {
-    /// Creates a snapshot with reasonable default balance values.
-    ///
-    /// Note: These defaults are for testing and fallback purposes only.
-    /// Production values should come from runtime's TablesOracleImpl.
-    fn default() -> Self {
-        Self::new(
-            // Default action costs
-            super::ActionCosts {
-                attack: 100,
-                move_action: 100,
-                wait: 100,
-                interact: 100,
-                activation: 0,
-            },
-            // Default combat parameters
-            super::CombatParams {
-                hit_chance: super::HitChanceParams {
-                    base: 80,
-                    min: 5,
-                    max: 95,
-                },
-                damage: super::DamageParams {
-                    ac_divisor: 2,
-                    crit_multiplier: 2,
-                    minimum: 1,
-                },
-            },
-            // Default speed parameters
-            super::SpeedParams {
-                cost_multiplier: 100,
-                min: 1,
-                max: 1000,
-            },
-        )
-    }
-}
-
 /// Snapshot of config oracle data
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]

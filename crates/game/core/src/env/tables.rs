@@ -21,6 +21,7 @@ pub struct ActionCosts {
     pub move_action: Tick, // "move" is a keyword
     pub wait: Tick,
     pub interact: Tick,
+    pub use_item: Tick,
     pub activation: Tick,
 }
 

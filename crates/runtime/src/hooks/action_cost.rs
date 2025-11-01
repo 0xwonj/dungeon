@@ -50,8 +50,9 @@ impl PostExecutionHook for ActionCostHook {
         };
         let snapshot = actor.snapshot();
 
-        // Calculate speed-scaled cost
-        let cost = ctx.delta.action.cost(&snapshot);
+        // Calculate speed-scaled cost using TablesOracle
+        let env = ctx.oracles.as_game_env();
+        let cost = ctx.delta.action.cost(&snapshot, &env);
 
         // Create system action to apply the cost
         vec![Action::system(SystemActionKind::ActionCost(

@@ -56,7 +56,8 @@ impl TablesOracleImpl {
             move_action: 100,
             wait: 100,
             interact: 100,
-            activation: 0, // System action - no cost
+            use_item: 80,
+            activation: 10,
         }
     }
 

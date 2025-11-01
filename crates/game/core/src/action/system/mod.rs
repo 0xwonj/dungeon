@@ -15,6 +15,6 @@ mod action_cost;
 mod activation;
 mod prepare_turn;
 
-pub use action_cost::ActionCostAction;
-pub use activation::ActivationAction;
+pub use action_cost::{ActionCostAction, ActionCostError};
+pub use activation::{ActivationAction, ActivationError};
 pub use prepare_turn::{PrepareTurnAction, TurnError};

@@ -9,13 +9,14 @@ pub mod combat;
 pub mod config;
 pub mod engine;
 pub mod env;
+pub mod error;
 pub mod state;
 pub mod stats;
 pub use action::{
-    Action, ActionCostAction, ActionTransition, ActivationAction, AttackAction, CardinalDirection,
-    CharacterActionKind, InteractAction, InventoryIndex, ItemTarget, MoveAction, MoveError,
-    PrepareTurnAction, SystemActionKind, TurnError, UseItemAction, WaitAction,
-    get_available_actions,
+    Action, ActionCostAction, ActionCostError, ActionTransition, ActivationAction, ActivationError,
+    AttackAction, AttackError, CardinalDirection, CharacterActionKind, InteractAction,
+    InventoryIndex, ItemTarget, MoveAction, MoveError, PrepareTurnAction, SystemActionKind,
+    TurnError, UseItemAction, WaitAction, get_available_actions,
 };
 pub use combat::{
     AttackOutcome, AttackResult, apply_damage, calculate_damage, calculate_hit_chance, check_hit,
@@ -29,11 +30,12 @@ pub use env::{
     ActionCosts, ActorOracle, ActorTemplate, ActorTemplateBuilder, ActorsSnapshot, ArmorData,
     CombatParams, ConfigOracle, ConfigSnapshot, ConsumableData, ConsumableEffect, DamageParams,
     Env, GameEnv, HitChanceParams, ItemDefinition, ItemKind, ItemOracle, ItemsSnapshot,
-    MapDimensions, MapOracle, MapSnapshot, OracleSnapshot, PcgRng, RngOracle, SnapshotActorOracle,
-    SnapshotConfigOracle, SnapshotItemOracle, SnapshotMapOracle, SnapshotOracleBundle,
-    SnapshotTablesOracle, SpeedParams, StaticTile, TablesOracle, TablesSnapshot, TerrainKind,
-    WeaponData, compute_seed,
+    MapDimensions, MapOracle, MapSnapshot, OracleError, OracleSnapshot, PcgRng, RngOracle,
+    SnapshotActorOracle, SnapshotConfigOracle, SnapshotItemOracle, SnapshotMapOracle,
+    SnapshotOracleBundle, SnapshotTablesOracle, SpeedParams, StaticTile, TablesOracle,
+    TablesSnapshot, TerrainKind, WeaponData, compute_seed,
 };
+pub use error::{ErrorContext, ErrorSeverity, GameError, NeverError};
 pub use state::{
     ActionAbilities, ActionAbility, ActionKind, ActorChanges, ActorFields, ActorState, ArmorKind,
     AttackType, CollectionChanges, EntitiesChanges, EntitiesState, EntityId, Equipment,
