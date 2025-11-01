@@ -77,28 +77,25 @@ impl StatLayer for SpeedStats {
     type Final = Self;
 
     fn compute(base: &Self::Base, bonuses: &Self::Bonuses) -> Self::Final {
-        let bounds = StatBounds::SPEED_STATS;
+        const BOUNDS: StatBounds = StatBounds::SPEED;
+
         let base_speed = Self::compute_base(base);
 
         Self {
             physical: bonuses
                 .physical
-                .apply(base_speed.physical, bounds.min, bounds.max),
+                .apply(base_speed.physical, BOUNDS.min, BOUNDS.max),
             cognitive: bonuses
                 .cognitive
-                .apply(base_speed.cognitive, bounds.min, bounds.max),
+                .apply(base_speed.cognitive, BOUNDS.min, BOUNDS.max),
             ritual: bonuses
                 .ritual
-                .apply(base_speed.ritual, bounds.min, bounds.max),
+                .apply(base_speed.ritual, BOUNDS.min, BOUNDS.max),
         }
     }
 
     fn empty_bonuses() -> Self::Bonuses {
         SpeedBonuses::new()
-    }
-
-    fn bounds() -> Option<StatBounds> {
-        Some(StatBounds::SPEED_STATS)
     }
 }
 

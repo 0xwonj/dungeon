@@ -140,7 +140,14 @@ impl ActionTransition for AttackAction {
 
         // === Combat resolution (pure function) ===
 
-        let result = combat::resolve_attack(&attacker_stats, &defender_stats, weapon_damage, roll);
+        let tables = env.tables().expect("TablesOracle required for combat");
+        let result = combat::resolve_attack(
+            &attacker_stats,
+            &defender_stats,
+            weapon_damage,
+            roll,
+            tables,
+        );
 
         // === Pass 2: Apply damage (mutable) ===
 

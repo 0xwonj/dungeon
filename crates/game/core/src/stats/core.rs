@@ -143,24 +143,20 @@ impl StatLayer for CoreEffective {
     type Final = Self;
 
     fn compute(base: &Self::Base, bonuses: &Self::Bonuses) -> Self::Final {
-        let bounds = StatBounds::CORE_STATS;
+        const BOUNDS: StatBounds = StatBounds::CORE;
 
         Self {
-            str: bonuses.str_bonuses.apply(base.str, bounds.min, bounds.max),
-            con: bonuses.con_bonuses.apply(base.con, bounds.min, bounds.max),
-            dex: bonuses.dex_bonuses.apply(base.dex, bounds.min, bounds.max),
-            int: bonuses.int_bonuses.apply(base.int, bounds.min, bounds.max),
-            wil: bonuses.wil_bonuses.apply(base.wil, bounds.min, bounds.max),
-            ego: bonuses.ego_bonuses.apply(base.ego, bounds.min, bounds.max),
+            str: bonuses.str_bonuses.apply(base.str, BOUNDS.min, BOUNDS.max),
+            con: bonuses.con_bonuses.apply(base.con, BOUNDS.min, BOUNDS.max),
+            dex: bonuses.dex_bonuses.apply(base.dex, BOUNDS.min, BOUNDS.max),
+            int: bonuses.int_bonuses.apply(base.int, BOUNDS.min, BOUNDS.max),
+            wil: bonuses.wil_bonuses.apply(base.wil, BOUNDS.min, BOUNDS.max),
+            ego: bonuses.ego_bonuses.apply(base.ego, BOUNDS.min, BOUNDS.max),
             level: base.level, // Level is not affected by bonuses
         }
     }
 
     fn empty_bonuses() -> Self::Bonuses {
         CoreStatBonuses::new()
-    }
-
-    fn bounds() -> Option<StatBounds> {
-        Some(StatBounds::CORE_STATS)
     }
 }

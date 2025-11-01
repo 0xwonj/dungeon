@@ -38,7 +38,7 @@ mod tests {
 
     #[test]
     fn test_hash_consistency() {
-        let state = GameState::default();
+        let state = GameState::with_player();
         let hash1 = hash_game_state(&state);
         let hash2 = hash_game_state(&state);
         assert_eq!(hash1, hash2, "Same state should produce same hash");
@@ -46,7 +46,7 @@ mod tests {
 
     #[test]
     fn test_hash_format() {
-        let state = GameState::default();
+        let state = GameState::with_player();
         let hash = hash_game_state(&state);
         assert_eq!(hash.len(), 16, "Hash should be 16 hex chars (8 bytes)");
         assert!(

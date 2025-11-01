@@ -69,11 +69,11 @@ impl OracleSnapshot {
     ///   (should come from scenario or other source)
     #[cfg(feature = "std")]
     pub fn from_oracles(
-        map: &impl MapOracle,
-        _items: &impl ItemOracle,
-        actors: &impl ActorOracle,
-        tables: &impl TablesOracle,
-        config: &impl ConfigOracle,
+        map: &dyn MapOracle,
+        _items: &dyn ItemOracle,
+        actors: &dyn ActorOracle,
+        tables: &dyn TablesOracle,
+        config: &dyn ConfigOracle,
         actor_ids: &[String],
     ) -> Self {
         Self::new(
@@ -103,7 +103,7 @@ impl MapSnapshot {
     ///
     /// Traverses all tiles in the map and stores them in a flat row-major array.
     #[cfg(feature = "std")]
-    pub fn from_oracle(oracle: &impl MapOracle) -> Self {
+    pub fn from_oracle(oracle: &dyn MapOracle) -> Self {
         let dimensions = oracle.dimensions();
         let capacity = (dimensions.width * dimensions.height) as usize;
         let mut tiles = Vec::with_capacity(capacity);
@@ -140,7 +140,7 @@ impl ItemsSnapshot {
     ///
     /// Note: This requires the list of all item handles to query.
     #[cfg(feature = "std")]
-    pub fn from_oracle(oracle: &impl ItemOracle, handles: &[ItemHandle]) -> Self {
+    pub fn from_oracle(oracle: &dyn ItemOracle, handles: &[ItemHandle]) -> Self {
         let items: Vec<(ItemHandle, ItemDefinition)> = handles
             .iter()
             .filter_map(|&handle| oracle.definition(handle).map(|def| (handle, def)))
@@ -187,7 +187,7 @@ impl ActorsSnapshot {
     /// * `oracle` - Actor oracle implementation
     /// * `def_ids` - List of actor definition IDs to snapshot
     #[cfg(feature = "std")]
-    pub fn from_oracle(oracle: &impl super::ActorOracle, def_ids: &[String]) -> Self {
+    pub fn from_oracle(oracle: &dyn super::ActorOracle, def_ids: &[String]) -> Self {
         let mut templates = Vec::with_capacity(def_ids.len());
 
         for id in def_ids {
@@ -200,25 +200,73 @@ impl ActorsSnapshot {
     }
 }
 
-/// Snapshot of tables oracle data (PLACEHOLDER)
+/// Snapshot of tables oracle data
 ///
-/// TablesOracle currently has no methods, so this snapshot is empty.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// This snapshot captures all game balance values for deterministic
+/// execution in zkVM and future on-chain verification.
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TablesSnapshot {
-    // Placeholder - no data yet
+    pub action_costs: super::ActionCosts,
+    pub combat: super::CombatParams,
+    pub speed: super::SpeedParams,
 }
 
 impl TablesSnapshot {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(
+        action_costs: super::ActionCosts,
+        combat: super::CombatParams,
+        speed: super::SpeedParams,
+    ) -> Self {
+        Self {
+            action_costs,
+            combat,
+            speed,
+        }
     }
 
     /// Creates a tables snapshot from a TablesOracle.
     #[cfg(feature = "std")]
-    #[allow(unused_variables)]
-    pub fn from_oracle(oracle: &impl TablesOracle) -> Self {
-        Self::new()
+    pub fn from_oracle(oracle: &dyn TablesOracle) -> Self {
+        Self::new(oracle.action_costs(), oracle.combat(), oracle.speed())
+    }
+}
+
+impl Default for TablesSnapshot {
+    /// Creates a snapshot with reasonable default balance values.
+    ///
+    /// Note: These defaults are for testing and fallback purposes only.
+    /// Production values should come from runtime's TablesOracleImpl.
+    fn default() -> Self {
+        Self::new(
+            // Default action costs
+            super::ActionCosts {
+                attack: 100,
+                move_action: 100,
+                wait: 100,
+                interact: 100,
+                activation: 0,
+            },
+            // Default combat parameters
+            super::CombatParams {
+                hit_chance: super::HitChanceParams {
+                    base: 80,
+                    min: 5,
+                    max: 95,
+                },
+                damage: super::DamageParams {
+                    ac_divisor: 2,
+                    crit_multiplier: 2,
+                    minimum: 1,
+                },
+            },
+            // Default speed parameters
+            super::SpeedParams {
+                cost_multiplier: 100,
+                min: 1,
+                max: 1000,
+            },
+        )
     }
 }
 
@@ -236,7 +284,7 @@ impl ConfigSnapshot {
 
     /// Creates a config snapshot from a ConfigOracle.
     #[cfg(feature = "std")]
-    pub fn from_oracle(oracle: &impl ConfigOracle) -> Self {
+    pub fn from_oracle(oracle: &dyn ConfigOracle) -> Self {
         let config = GameConfig {
             activation_radius: oracle.activation_radius(),
         };
@@ -316,9 +364,8 @@ impl<'a> ActorOracle for SnapshotActorOracle<'a> {
     }
 }
 
-/// Guest-side adapter for TablesOracle backed by TablesSnapshot (PLACEHOLDER)
+/// Guest-side adapter for TablesOracle backed by TablesSnapshot
 pub struct SnapshotTablesOracle<'a> {
-    #[allow(dead_code)] // Placeholder - will be used when TablesOracle gains methods
     snapshot: &'a TablesSnapshot,
 }
 
@@ -329,7 +376,17 @@ impl<'a> SnapshotTablesOracle<'a> {
 }
 
 impl<'a> TablesOracle for SnapshotTablesOracle<'a> {
-    // No methods to implement - trait is empty (placeholder)
+    fn action_costs(&self) -> super::ActionCosts {
+        self.snapshot.action_costs
+    }
+
+    fn combat(&self) -> super::CombatParams {
+        self.snapshot.combat
+    }
+
+    fn speed(&self) -> super::SpeedParams {
+        self.snapshot.speed
+    }
 }
 
 /// Guest-side adapter for ConfigOracle backed by ConfigSnapshot

@@ -149,6 +149,9 @@ pub struct StatsSnapshotBuilder {
 
 impl StatsSnapshotBuilder {
     /// Start building a snapshot from base stats
+    ///
+    /// # Arguments
+    /// * `base_stats` - Core stats to use
     pub fn from_base(base_stats: CoreStats) -> Self {
         let core = <CoreEffective as StatLayer>::from_base(&base_stats);
         let resource_max = <ResourceMaximums as StatLayer>::compute(&core, &ResourceBonuses::new());
@@ -255,8 +258,9 @@ mod tests {
 
         let snapshot = StatsSnapshot::create(&base, &bonuses, &resources);
 
-        // Cognitive speed: 116 × 1.25 = 145
-        assert_eq!(snapshot.speed.cognitive, 145);
+        // Cognitive speed: 20 + (INT=18 × 3) + (WIL=16 × 2) = 20 + 54 + 32 = 106
+        // With 25% more bonus: 106 × 1.25 = 132.5 → 132
+        assert_eq!(snapshot.speed.cognitive, 132);
         // MP: (16 + 18) × 5 + (14 × 2) + (5 × √16) = 170 + 28 + 20 = 218
         assert_eq!(snapshot.resource_max.mp_max, 218);
     }

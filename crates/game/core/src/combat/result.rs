@@ -1,5 +1,6 @@
 //! Combat result types and attack resolution.
 
+use crate::env::TablesOracle;
 use crate::stats::StatsSnapshot;
 
 use super::damage::calculate_damage;
@@ -38,6 +39,7 @@ pub struct AttackResult {
 /// * `defender_stats` - Snapshot of defender's stats
 /// * `weapon_damage` - Base weapon damage
 /// * `roll` - Random roll for hit check (0-100)
+/// * `tables` - Balance parameters oracle
 ///
 /// # Returns
 ///
@@ -47,12 +49,14 @@ pub fn resolve_attack(
     defender_stats: &StatsSnapshot,
     weapon_damage: u32,
     roll: u32,
+    tables: &(impl TablesOracle + ?Sized),
 ) -> AttackResult {
     // 1. Check if attack hits
     let hit = check_hit(
         attacker_stats.derived.accuracy,
         defender_stats.derived.evasion,
         roll,
+        tables,
     );
 
     if !hit {
@@ -63,7 +67,7 @@ pub fn resolve_attack(
     }
 
     // 2. Calculate damage
-    let damage = calculate_damage(attacker_stats, defender_stats, weapon_damage, false);
+    let damage = calculate_damage(attacker_stats, defender_stats, weapon_damage, false, tables);
 
     AttackResult {
         outcome: AttackOutcome::Hit,

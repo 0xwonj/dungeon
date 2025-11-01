@@ -23,7 +23,9 @@ pub use snapshot::{
     SnapshotActorOracle, SnapshotConfigOracle, SnapshotItemOracle, SnapshotMapOracle,
     SnapshotOracleBundle, SnapshotTablesOracle, TablesSnapshot,
 };
-pub use tables::TablesOracle;
+pub use tables::{
+    ActionCosts, CombatParams, DamageParams, HitChanceParams, SpeedParams, TablesOracle,
+};
 
 /// Aggregates read-only oracles required by the reducer and action pipeline.
 #[derive(Clone, Copy, Debug)]

@@ -208,18 +208,19 @@ impl GameState {
     }
 }
 
-impl Default for GameState {
-    fn default() -> Self {
+impl GameState {
+    /// Create a default game state with a player.
+    pub fn with_player() -> Self {
         let mut state = Self {
             game_seed: 0,      // Default seed
             next_entity_id: 1, // Start at 1 (0 is reserved for PLAYER)
             turn: TurnState::default(),
-            entities: EntitiesState::default(),
+            entities: EntitiesState::with_player(),
             world: WorldState::default(),
         };
 
         // IMPORTANT: Activate the default player so they can act
-        // EntitiesState::default() creates a player actor, but doesn't add to active_actors
+        // EntitiesState::with_player() creates a player actor, but doesn't add to active_actors
         // We need to ensure player is ready to act
         if let Some(player) = state.entities.actors.first_mut() {
             player.ready_at = Some(0);

@@ -113,36 +113,33 @@ impl StatLayer for StatModifiers {
     type Final = Self;
 
     fn compute(base: &Self::Base, bonuses: &Self::Bonuses) -> Self::Final {
-        let bounds = StatBounds::MODIFIERS;
+        const BOUNDS: StatBounds = StatBounds::MODIFIER;
+
         let base_stats = Self::compute_base(base);
 
         Self {
             str_mod: bonuses
                 .str_bonuses
-                .apply(base_stats.str_mod, bounds.min, bounds.max),
+                .apply(base_stats.str_mod, BOUNDS.min, BOUNDS.max),
             con_mod: bonuses
                 .con_bonuses
-                .apply(base_stats.con_mod, bounds.min, bounds.max),
+                .apply(base_stats.con_mod, BOUNDS.min, BOUNDS.max),
             dex_mod: bonuses
                 .dex_bonuses
-                .apply(base_stats.dex_mod, bounds.min, bounds.max),
+                .apply(base_stats.dex_mod, BOUNDS.min, BOUNDS.max),
             int_mod: bonuses
                 .int_bonuses
-                .apply(base_stats.int_mod, bounds.min, bounds.max),
+                .apply(base_stats.int_mod, BOUNDS.min, BOUNDS.max),
             wil_mod: bonuses
                 .wil_bonuses
-                .apply(base_stats.wil_mod, bounds.min, bounds.max),
+                .apply(base_stats.wil_mod, BOUNDS.min, BOUNDS.max),
             ego_mod: bonuses
                 .ego_bonuses
-                .apply(base_stats.ego_mod, bounds.min, bounds.max),
+                .apply(base_stats.ego_mod, BOUNDS.min, BOUNDS.max),
         }
     }
 
     fn empty_bonuses() -> Self::Bonuses {
         ModifierBonuses::new()
-    }
-
-    fn bounds() -> Option<StatBounds> {
-        Some(StatBounds::MODIFIERS)
     }
 }

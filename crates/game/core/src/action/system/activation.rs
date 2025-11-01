@@ -6,6 +6,7 @@
 use crate::action::ActionTransition;
 use crate::env::GameEnv;
 use crate::state::{EntityId, GameState, Position, Tick};
+use crate::stats::calculate_action_cost;
 
 /// System action that updates entity activation status based on player proximity.
 ///
@@ -83,12 +84,13 @@ impl ActionTransition for ActivationAction {
                 if !is_active && is_alive {
                     state.turn.active_actors.insert(entity_id);
 
-                    // Set initial ready_at using Wait action cost (100 ticks scaled by speed)
-                    // This gives the NPC time to "wake up" before acting
+                    // Set initial ready_at using activation cost from oracle scaled by speed
+                    // This gives the NPC a brief "wake up" delay before acting
                     if let Some(actor) = state.entities.actor_mut(entity_id) {
                         let snapshot = actor.snapshot();
-                        let speed = snapshot.speed.physical.max(1) as u64;
-                        let delay = 100 * 100 / speed;
+                        let tables = env.tables().expect("TablesOracle required for activation");
+                        let base_cost = tables.action_costs().activation;
+                        let delay = calculate_action_cost(base_cost, snapshot.speed.physical);
                         actor.ready_at = Some(clock + delay);
                     }
                 }

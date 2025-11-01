@@ -1,5 +1,6 @@
 //! Damage calculation and application.
 
+use crate::env::TablesOracle;
 use crate::stats::StatsSnapshot;
 
 /// Calculate damage from an attack.
@@ -8,12 +9,17 @@ use crate::stats::StatsSnapshot;
 ///
 /// ```text
 /// base_damage = weapon_damage + attack_stat
-/// reduced_damage = base_damage - (ac / 2)
-/// final_damage = max(reduced_damage, 1)
+/// reduced_damage = base_damage - (ac / ac_divisor)
+/// final_damage = max(reduced_damage, minimum)
 ///
 /// if critical:
-///     final_damage *= 2
+///     final_damage *= crit_multiplier
 /// ```
+///
+/// Balance parameters are provided by TablesOracle:
+/// - AC divisor (default: 2)
+/// - Critical multiplier (default: 2)
+/// - Minimum damage (default: 0)
 ///
 /// # Arguments
 ///
@@ -21,6 +27,7 @@ use crate::stats::StatsSnapshot;
 /// * `defender_stats` - Defender's stats snapshot
 /// * `weapon_damage` - Base weapon damage
 /// * `is_critical` - Whether this is a critical hit
+/// * `tables` - Balance parameters oracle
 ///
 /// # Returns
 ///
@@ -30,20 +37,23 @@ pub fn calculate_damage(
     defender_stats: &StatsSnapshot,
     weapon_damage: u32,
     is_critical: bool,
+    tables: &(impl TablesOracle + ?Sized),
 ) -> u32 {
+    let params = tables.combat().damage;
+
     // Base damage: weapon + attack stat
     let base_damage = weapon_damage + attacker_stats.derived.attack.max(0) as u32;
 
-    // Defense reduction: AC / 2
-    let ac_reduction = (defender_stats.derived.ac.max(0) / 2) as u32;
+    // Defense reduction: AC / divisor
+    let ac_reduction = (defender_stats.derived.ac.max(0) / params.ac_divisor as i32) as u32;
     let reduced_damage = base_damage.saturating_sub(ac_reduction);
 
-    // Minimum damage is 0
-    let mut final_damage = reduced_damage;
+    // Apply minimum damage
+    let mut final_damage = reduced_damage.max(params.minimum);
 
-    // Critical hit doubles damage
+    // Critical hit multiplies damage
     if is_critical {
-        final_damage *= 2;
+        final_damage *= params.crit_multiplier;
     }
 
     final_damage
