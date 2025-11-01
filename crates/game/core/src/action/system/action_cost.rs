@@ -36,6 +36,7 @@ impl ActionCostAction {
 
 impl ActionTransition for ActionCostAction {
     type Error = ActionCostError;
+    type Result = ();
 
     fn actor(&self) -> EntityId {
         EntityId::SYSTEM

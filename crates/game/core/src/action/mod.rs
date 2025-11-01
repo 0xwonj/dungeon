@@ -27,8 +27,16 @@ pub use wait::WaitAction;
 /// post-conditions that must hold around the state mutation. All hooks receive
 /// read-only access to deterministic environment facts via `Env` and must stay
 /// side-effect free.
+///
+/// # Associated Types
+///
+/// - `Error`: Error type for validation and execution failures
+/// - `Result`: Execution result metadata (e.g., combat outcome, movement penalties)
+///   - Use `()` for actions with no meaningful result
+///   - Use specific result types (e.g., `AttackResult`) for actions with outcomes
 pub trait ActionTransition {
     type Error;
+    type Result;
 
     /// Returns the entity performing this action.
     /// For system actions, this should return `EntityId::SYSTEM`.
@@ -45,7 +53,9 @@ pub trait ActionTransition {
 
     /// Applies the action by mutating the game state directly. Implementations should
     /// assume that `pre_validate` has already run successfully.
-    fn apply(&self, state: &mut GameState, env: &GameEnv<'_>) -> Result<(), Self::Error>;
+    ///
+    /// Returns action-specific execution metadata (e.g., combat results, item effects).
+    fn apply(&self, state: &mut GameState, env: &GameEnv<'_>) -> Result<Self::Result, Self::Error>;
 
     /// Validates post-conditions using the state **after** mutation.
     fn post_validate(&self, _state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {

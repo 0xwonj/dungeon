@@ -45,6 +45,7 @@ pub enum ItemTarget {
 
 impl ActionTransition for UseItemAction {
     type Error = Infallible;
+    type Result = ();
 
     fn actor(&self) -> EntityId {
         self.actor

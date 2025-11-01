@@ -22,7 +22,9 @@ pub use combat::{
     resolve_attack,
 };
 pub use config::GameConfig;
-pub use engine::{ExecuteError, GameEngine, TransitionPhase, TransitionPhaseError};
+pub use engine::{
+    ActionResult, ExecuteError, ExecutionOutcome, GameEngine, TransitionPhase, TransitionPhaseError,
+};
 pub use env::{
     ActorOracle, ActorTemplate, ActorTemplateBuilder, ActorsSnapshot, ArmorData, ConfigOracle,
     ConfigSnapshot, ConsumableData, ConsumableEffect, Env, GameEnv, ItemDefinition, ItemKind,

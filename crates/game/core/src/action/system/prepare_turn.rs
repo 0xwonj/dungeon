@@ -25,6 +25,7 @@ pub struct PrepareTurnAction;
 
 impl ActionTransition for PrepareTurnAction {
     type Error = TurnError;
+    type Result = ();
 
     fn actor(&self) -> EntityId {
         EntityId::SYSTEM

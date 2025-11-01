@@ -11,8 +11,48 @@ mod transition;
 pub use errors::{ExecuteError, TransitionPhase, TransitionPhaseError};
 
 use crate::action::Action;
+use crate::combat::AttackResult;
 use crate::env::GameEnv;
 use crate::state::{GameState, StateDelta};
+
+/// Execution result metadata for different action types.
+///
+/// Contains action-specific outcome information (e.g., combat results, item effects).
+/// System actions return `System` (no meaningful result).
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ActionResult {
+    /// Combat attack result (hit/miss/critical, damage dealt).
+    Attack(AttackResult),
+
+    /// Movement action (no specific result metadata yet).
+    Move,
+
+    /// Item usage action (future: healing amount, effects applied).
+    UseItem,
+
+    /// Interaction action (future: dialogue, quest triggers).
+    Interact,
+
+    /// Wait action (no result metadata).
+    Wait,
+
+    /// System actions (PrepareTurn, ActionCost, Activation) have no result.
+    System,
+}
+
+/// Complete outcome of action execution.
+///
+/// Contains both state change metadata (delta) and action-specific results.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ExecutionOutcome {
+    /// State change metadata (which fields changed).
+    pub delta: StateDelta,
+
+    /// Action-specific execution result (combat outcome, item effects, etc.).
+    pub action_result: ActionResult,
+}
 
 /// Game engine that manages action execution, turn scheduling, and game logic.
 ///
@@ -38,20 +78,21 @@ impl<'a> GameEngine<'a> {
     /// - System actions must be from `EntityId::SYSTEM`
     /// - Non-system actions must be from `state.turn.current_actor`
     ///
+    /// Returns `ExecutionOutcome` containing both state delta and action result.
     /// When `zkvm` feature is enabled, delta computation is skipped.
     pub fn execute(
         &mut self,
         env: GameEnv<'_>,
         action: &Action,
-    ) -> Result<StateDelta, ExecuteError> {
+    ) -> Result<ExecutionOutcome, ExecuteError> {
         // Mandatory actor validation
         self.validate_actor(action)?;
 
         #[cfg(not(feature = "zkvm"))]
         let before = self.state.clone();
 
-        // Execute the action through transition pipeline
-        transition::execute_transition(action, self.state, &env)?;
+        // Execute the action through transition pipeline and get result
+        let action_result = transition::execute_transition(action, self.state, &env)?;
 
         // Increment nonce after successful execution
         self.state.turn.nonce += 1;
@@ -60,12 +101,18 @@ impl<'a> GameEngine<'a> {
         #[cfg(not(feature = "zkvm"))]
         {
             let delta = StateDelta::from_states(action.clone(), &before, self.state);
-            Ok(delta)
+            Ok(ExecutionOutcome {
+                delta,
+                action_result,
+            })
         }
 
         // In zkvm mode, skip delta computation and return empty delta
         #[cfg(feature = "zkvm")]
-        Ok(StateDelta::empty())
+        Ok(ExecutionOutcome {
+            delta: StateDelta::empty(),
+            action_result,
+        })
     }
 
     /// Validates action actor matches turn state.

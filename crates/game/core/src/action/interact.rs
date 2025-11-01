@@ -20,6 +20,7 @@ impl InteractAction {
 
 impl ActionTransition for InteractAction {
     type Error = Infallible;
+    type Result = ();
 
     fn actor(&self) -> EntityId {
         self.actor

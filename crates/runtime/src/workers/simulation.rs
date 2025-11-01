@@ -177,7 +177,7 @@ impl SimulationWorker {
 
         // Execute action through GameEngine (this will increment nonce)
         let mut engine = GameEngine::new(state);
-        let delta = engine.execute(env, action)?;
+        let outcome = engine.execute(env, action)?;
 
         // Capture state after execution
         let after_state = state.clone();
@@ -187,13 +187,14 @@ impl SimulationWorker {
         event_bus.publish(Event::GameState(GameStateEvent::ActionExecuted {
             nonce,
             action: action.clone(),
-            delta: Box::new(delta.clone()),
+            delta: Box::new(outcome.delta.clone()),
             clock,
             before_state: Box::new(before_state),
             after_state: Box::new(after_state),
+            action_result: outcome.action_result.clone(),
         }));
 
-        Ok(delta)
+        Ok(outcome.delta)
     }
 
     /// Handles player/NPC action with full workflow:

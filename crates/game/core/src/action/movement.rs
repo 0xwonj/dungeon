@@ -78,6 +78,7 @@ impl CardinalDirection {
 
 impl ActionTransition for MoveAction {
     type Error = MoveError;
+    type Result = ();
 
     fn actor(&self) -> EntityId {
         self.actor

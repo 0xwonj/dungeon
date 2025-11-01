@@ -57,6 +57,7 @@ impl core::fmt::Display for AttackError {
 
 impl ActionTransition for AttackAction {
     type Error = AttackError;
+    type Result = crate::combat::AttackResult;
 
     fn actor(&self) -> EntityId {
         self.actor
@@ -102,7 +103,7 @@ impl ActionTransition for AttackAction {
         Ok(())
     }
 
-    fn apply(&self, state: &mut GameState, env: &GameEnv<'_>) -> Result<(), Self::Error> {
+    fn apply(&self, state: &mut GameState, env: &GameEnv<'_>) -> Result<Self::Result, Self::Error> {
         // === Pass 1: Gather data (immutable) ===
 
         let attacker = state
@@ -152,7 +153,7 @@ impl ActionTransition for AttackAction {
             defender.resources.hp = combat::apply_damage(defender.resources.hp, damage);
         }
 
-        Ok(())
+        Ok(result)
     }
 }
 

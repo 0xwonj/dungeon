@@ -19,6 +19,7 @@ impl WaitAction {
 
 impl ActionTransition for WaitAction {
     type Error = Infallible;
+    type Result = ();
 
     fn actor(&self) -> EntityId {
         self.actor

@@ -44,6 +44,7 @@ impl ActivationAction {
 
 impl ActionTransition for ActivationAction {
     type Error = ActivationError;
+    type Result = ();
 
     fn actor(&self) -> EntityId {
         EntityId::SYSTEM

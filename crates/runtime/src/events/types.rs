@@ -1,7 +1,8 @@
 //! Event types for different topics.
 
 use game_core::{
-    Action, CharacterActionKind, EntityId, GameState, StateDelta, Tick, engine::TransitionPhase,
+    Action, ActionResult, CharacterActionKind, EntityId, GameState, StateDelta, Tick,
+    engine::TransitionPhase,
 };
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +20,8 @@ pub enum GameStateEvent {
         clock: Tick,
         before_state: Box<GameState>,
         after_state: Box<GameState>,
+        /// Action-specific execution result (e.g., combat outcome, item effects)
+        action_result: ActionResult,
     },
 
     /// An action failed during execution pipeline
