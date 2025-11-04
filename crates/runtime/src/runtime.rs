@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use game_core::{EntityId, GameConfig, GameState, WaitAction};
+use game_core::{EntityId, GameConfig, GameState};
 
 use crate::api::{
     ActionProvider, ProviderKind, ProviderRegistry, Result, RuntimeError, RuntimeHandle,
@@ -184,7 +184,7 @@ impl Runtime {
     /// - The entity's provider kind is not registered
     /// - Action execution fails
     pub async fn step(&mut self) -> Result<()> {
-        use game_core::{Action, CharacterActionKind};
+        use game_core::{Action, ActionInput, ActionKind, CharacterAction};
 
         // 1. Prepare turn (SimulationWorker determines which entity acts)
         let (entity, snapshot) = self.handle.prepare_next_turn().await?;
@@ -210,7 +210,11 @@ impl Runtime {
                     error = %e,
                     "Provider failed to generate action, falling back to Wait"
                 );
-                Action::character(entity, CharacterActionKind::Wait(WaitAction::new(entity)))
+                Action::character(CharacterAction::new(
+                    entity,
+                    ActionKind::Wait,
+                    ActionInput::None,
+                ))
             }
         };
 

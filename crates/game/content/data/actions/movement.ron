@@ -1,0 +1,28 @@
+// Movement actions - actions that move the actor
+//
+// - Move: Move 1 tile in any cardinal direction
+
+[
+    // Move action
+    ActionProfile(
+        kind: Move,
+        tags: [Movement],
+        targeting: Directional(
+            range: 1,
+            width: None,
+        ),
+        base_cost: 100,
+        resource_costs: [],
+        effects: [
+            ActionEffect(
+                kind: MoveSelf(
+                    displacement: FromInput(distance: 1),
+                ),
+                phase: Primary,
+                priority: 0,
+            ),
+        ],
+        requirements: [],
+        cooldown: None,
+    ),
+]

@@ -349,6 +349,12 @@ impl<'a> TablesOracle for SnapshotTablesOracle<'a> {
     fn speed(&self) -> super::SpeedParams {
         self.snapshot.speed
     }
+
+    fn action_profile(&self, _kind: crate::action::ActionKind) -> crate::action::ActionProfile {
+        // TODO: Load action profiles from snapshot
+        // ActionProfile should be loaded from RON data files, not created with defaults
+        unimplemented!("ActionProfile must be loaded from data files")
+    }
 }
 
 /// Guest-side adapter for ConfigOracle backed by ConfigSnapshot

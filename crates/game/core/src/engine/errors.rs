@@ -1,8 +1,7 @@
 //! Error types for action execution pipeline.
 
 use crate::action::{
-    ActionCostAction, ActionTransition, ActivationAction, AttackAction, InteractAction, MoveAction,
-    PrepareTurnAction, UseItemAction, WaitAction,
+    ActionCostAction, ActionError, ActionTransition, ActivationAction, PrepareTurnAction,
 };
 use crate::error::{ErrorContext, ErrorSeverity, GameError};
 
@@ -95,25 +94,8 @@ where
 #[derive(Clone, Debug, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExecuteError {
-    #[error("move action failed: {0}")]
-    #[cfg_attr(feature = "serde", serde(skip))]
-    Move(TransitionPhaseError<<MoveAction as ActionTransition>::Error>),
-
-    #[error("attack action failed: {0}")]
-    #[cfg_attr(feature = "serde", serde(skip))]
-    Attack(TransitionPhaseError<<AttackAction as ActionTransition>::Error>),
-
-    #[error("use item action failed: {0}")]
-    #[cfg_attr(feature = "serde", serde(skip))]
-    UseItem(TransitionPhaseError<<UseItemAction as ActionTransition>::Error>),
-
-    #[error("interact action failed: {0}")]
-    #[cfg_attr(feature = "serde", serde(skip))]
-    Interact(TransitionPhaseError<<InteractAction as ActionTransition>::Error>),
-
-    #[error("wait action failed: {0}")]
-    #[cfg_attr(feature = "serde", serde(skip))]
-    Wait(TransitionPhaseError<<WaitAction as ActionTransition>::Error>),
+    #[error("character action failed: {0}")]
+    Character(TransitionPhaseError<ActionError>),
 
     #[error("prepare turn action failed: {0}")]
     #[cfg_attr(feature = "serde", serde(skip))]
@@ -195,11 +177,7 @@ impl ExecuteError {
     /// Returns `None` for system-level errors that don't go through the transition pipeline.
     pub fn phase(&self) -> Option<TransitionPhase> {
         match self {
-            Self::Move(e) => Some(e.phase),
-            Self::Attack(e) => Some(e.phase),
-            Self::UseItem(e) => Some(e.phase),
-            Self::Interact(e) => Some(e.phase),
-            Self::Wait(e) => Some(e.phase),
+            Self::Character(e) => Some(e.phase),
             Self::PrepareTurn(e) => Some(e.phase),
             Self::ActionCost(e) => Some(e.phase),
             Self::Activation(e) => Some(e.phase),
@@ -250,11 +228,7 @@ impl ExecuteError {
 impl GameError for ExecuteError {
     fn severity(&self) -> ErrorSeverity {
         match self {
-            Self::Move(e) => e.severity(),
-            Self::Attack(e) => e.severity(),
-            Self::UseItem(e) => match e.error {}, // NeverError - impossible
-            Self::Interact(e) => match e.error {},
-            Self::Wait(e) => match e.error {},
+            Self::Character(_) => ErrorSeverity::Validation,
             Self::PrepareTurn(e) => e.severity(),
             Self::ActionCost(e) => e.severity(),
             Self::Activation(e) => e.severity(),
@@ -266,11 +240,7 @@ impl GameError for ExecuteError {
 
     fn context(&self) -> Option<&ErrorContext> {
         match self {
-            Self::Move(e) => e.context(),
-            Self::Attack(e) => e.context(),
-            Self::UseItem(e) => match e.error {},
-            Self::Interact(e) => match e.error {},
-            Self::Wait(e) => match e.error {},
+            Self::Character(_) => None,
             Self::PrepareTurn(e) => e.context(),
             Self::ActionCost(e) => e.context(),
             Self::Activation(e) => e.context(),
@@ -282,11 +252,7 @@ impl GameError for ExecuteError {
 
     fn error_code(&self) -> &'static str {
         match self {
-            Self::Move(e) => e.error_code(),
-            Self::Attack(e) => e.error_code(),
-            Self::UseItem(e) => match e.error {},
-            Self::Interact(e) => match e.error {},
-            Self::Wait(e) => match e.error {},
+            Self::Character(_) => "EXECUTE_CHARACTER_ACTION",
             Self::PrepareTurn(e) => e.error_code(),
             Self::ActionCost(e) => e.error_code(),
             Self::Activation(e) => e.error_code(),

@@ -3,6 +3,36 @@
 use crate::env::TablesOracle;
 use crate::stats::StatsSnapshot;
 
+// ============================================================================
+// Damage Type
+// ============================================================================
+
+/// Damage type for resistances and damage calculation.
+///
+/// Different damage types may have different resistance values on actors.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum DamageType {
+    /// Physical damage (melee, projectiles).
+    Physical,
+    /// Fire damage (burns, explosions).
+    Fire,
+    /// Cold damage (ice, frost).
+    Cold,
+    /// Lightning damage (electricity, storms).
+    Lightning,
+    /// Poison damage (toxins, venom).
+    Poison,
+    /// Arcane damage (pure magic).
+    Arcane,
+    /// True damage (ignores all resistances).
+    True,
+}
+
+// ============================================================================
+// Damage Calculation
+// ============================================================================
+
 /// Calculate damage from an attack.
 ///
 /// # Formula

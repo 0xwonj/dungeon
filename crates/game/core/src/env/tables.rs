@@ -89,4 +89,9 @@ pub trait TablesOracle: Send + Sync {
 
     /// Returns speed system parameters
     fn speed(&self) -> SpeedParams;
+
+    /// Returns the action profile for a given action kind.
+    ///
+    /// Action profiles define behavior, costs, targeting, and effects for each action.
+    fn action_profile(&self, kind: crate::action::ActionKind) -> crate::action::ActionProfile;
 }

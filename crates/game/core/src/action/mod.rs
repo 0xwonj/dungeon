@@ -1,54 +1,65 @@
-//! Action domain definitions.
+//! Action domain - effect-based action system.
 //!
-//! Provides typed representations for player intent and concrete action kinds executed by the engine.
+//! # New Action System (Effect-Based)
+//!
+//! The action system uses a data-driven, effect-based architecture:
+//! - `ActionKind`: Enum of all action types
+//! - `CharacterAction`: Execution instance (actor + kind + input)
+//! - `ActionProfile`: Complete specification loaded from data
+//! - `ActionEffect`: Atomic effects that compose into actions
+//! - `TargetingMode`: How actions select and filter targets
+//!
+//! See docs/action-system.md for detailed design documentation.
+//!
+//! # Module Structure
+//!
+//! - `kind`: ActionKind enum (all action types)
+//! - `effect`: Effect definitions (Damage, Heal, Status, Movement, etc.)
+//! - `targeting`: Targeting modes and filters
+//! - `profile`: Action profiles (behavior + costs + effects)
+//! - `types`: Core types (CharacterAction, ActionInput, ActionResult)
+//! - `execute`: Action execution pipeline (resolve targets + apply effects)
+//! - `system`: System actions (PrepareTurn, ActionCost, Activation)
+
 pub mod available;
-pub mod combat;
-pub mod interact;
-pub mod inventory;
-pub mod movement;
+pub mod effect;
+pub mod execute;
+pub mod kind;
+pub mod profile;
 pub mod system;
-pub mod wait;
+pub mod targeting;
+pub mod types;
 
-use crate::env::GameEnv;
-use crate::state::{EntityId, GameState, Tick};
-
+// Re-export commonly used types
 pub use available::get_available_actions;
-pub use combat::{AttackAction, AttackError};
-pub use interact::InteractAction;
-pub use inventory::{InventoryIndex, ItemTarget, UseItemAction};
-pub use movement::{CardinalDirection, MoveAction, MoveError};
+pub use effect::{
+    ActionEffect, Condition, Displacement, EffectKind, ExecutionPhase, Formula, InteractionType,
+};
+pub use execute::{ActionError, EffectContext, apply, post_validate, pre_validate};
+pub use kind::ActionKind;
+pub use profile::{ActionProfile, ActionTag, Requirement, ResourceCost};
 pub use system::{
     ActionCostAction, ActionCostError, ActivationAction, ActivationError, PrepareTurnAction,
     TurnError,
 };
-pub use wait::WaitAction;
+pub use targeting::TargetingMode;
+pub use types::{ActionInput, ActionResult, CardinalDirection, CharacterAction};
 
-/// Defines how a concrete action variant mutates game state while mirroring
-/// the constraint checks enforced inside zk circuits.
+use crate::env::GameEnv;
+use crate::state::{EntityId, GameState, Tick};
+
+/// Defines how a concrete action variant mutates game state.
 ///
-/// Implementors can override the validation hooks to surface pre- and
-/// post-conditions that must hold around the state mutation. All hooks receive
-/// read-only access to deterministic environment facts via `Env` and must stay
-/// side-effect free.
-///
-/// # Associated Types
-///
-/// - `Error`: Error type for validation and execution failures
-/// - `Result`: Execution result metadata (e.g., combat outcome, movement penalties)
-///   - Use `()` for actions with no meaningful result
-///   - Use specific result types (e.g., `AttackResult`) for actions with outcomes
+/// System actions (PrepareTurn, ActionCost, Activation) implement this trait.
+/// Character actions use the new effect-based execution in `execute.rs`.
 pub trait ActionTransition {
     type Error;
     type Result;
 
     /// Returns the entity performing this action.
-    /// For system actions, this should return `EntityId::SYSTEM`.
     fn actor(&self) -> EntityId;
 
     /// Returns the base time cost of this action in ticks (before speed scaling).
-    ///
-    /// This cost is retrieved from the TablesOracle to enable runtime balancing.
-    /// The final cost is calculated by applying speed scaling via `calculate_action_cost()`.
     fn cost(&self, env: &GameEnv<'_>) -> Tick;
 
     /// Validates pre-conditions using the state **before** mutation.
@@ -56,10 +67,7 @@ pub trait ActionTransition {
         Ok(())
     }
 
-    /// Applies the action by mutating the game state directly. Implementations should
-    /// assume that `pre_validate` has already run successfully.
-    ///
-    /// Returns action-specific execution metadata (e.g., combat results, item effects).
+    /// Applies the action by mutating the game state directly.
     fn apply(&self, state: &mut GameState, env: &GameEnv<'_>) -> Result<Self::Result, Self::Error>;
 
     /// Validates post-conditions using the state **after** mutation.
@@ -68,18 +76,7 @@ pub trait ActionTransition {
     }
 }
 
-/// Action variants for characters (player/NPC).
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum CharacterActionKind {
-    Move(MoveAction),
-    Attack(AttackAction),
-    UseItem(UseItemAction),
-    Interact(InteractAction),
-    Wait(WaitAction),
-}
-
-/// Action variants for system operations.
+/// System action variants (turn management, cost application, activation).
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SystemActionKind {
@@ -88,34 +85,21 @@ pub enum SystemActionKind {
     Activation(ActivationAction),
 }
 
-/// Describes a single action executed during gameplay.
-///
-/// Type-level separation ensures characters and system are distinct:
-/// - Character actions: executed by player/NPC characters
-/// - System actions: executed by the game engine (not a character)
+/// Top-level action enum that can be either a character action or system action.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Action {
-    Character {
-        actor: EntityId,
-        kind: CharacterActionKind,
-    },
-    System {
-        kind: SystemActionKind,
-    },
+    /// Character action using the new effect-based system.
+    Character(CharacterAction),
+
+    /// System action (turn scheduling, cost application, activation).
+    System { kind: SystemActionKind },
 }
 
 impl Action {
     /// Creates a new character action.
-    pub fn character(actor: EntityId, kind: CharacterActionKind) -> Self {
-        debug_assert!(match &kind {
-            CharacterActionKind::Move(move_action) => move_action.actor == actor,
-            CharacterActionKind::Attack(attack_action) => attack_action.actor == actor,
-            CharacterActionKind::UseItem(use_item_action) => use_item_action.actor == actor,
-            CharacterActionKind::Interact(interact_action) => interact_action.actor == actor,
-            CharacterActionKind::Wait(wait_action) => wait_action.actor == actor,
-        });
-        Self::Character { actor, kind }
+    pub fn character(action: CharacterAction) -> Self {
+        Self::Character(action)
     }
 
     /// Creates a new system action.
@@ -124,10 +108,9 @@ impl Action {
     }
 
     /// Returns the entity ID performing this action.
-    /// For system actions, returns EntityId::SYSTEM.
     pub fn actor(&self) -> EntityId {
         match self {
-            Action::Character { actor, .. } => *actor,
+            Action::Character(action) => action.actor,
             Action::System { .. } => EntityId::SYSTEM,
         }
     }
@@ -137,17 +120,16 @@ impl Action {
     /// Cost is scaled by the actor's speed stat (from snapshot).
     /// Base costs are retrieved from TablesOracle.
     pub fn cost(&self, snapshot: &crate::stats::StatsSnapshot, env: &GameEnv<'_>) -> Tick {
-        use crate::action::ActionTransition;
         use crate::stats::calculate_action_cost;
 
         let base_cost = match self {
-            Action::Character { kind, .. } => match kind {
-                CharacterActionKind::Move(action) => action.cost(env),
-                CharacterActionKind::Attack(action) => action.cost(env),
-                CharacterActionKind::UseItem(action) => action.cost(env),
-                CharacterActionKind::Interact(action) => action.cost(env),
-                CharacterActionKind::Wait(action) => action.cost(env),
-            },
+            Action::Character(action) => {
+                // Get base cost from action profile
+                match env.tables() {
+                    Ok(tables) => tables.action_profile(action.kind).base_cost,
+                    Err(_) => 100, // Default cost on error
+                }
+            }
             Action::System { kind } => match kind {
                 SystemActionKind::PrepareTurn(action) => action.cost(env),
                 SystemActionKind::ActionCost(action) => action.cost(env),
@@ -159,51 +141,25 @@ impl Action {
     }
 
     /// Returns the snake_case string representation of the action.
-    pub fn as_snake_case(&self) -> &'static str {
+    pub fn as_snake_case(&self) -> &str {
         match self {
-            Action::Character { kind, .. } => match kind {
-                CharacterActionKind::Move(_) => "move",
-                CharacterActionKind::Attack(_) => "attack",
-                CharacterActionKind::UseItem(_) => "use_item",
-                CharacterActionKind::Interact(_) => "interact",
-                CharacterActionKind::Wait(_) => "wait",
-            },
+            Action::Character(action) => {
+                // TODO: Convert ActionKind to snake_case
+                // For now, return a placeholder
+                match action.kind {
+                    ActionKind::Move => "move",
+                    ActionKind::Wait => "wait",
+                    ActionKind::MeleeAttack => "melee_attack",
+                    ActionKind::Heal => "heal",
+                    _ => "unknown",
+                }
+            }
             Action::System { kind } => match kind {
                 SystemActionKind::PrepareTurn(_) => "prepare_turn",
                 SystemActionKind::ActionCost(_) => "action_cost",
                 SystemActionKind::Activation(_) => "activation",
             },
         }
-    }
-}
-
-impl From<MoveAction> for CharacterActionKind {
-    fn from(action: MoveAction) -> Self {
-        Self::Move(action)
-    }
-}
-
-impl From<AttackAction> for CharacterActionKind {
-    fn from(action: AttackAction) -> Self {
-        Self::Attack(action)
-    }
-}
-
-impl From<UseItemAction> for CharacterActionKind {
-    fn from(action: UseItemAction) -> Self {
-        Self::UseItem(action)
-    }
-}
-
-impl From<InteractAction> for CharacterActionKind {
-    fn from(action: InteractAction) -> Self {
-        Self::Interact(action)
-    }
-}
-
-impl From<WaitAction> for CharacterActionKind {
-    fn from(action: WaitAction) -> Self {
-        Self::Wait(action)
     }
 }
 

@@ -13,8 +13,8 @@ pub use delta::{
     OccupancyChanges, PropChanges, PropFields, StateDelta, TurnChanges, TurnFields, WorldChanges,
 };
 pub use types::{
-    ActionAbilities, ActionAbility, ActionKind, ActorState, ArmorKind, AttackType, EntitiesState,
-    EntityId, Equipment, EquipmentBuilder, InventorySlot, InventoryState, ItemHandle, ItemState,
+    ActionAbilities, ActionAbility, ActorState, ArmorKind, AttackType, EntitiesState, EntityId,
+    Equipment, EquipmentBuilder, InventorySlot, InventoryState, ItemHandle, ItemState,
     PassiveAbilities, PassiveAbility, PassiveKind, Position, PropKind, PropState, StatusEffect,
     StatusEffectKind, StatusEffects, Tick, TileMap, TileView, TurnState, WeaponKind, WorldState,
 };

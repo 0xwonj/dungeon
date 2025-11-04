@@ -11,31 +11,18 @@ mod transition;
 pub use errors::{ExecuteError, TransitionPhase, TransitionPhaseError};
 
 use crate::action::Action;
-use crate::combat::AttackResult;
 use crate::env::GameEnv;
 use crate::state::{GameState, StateDelta};
 
 /// Execution result metadata for different action types.
 ///
-/// Contains action-specific outcome information (e.g., combat results, item effects).
+/// Contains action-specific outcome information (e.g., damage dealt, healing, effects applied).
 /// System actions return `System` (no meaningful result).
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ActionResult {
-    /// Combat attack result (hit/miss/critical, damage dealt).
-    Attack(AttackResult),
-
-    /// Movement action (no specific result metadata yet).
-    Move,
-
-    /// Item usage action (future: healing amount, effects applied).
-    UseItem,
-
-    /// Interaction action (future: dialogue, quest triggers).
-    Interact,
-
-    /// Wait action (no result metadata).
-    Wait,
+    /// Character action result (from new effect-based system).
+    Character(crate::action::ActionResult),
 
     /// System actions (PrepareTurn, ActionCost, Activation) have no result.
     System,
@@ -124,11 +111,11 @@ impl<'a> GameEngine<'a> {
                 // System actions are always valid (actor is implicitly SYSTEM)
                 Ok(())
             }
-            Action::Character { actor, .. } => {
+            Action::Character(character_action) => {
                 let current_actor = self.state.turn.current_actor;
-                if *actor != current_actor {
+                if character_action.actor != current_actor {
                     return Err(ExecuteError::actor_not_current(
-                        *actor,
+                        character_action.actor,
                         current_actor,
                         nonce,
                     ));

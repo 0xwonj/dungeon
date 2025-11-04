@@ -20,6 +20,6 @@ pub mod damage;
 pub mod hit;
 pub mod result;
 
-pub use damage::{apply_damage, calculate_damage};
+pub use damage::{DamageType, apply_damage, calculate_damage};
 pub use hit::{calculate_hit_chance, check_hit};
 pub use result::{AttackOutcome, AttackResult, resolve_attack};

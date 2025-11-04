@@ -7,7 +7,7 @@ pub mod turn;
 pub mod world;
 
 pub use abilities::{
-    ActionAbilities, ActionAbility, ActionKind, PassiveAbilities, PassiveAbility, PassiveKind,
+    ActionAbilities, ActionAbility, PassiveAbilities, PassiveAbility, PassiveKind,
 };
 pub use common::{EntityId, Position, Tick};
 pub use entities::{

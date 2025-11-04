@@ -1,6 +1,6 @@
 //! Action transition dispatch and execution logic.
 
-use crate::action::{Action, ActionTransition, CharacterActionKind, SystemActionKind};
+use crate::action::{Action, ActionTransition, SystemActionKind, execute};
 use crate::env::GameEnv;
 use crate::state::GameState;
 
@@ -47,29 +47,28 @@ pub(super) fn execute_transition(
     env: &GameEnv<'_>,
 ) -> Result<ActionResult, ExecuteError> {
     match action {
-        Action::Character { kind, .. } => match kind {
-            CharacterActionKind::Move(transition) => {
-                drive_transition(transition, state, env).map_err(ExecuteError::Move)?;
-                Ok(ActionResult::Move)
-            }
-            CharacterActionKind::Attack(transition) => {
-                let attack_result =
-                    drive_transition(transition, state, env).map_err(ExecuteError::Attack)?;
-                Ok(ActionResult::Attack(attack_result))
-            }
-            CharacterActionKind::UseItem(transition) => {
-                drive_transition(transition, state, env).map_err(ExecuteError::UseItem)?;
-                Ok(ActionResult::UseItem)
-            }
-            CharacterActionKind::Interact(transition) => {
-                drive_transition(transition, state, env).map_err(ExecuteError::Interact)?;
-                Ok(ActionResult::Interact)
-            }
-            CharacterActionKind::Wait(transition) => {
-                drive_transition(transition, state, env).map_err(ExecuteError::Wait)?;
-                Ok(ActionResult::Wait)
-            }
-        },
+        Action::Character(character_action) => {
+            // Use the new effect-based execution system
+            execute::pre_validate(character_action, state, env).map_err(|error| {
+                ExecuteError::Character(TransitionPhaseError::new(
+                    TransitionPhase::PreValidate,
+                    error,
+                ))
+            })?;
+
+            let result = execute::apply(character_action, state, env).map_err(|error| {
+                ExecuteError::Character(TransitionPhaseError::new(TransitionPhase::Apply, error))
+            })?;
+
+            execute::post_validate(character_action, state, env).map_err(|error| {
+                ExecuteError::Character(TransitionPhaseError::new(
+                    TransitionPhase::PostValidate,
+                    error,
+                ))
+            })?;
+
+            Ok(ActionResult::Character(result))
+        }
         Action::System { kind } => match kind {
             SystemActionKind::PrepareTurn(transition) => {
                 drive_transition(transition, state, env).map_err(ExecuteError::PrepareTurn)?;

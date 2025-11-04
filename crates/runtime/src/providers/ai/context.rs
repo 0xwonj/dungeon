@@ -9,7 +9,7 @@
 //! - Action storage mechanism
 
 use game_content::traits::TraitProfile;
-use game_core::{Action, CharacterActionKind, EntityId, GameEnv, GameState};
+use game_core::{Action, ActionKind, EntityId, GameEnv, GameState};
 
 /// Context for AI decision-making across all three layers.
 ///
@@ -45,9 +45,10 @@ pub struct AiContext<'a> {
 
     /// Cached list of available actions for this entity.
     ///
+    /// TODO: Migrate to new action system with ActionKind + ActionInput
     /// Computed once per turn using `game_core::get_available_actions()`.
     /// All three decision layers use this same list, avoiding redundant computation.
-    available_actions: Vec<CharacterActionKind>,
+    available_actions: Vec<ActionKind>,
 
     /// The action selected for execution.
     ///
@@ -91,7 +92,7 @@ impl<'a> AiContext<'a> {
     /// # Returns
     ///
     /// Self for method chaining.
-    pub fn with_available_actions(mut self, actions: Vec<CharacterActionKind>) -> Self {
+    pub fn with_available_actions(mut self, actions: Vec<ActionKind>) -> Self {
         self.available_actions = actions;
         self
     }
@@ -359,7 +360,7 @@ impl<'a> AiContext<'a> {
     /// # Returns
     ///
     /// Slice of all actions this entity can currently execute.
-    pub fn available_actions(&self) -> &[CharacterActionKind] {
+    pub fn available_actions(&self) -> &[ActionKind] {
         &self.available_actions
     }
 
@@ -368,10 +369,18 @@ impl<'a> AiContext<'a> {
     /// # Returns
     ///
     /// Iterator over attack actions (melee, ranged, special attacks).
-    pub fn attack_actions(&self) -> impl Iterator<Item = &CharacterActionKind> {
-        self.available_actions
-            .iter()
-            .filter(|action| matches!(action, CharacterActionKind::Attack(_)))
+    pub fn attack_actions(&self) -> impl Iterator<Item = &ActionKind> {
+        self.available_actions.iter().filter(|action| {
+            matches!(
+                action,
+                ActionKind::MeleeAttack
+                    | ActionKind::PowerAttack
+                    | ActionKind::Backstab
+                    | ActionKind::Cleave
+                    | ActionKind::RangedAttack
+                    | ActionKind::AimedShot
+            )
+        })
     }
 
     /// Filters available actions to movement actions only.
@@ -379,10 +388,10 @@ impl<'a> AiContext<'a> {
     /// # Returns
     ///
     /// Iterator over movement actions (Move in various directions).
-    pub fn movement_actions(&self) -> impl Iterator<Item = &CharacterActionKind> {
+    pub fn movement_actions(&self) -> impl Iterator<Item = &ActionKind> {
         self.available_actions
             .iter()
-            .filter(|action| matches!(action, CharacterActionKind::Move(_)))
+            .filter(|action| matches!(action, ActionKind::Move | ActionKind::Dash))
     }
 
     /// Filters available actions to item usage actions only.
@@ -390,10 +399,10 @@ impl<'a> AiContext<'a> {
     /// # Returns
     ///
     /// Iterator over UseItem actions.
-    pub fn item_actions(&self) -> impl Iterator<Item = &CharacterActionKind> {
+    pub fn item_actions(&self) -> impl Iterator<Item = &ActionKind> {
         self.available_actions
             .iter()
-            .filter(|action| matches!(action, CharacterActionKind::UseItem(_)))
+            .filter(|action| matches!(action, ActionKind::UseItem))
     }
 
     /// Filters available actions to interaction actions only.
@@ -401,10 +410,10 @@ impl<'a> AiContext<'a> {
     /// # Returns
     ///
     /// Iterator over Interact actions (doors, chests, NPCs).
-    pub fn interact_actions(&self) -> impl Iterator<Item = &CharacterActionKind> {
+    pub fn interact_actions(&self) -> impl Iterator<Item = &ActionKind> {
         self.available_actions
             .iter()
-            .filter(|action| matches!(action, CharacterActionKind::Interact(_)))
+            .filter(|action| matches!(action, ActionKind::Interact))
     }
 
     /// Checks if Wait action is available.
@@ -415,7 +424,7 @@ impl<'a> AiContext<'a> {
     pub fn can_wait(&self) -> bool {
         self.available_actions
             .iter()
-            .any(|action| matches!(action, CharacterActionKind::Wait(_)))
+            .any(|action| matches!(action, ActionKind::Wait))
     }
 
     /// Checks if any attack action is available.
