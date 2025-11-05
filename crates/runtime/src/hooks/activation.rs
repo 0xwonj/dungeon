@@ -51,13 +51,12 @@ impl PostExecutionHook for ActivationHook {
                 .unwrap_or(false)
     }
 
-    fn create_actions(&self, ctx: &HookContext<'_>) -> Vec<Action> {
+    fn create_actions(&self, _ctx: &HookContext<'_>) -> Vec<Action> {
         // Get player's current position
-        let player_position = ctx.state.entities.player().position;
 
         // Create activation system action
         vec![Action::system(SystemActionKind::Activation(
-            ActivationAction::new(player_position),
+            ActivationAction,
         ))]
     }
 }

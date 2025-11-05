@@ -40,7 +40,7 @@ pub use oracle::{
     ActorOracleImpl, AiConfig, ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, OracleManager,
     TablesOracleImpl,
 };
-pub use providers::ai::{AiContext, UtilityAiProvider};
+pub use providers::ai::{AiContext, GoalBasedAiProvider};
 pub use repository::{
     ActionLogEntry, ActionLogReader, ActionLogWriter, Checkpoint, CheckpointRepository,
     EventRepository, FileActionLog, FileCheckpointRepository, FileEventLog,

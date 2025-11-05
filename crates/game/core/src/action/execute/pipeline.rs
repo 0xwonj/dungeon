@@ -20,8 +20,8 @@ use crate::action::types::{ActionInput, ActionResult, CharacterAction};
 use crate::env::GameEnv;
 use crate::state::{EntityId, GameState};
 
-use super::effects::{EffectContext, apply_effect};
-use super::validation::ActionError;
+use super::context::{EffectContext, apply_effect};
+use crate::action::error::ActionError;
 
 // ============================================================================
 // Pipeline Orchestration
@@ -37,7 +37,8 @@ use super::validation::ActionError;
 ///    - Within same phase, sort by priority (higher first)
 ///    - Create `EffectContext` with mutable state access
 ///    - Apply each effect via `apply_effect`
-/// 4. Return accumulated `ActionResult`
+///    - Collect `EffectResult` for each effect
+/// 4. Build and return `ActionResult` with all effect results
 ///
 /// ## Phase Execution Order
 /// - `PreEffect` (0): Setup, positioning, buffs
@@ -61,8 +62,8 @@ pub(super) fn apply(
     // 2. Resolve targets
     let targets = resolve_targets(action, state, env, &profile)?;
 
-    // 3. Prepare result
-    let mut result = ActionResult::new();
+    // 3. Collect all effect results
+    let mut effect_results = Vec::new();
 
     // 4. Execute effects for each target
     for target in targets {
@@ -75,16 +76,24 @@ pub(super) fn apply(
         });
 
         // Create effect context
-        let mut ctx =
-            EffectContext::new(action.actor, target, state, env, &mut result, &action.input);
+        let mut ctx = EffectContext::new(action.actor, target, state, env, &action.input);
 
-        // Apply effects in order
+        // Apply effects in order with three-phase execution
         for effect in &effects {
-            apply_effect(effect, &mut ctx)?;
+            // Phase 1: Pre-validate (check requirements before state changes)
+            effect.kind.pre_validate(&ctx)?;
+
+            // Phase 2: Apply (mutate state and get result)
+            let effect_result = apply_effect(effect, &mut ctx)?;
+            effect_results.push(effect_result);
+
+            // Phase 3: Post-validate (check invariants after state changes)
+            effect.kind.post_validate(&ctx)?;
         }
     }
 
-    Ok(result)
+    // 5. Build ActionResult from collected effect results
+    Ok(ActionResult::from_effects(effect_results))
 }
 
 // ============================================================================

@@ -15,9 +15,9 @@
         resource_costs: [],
         effects: [
             ActionEffect(
-                kind: MoveSelf(
+                kind: MoveSelf(MoveSelfEffect(
                     displacement: FromInput(distance: 1),
-                ),
+                )),
                 phase: Primary,
                 priority: 0,
             ),

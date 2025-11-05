@@ -14,10 +14,6 @@
 //! - Chain targeting
 //! - Target filters (team, type, status)
 
-// ============================================================================
-// Targeting Mode
-// ============================================================================
-
 /// How an action selects targets.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

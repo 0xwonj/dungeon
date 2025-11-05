@@ -5,7 +5,7 @@
 //! specifics of `crossterm` events.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use game_core::{Action, CardinalDirection, CharacterActionKind, EntityId, MoveAction, WaitAction};
+use game_core::{Action, ActionInput, ActionKind, CardinalDirection, CharacterAction, EntityId};
 
 pub mod provider;
 pub use provider::CliActionProvider;
@@ -114,17 +114,17 @@ impl InputHandler {
     }
 
     fn movement(&self, direction: CardinalDirection) -> KeyAction {
-        let action = MoveAction::new(self.player_entity, direction);
-        KeyAction::Submit(Action::character(
+        let character_action = CharacterAction::new(
             self.player_entity,
-            CharacterActionKind::Move(action),
-        ))
+            ActionKind::Move,
+            ActionInput::Direction(direction),
+        );
+        KeyAction::Submit(Action::Character(character_action))
     }
 
     fn wait(&self) -> KeyAction {
-        KeyAction::Submit(Action::character(
-            self.player_entity,
-            CharacterActionKind::Wait(WaitAction::new(self.player_entity)),
-        ))
+        let character_action =
+            CharacterAction::new(self.player_entity, ActionKind::Wait, ActionInput::None);
+        KeyAction::Submit(Action::Character(character_action))
     }
 }

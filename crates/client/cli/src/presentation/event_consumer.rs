@@ -1,5 +1,6 @@
 //! Maintains the CLI message log in response to runtime events.
-use game_core::{Action, ActionResult, AttackOutcome, CharacterActionKind, EntityId};
+use game_core::action::AppliedValue;
+use game_core::{Action, ActionKind, ActionResult, EntityId};
 use runtime::{Event, GameStateEvent};
 
 use client_core::{
@@ -17,74 +18,87 @@ impl CliEventConsumer {
     }
 
     fn push_action(&mut self, action: &Action, action_result: &ActionResult, timestamp: u64) {
-        let text = match (action, action_result) {
-            // Attack with result
-            (
-                Action::Character {
-                    actor,
-                    kind: CharacterActionKind::Attack(attack),
-                },
-                ActionResult::Attack(attack_result),
-            ) => {
-                let attacker_name = self.actor_name(*actor);
-                let defender_name = self.actor_name(attack.target);
-
-                match attack_result.outcome {
-                    AttackOutcome::Miss => {
-                        format!("{} attacks {} but misses!", attacker_name, defender_name)
-                    }
-                    AttackOutcome::Hit => {
-                        let damage = attack_result.damage.unwrap_or(0);
-                        format!(
-                            "{} attacks {} for {} damage",
-                            attacker_name, defender_name, damage
-                        )
-                    }
-                    AttackOutcome::Critical => {
-                        let damage = attack_result.damage.unwrap_or(0);
-                        format!(
-                            "{} CRITICALLY hits {} for {} damage!",
-                            attacker_name, defender_name, damage
-                        )
-                    }
-                }
+        // Build message from action and result
+        let text = match action {
+            Action::Character(character_action) => {
+                self.format_character_action(character_action, action_result)
             }
-
-            // Move
-            (
-                Action::Character {
-                    actor,
-                    kind: CharacterActionKind::Move(movement),
-                },
-                ActionResult::Move,
-            ) => {
-                format!("{} moves {:?}", self.actor_name(*actor), movement.direction)
-            }
-
-            // Wait
-            (
-                Action::Character {
-                    actor,
-                    kind: CharacterActionKind::Wait(_),
-                },
-                ActionResult::Wait,
-            ) => {
-                format!("{} waits", self.actor_name(*actor))
-            }
-
-            // Other actions (UseItem, Interact, etc.)
-            (Action::Character { actor, kind }, _) => {
-                format!("{} performs {:?}", self.actor_name(*actor), kind)
-            }
-
-            // System actions
-            (Action::System { kind }, _) => {
+            Action::System { kind } => {
                 format!("System: {:?}", kind)
             }
         };
 
         self.log
             .push(MessageEntry::new(text, Some(timestamp), MessageLevel::Info));
+    }
+
+    fn format_character_action(
+        &self,
+        action: &game_core::CharacterAction,
+        result: &ActionResult,
+    ) -> String {
+        let actor_name = self.actor_name(action.actor);
+
+        match action.kind {
+            ActionKind::MeleeAttack => {
+                // Check if there was damage
+                if result.summary.total_damage > 0 {
+                    if result.summary.any_critical {
+                        format!(
+                            "{} CRITICALLY hits for {} damage!",
+                            actor_name, result.summary.total_damage
+                        )
+                    } else {
+                        format!(
+                            "{} attacks for {} damage",
+                            actor_name, result.summary.total_damage
+                        )
+                    }
+                } else {
+                    format!("{} attacks but misses!", actor_name)
+                }
+            }
+
+            ActionKind::Move => {
+                // Check for movement in effects
+                if let Some(effect) = result.effects.first() {
+                    if let AppliedValue::Movement { from, to } = &effect.applied_value {
+                        let dx = to.x - from.x;
+                        let dy = to.y - from.y;
+                        let dir_str = match (dx, dy) {
+                            (0, -1) => "north",
+                            (0, 1) => "south",
+                            (1, 0) => "east",
+                            (-1, 0) => "west",
+                            (1, -1) => "northeast",
+                            (-1, -1) => "northwest",
+                            (1, 1) => "southeast",
+                            (-1, 1) => "southwest",
+                            _ => "somewhere",
+                        };
+                        format!("{} moves {}", actor_name, dir_str)
+                    } else {
+                        format!("{} moves", actor_name)
+                    }
+                } else {
+                    format!("{} moves", actor_name)
+                }
+            }
+
+            ActionKind::Wait => {
+                format!("{} waits", actor_name)
+            } // TODO: Re-enable when Heal ActionKind is implemented
+              // ActionKind::Heal => {
+              //     if result.summary.total_healing > 0 {
+              //         format!(
+              //             "{} heals for {} HP",
+              //             actor_name, result.summary.total_healing
+              //         )
+              //     } else {
+              //         format!("{} attempts to heal", actor_name)
+              //     }
+              // }
+        }
     }
 
     fn push_failure(&mut self, action: &Action, phase: &str, error: &str, timestamp: u64) {

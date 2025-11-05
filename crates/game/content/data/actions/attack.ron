@@ -15,14 +15,14 @@
         resource_costs: [],
         effects: [
             ActionEffect(
-                kind: Damage(
+                kind: Damage(DamageEffect(
                     formula: Sum([
                         WeaponDamage(percent: 100),
                         CasterStat(stat: Str, percent: 50),
                     ]),
                     damage_type: Physical,
                     can_crit: true,
-                ),
+                )),
                 phase: Primary,
                 priority: 0,
             ),

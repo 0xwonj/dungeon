@@ -5,7 +5,6 @@
 //! All state mutation flows through [`engine::GameEngine`], and supporting
 //! crates depend on the types re-exported here.
 pub mod action;
-pub mod combat;
 pub mod config;
 pub mod engine;
 pub mod env;
@@ -15,13 +14,9 @@ pub mod stats;
 pub use action::{
     Action, ActionCostAction, ActionCostError, ActionEffect, ActionError, ActionInput, ActionKind,
     ActionProfile, ActionResult, ActionTag, ActionTransition, ActivationAction, ActivationError,
-    CardinalDirection, CharacterAction, EffectContext, EffectKind, ExecutionPhase, Formula,
-    PrepareTurnAction, ResourceCost, SystemActionKind, TargetingMode, TurnError,
+    CardinalDirection, CharacterAction, DamageType, EffectContext, EffectKind, ExecutionPhase,
+    Formula, PrepareTurnAction, ResourceCost, SystemActionKind, TargetingMode, TurnError,
     get_available_actions,
-};
-pub use combat::{
-    AttackOutcome, AttackResult, DamageType, apply_damage, calculate_damage, calculate_hit_chance,
-    check_hit, resolve_attack,
 };
 pub use config::GameConfig;
 pub use engine::{
@@ -42,9 +37,9 @@ pub use state::{
     CollectionChanges, EntitiesChanges, EntitiesState, EntityId, Equipment, EquipmentBuilder,
     GameState, InventorySlot, InventoryState, ItemChanges, ItemFields, ItemHandle, ItemState,
     OccupancyChanges, PassiveAbilities, PassiveAbility, PassiveKind, Position, PropChanges,
-    PropFields, PropKind, PropState, StateDelta, StatusEffect, StatusEffectKind, StatusEffects,
-    Tick, TileMap, TileView, TurnChanges, TurnFields, TurnState, WeaponKind, WorldChanges,
-    WorldState,
+    PropFields, PropKind, PropState, StateDelta, StateError, StatusEffect, StatusEffectKind,
+    StatusEffects, Tick, TileMap, TileView, TurnChanges, TurnFields, TurnState, WeaponKind,
+    WorldChanges, WorldState,
 };
 pub use stats::{
     ActorBonuses, Bonus, BonusStack, CoreEffective, CoreStatBonuses, CoreStatKind, CoreStats,

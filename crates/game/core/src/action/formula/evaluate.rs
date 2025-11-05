@@ -1,40 +1,13 @@
-//! Formula evaluation system for dynamic value calculation.
+//! Formula evaluation logic.
 //!
-//! Formulas allow action effects to scale based on:
-//! - Character stats (STR, INT, etc.)
-//! - Current/max resources (HP, MP, Lucidity)
-//! - Previous effects in the same action (damage chains)
-//! - Weapon damage
-//! - Arithmetic combinations (sum, product, min, max)
-//!
-//! ## Design Principles
-//!
-//! - **Composable**: Formulas can be nested arbitrarily
-//! - **Pure**: No side effects, deterministic evaluation
-//! - **Safe**: Uses saturating arithmetic to prevent overflow
-//! - **Extensible**: Easy to add new formula types
-//!
-//! ## Examples
-//!
-//! ```ignore
-//! // 150% weapon damage
-//! Formula::WeaponDamage { percent: 150 }
-//!
-//! // 50% caster STR + 10 flat
-//! Formula::Sum(vec![
-//!     Formula::CasterStat { stat: CoreStatKind::Str, percent: 50 },
-//!     Formula::Constant(10),
-//! ])
-//!
-//! // 30% of previous damage (damage chain)
-//! Formula::FromPreviousDamage { percent: 30 }
-//! ```
+//! This module implements the evaluation of Formula expressions within an EffectContext.
 
-use crate::action::effect::Formula;
+use crate::action::formula::Formula;
 use crate::stats::{CoreEffective, CoreStatKind, ResourceCurrent, ResourceKind};
 
-use super::effects::EffectContext;
-use super::validation::ActionError;
+// We need EffectContext and ActionError from execute module
+use crate::action::error::ActionError;
+use crate::action::execute::EffectContext;
 
 // ============================================================================
 // Formula Evaluation
@@ -46,7 +19,7 @@ use super::validation::ActionError;
 /// - `Constant`: Fixed value
 /// - `CasterStat`: Percentage of caster's stat
 /// - `TargetStat`: Percentage of target's stat
-/// - `WeaponDamage`: Percentage of weapon damage (TODO: implement actual weapon lookup)
+/// - `WeaponDamage`: Percentage of weapon damage
 /// - `FromPreviousDamage`: Percentage of accumulated damage
 /// - `FromPreviousHealing`: Percentage of accumulated healing
 /// - `TargetResource`: Percentage of target's current resource
@@ -61,7 +34,7 @@ use super::validation::ActionError;
 /// - `ActorNotFound` if caster doesn't exist
 /// - `TargetNotFound` if target doesn't exist
 /// - `FormulaEvaluationFailed` for unsupported formulas
-pub(super) fn evaluate_formula(formula: &Formula, ctx: &EffectContext) -> Result<u32, ActionError> {
+pub fn evaluate(formula: &Formula, ctx: &EffectContext) -> Result<u32, ActionError> {
     match formula {
         Formula::Constant(value) => Ok(*value),
 
@@ -121,6 +94,16 @@ pub(super) fn evaluate_formula(formula: &Formula, ctx: &EffectContext) -> Result
 
         Formula::FromPreviousHealing { percent } => Ok(ctx.accumulated_healing * percent / 100),
 
+        Formula::CasterResource { resource, percent } => {
+            let actor = ctx
+                .state
+                .entities
+                .actor(ctx.caster)
+                .ok_or(ActionError::ActorNotFound)?;
+            let current = get_resource_current(&actor.resources, resource);
+            Ok(current * percent / 100)
+        }
+
         Formula::TargetResource { resource, percent } => {
             let actor = ctx
                 .state
@@ -156,7 +139,7 @@ pub(super) fn evaluate_formula(formula: &Formula, ctx: &EffectContext) -> Result
         Formula::Sum(formulas) => {
             let mut total = 0u32;
             for f in formulas {
-                total = total.saturating_add(evaluate_formula(f, ctx)?);
+                total = total.saturating_add(evaluate(f, ctx)?);
             }
             Ok(total)
         }
@@ -165,9 +148,9 @@ pub(super) fn evaluate_formula(formula: &Formula, ctx: &EffectContext) -> Result
             if formulas.is_empty() {
                 return Ok(0);
             }
-            let mut result = evaluate_formula(&formulas[0], ctx)?;
+            let mut result = evaluate(&formulas[0], ctx)?;
             for f in &formulas[1..] {
-                let value = evaluate_formula(f, ctx)?;
+                let value = evaluate(f, ctx)?;
                 result = (result * value) / 100; // Percent multiplication
             }
             Ok(result)
@@ -175,18 +158,13 @@ pub(super) fn evaluate_formula(formula: &Formula, ctx: &EffectContext) -> Result
 
         Formula::Min(formulas) => formulas
             .iter()
-            .map(|f| evaluate_formula(f, ctx))
+            .map(|f| evaluate(f, ctx))
             .try_fold(u32::MAX, |min, res| res.map(|v| min.min(v))),
 
         Formula::Max(formulas) => formulas
             .iter()
-            .map(|f| evaluate_formula(f, ctx))
+            .map(|f| evaluate(f, ctx))
             .try_fold(0u32, |max, res| res.map(|v| max.max(v))),
-
-        _ => Err(ActionError::FormulaEvaluationFailed(format!(
-            "Formula {:?} not yet implemented",
-            formula
-        ))),
     }
 }
 

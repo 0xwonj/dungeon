@@ -223,6 +223,13 @@ impl ExecuteError {
                 | Self::ActorNotCurrent { .. }
         )
     }
+
+    /// Returns a string representation of the error message.
+    ///
+    /// This is a convenience method for logging and display purposes.
+    pub fn message(&self) -> String {
+        format!("{}", self)
+    }
 }
 
 impl GameError for ExecuteError {

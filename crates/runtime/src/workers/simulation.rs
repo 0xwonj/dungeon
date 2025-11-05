@@ -182,25 +182,32 @@ impl SimulationWorker {
         // Capture state after execution
         let after_state = state.clone();
 
+        // Destructure outcome to avoid cloning delta
+        let delta = outcome.delta;
+        let action_result = outcome.action_result.unwrap_or_default();
+
         // Publish ActionExecuted event for ALL actions (player, NPC, system)
         // This ensures ProverWorker can generate proofs for every state transition
         event_bus.publish(Event::GameState(GameStateEvent::ActionExecuted {
             nonce,
             action: action.clone(),
-            delta: Box::new(outcome.delta.clone()),
+            delta: Box::new(delta.clone()),
             clock,
             before_state: Box::new(before_state),
             after_state: Box::new(after_state),
-            action_result: outcome.action_result.clone(),
+            action_result,
         }));
 
-        Ok(outcome.delta)
+        Ok(delta)
     }
 
     /// Handles player/NPC action with full workflow:
     /// execute → hooks → commit
     ///
     /// Actor validation is performed by GameEngine::execute (game-core).
+    ///
+    /// If the action fails (at any validation phase), a Wait action is automatically
+    /// executed to consume the turn and prevent infinite loops.
     fn handle_player_action(&mut self, action: Action) -> Result<()> {
         let clock = self.state.turn.clock;
 
@@ -210,8 +217,22 @@ impl SimulationWorker {
         let delta = match self.execute_action(&action, &mut working_state) {
             Ok(delta) => delta,
             Err(error) => {
+                // Log failure details before consuming error
+                let phase_str = error.phase().map(|p| p.as_str()).unwrap_or("unknown");
+                tracing::warn!(
+                    target: "runtime::worker",
+                    actor = ?action.actor(),
+                    action = ?action,
+                    phase = phase_str,
+                    error = %error.message(),
+                    "Action failed, executing Wait to consume turn"
+                );
+
                 self.handle_execute_error(&action, error, clock);
-                return Ok(());
+
+                // Execute Wait action to consume turn and prevent infinite loops
+                self.execute_wait_fallback(action.actor(), &mut working_state)
+                    .expect("Wait action should never fail - this is a bug")
             }
         };
 
@@ -376,15 +397,9 @@ impl SimulationWorker {
 
     fn handle_execute_error(&self, action: &Action, error: ExecuteError, clock: Tick) {
         let (phase, message) = match &error {
-            ExecuteError::Move(phase_error) => (phase_error.phase, phase_error.error.to_string()),
-            ExecuteError::Attack(phase_error) => (phase_error.phase, phase_error.error.to_string()),
-            ExecuteError::UseItem(phase_error) => {
+            ExecuteError::Character(phase_error) => {
                 (phase_error.phase, phase_error.error.to_string())
             }
-            ExecuteError::Interact(phase_error) => {
-                (phase_error.phase, phase_error.error.to_string())
-            }
-            ExecuteError::Wait(phase_error) => (phase_error.phase, phase_error.error.to_string()),
             ExecuteError::PrepareTurn(phase_error) => {
                 (phase_error.phase, phase_error.error.to_string())
             }
@@ -456,5 +471,28 @@ impl SimulationWorker {
                 error: message,
                 clock,
             }));
+    }
+
+    /// Execute a Wait action as a fallback when an action fails.
+    ///
+    /// This ensures the turn is consumed even when the primary action fails,
+    /// preventing infinite loops where the same entity keeps retrying the same
+    /// invalid action.
+    ///
+    /// Wait should never fail because it has no effects and minimal validation.
+    fn execute_wait_fallback(
+        &mut self,
+        actor: EntityId,
+        working_state: &mut GameState,
+    ) -> std::result::Result<game_core::StateDelta, ExecuteError> {
+        use game_core::{ActionInput, ActionKind, CharacterAction};
+
+        let wait_action = Action::character(CharacterAction::new(
+            actor,
+            ActionKind::Wait,
+            ActionInput::None,
+        ));
+
+        Self::execute_action_impl(&wait_action, working_state, &self.oracles, &self.event_bus)
     }
 }

@@ -10,23 +10,9 @@ mod transition;
 
 pub use errors::{ExecuteError, TransitionPhase, TransitionPhaseError};
 
-use crate::action::Action;
+use crate::action::{Action, ActionResult};
 use crate::env::GameEnv;
 use crate::state::{GameState, StateDelta};
-
-/// Execution result metadata for different action types.
-///
-/// Contains action-specific outcome information (e.g., damage dealt, healing, effects applied).
-/// System actions return `System` (no meaningful result).
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ActionResult {
-    /// Character action result (from new effect-based system).
-    Character(crate::action::ActionResult),
-
-    /// System actions (PrepareTurn, ActionCost, Activation) have no result.
-    System,
-}
 
 /// Complete outcome of action execution.
 ///
@@ -38,7 +24,8 @@ pub struct ExecutionOutcome {
     pub delta: StateDelta,
 
     /// Action-specific execution result (combat outcome, item effects, etc.).
-    pub action_result: ActionResult,
+    /// `None` for system actions (PrepareTurn, ActionCost, Activation).
+    pub action_result: Option<ActionResult>,
 }
 
 /// Game engine that manages action execution, turn scheduling, and game logic.

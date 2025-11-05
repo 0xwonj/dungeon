@@ -55,6 +55,20 @@ impl Position {
     pub fn new(x: i32, y: i32) -> Self {
         Self { x, y }
     }
+
+    /// Calculates Manhattan distance to another position.
+    pub fn manhattan_distance(self, other: Position) -> u32 {
+        let dx = (self.x - other.x).abs();
+        let dy = (self.y - other.y).abs();
+        (dx + dy) as u32
+    }
+
+    /// Calculates Chebyshev distance (max of x and y difference) to another position.
+    pub fn chebyshev_distance(self, other: Position) -> u32 {
+        let dx = (self.x - other.x).abs();
+        let dy = (self.y - other.y).abs();
+        dx.max(dy) as u32
+    }
 }
 
 impl Default for Position {

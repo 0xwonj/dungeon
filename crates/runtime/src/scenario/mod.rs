@@ -109,7 +109,9 @@ impl Scenario {
                 }
 
                 EntityKind::Prop { kind, is_active } => {
-                    let id = state.allocate_entity_id();
+                    let id = state.allocate_entity_id().map_err(|e| {
+                        RuntimeError::InvalidConfig(format!("Failed to allocate entity ID: {}", e))
+                    })?;
                     let prop = PropState {
                         id,
                         position: placement.position,
@@ -117,14 +119,18 @@ impl Scenario {
                         is_active: *is_active,
                     };
                     state.entities.props.push(prop).map_err(|_| {
-                        RuntimeError::InvalidConfig("Failed to add prop".to_string())
+                        RuntimeError::InvalidConfig(
+                            "Failed to add prop (props list full)".to_string(),
+                        )
                     })?;
 
                     state.world.tile_map.add_occupant(placement.position, id);
                 }
 
                 EntityKind::Item { handle } => {
-                    let id = state.allocate_entity_id();
+                    let id = state.allocate_entity_id().map_err(|e| {
+                        RuntimeError::InvalidConfig(format!("Failed to allocate entity ID: {}", e))
+                    })?;
                     let item = ItemState {
                         id,
                         handle: *handle,
@@ -132,7 +138,9 @@ impl Scenario {
                         quantity: 1,
                     };
                     state.entities.items.push(item).map_err(|_| {
-                        RuntimeError::InvalidConfig("Failed to add item".to_string())
+                        RuntimeError::InvalidConfig(
+                            "Failed to add item (items list full)".to_string(),
+                        )
                     })?;
 
                     state.world.tile_map.add_occupant(placement.position, id);

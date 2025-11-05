@@ -1,164 +1,98 @@
-//! Action validation - pre and post execution checks.
+//! Action validation logic.
 //!
-//! This module contains all validation logic for the action execution pipeline.
-//!
-//! ## Pre-validation
-//!
-//! Checks performed before action execution:
-//! - Actor exists and is alive
-//! - Action profile exists
-//! - Target validity and range
-//!
-//! ## Post-validation
-//!
-//! Checks performed after action execution:
-//! - State consistency
-//! - Resource bounds
-//!
-//! ## Design Notes
-//!
-//! Validation is separated from execution to:
-//! - Enable early rejection (fail fast)
-//! - Support future optimizations (batch validation)
-//! - Keep execution logic clean
+//! Pre and post validation for action execution.
 
 use crate::action::TargetingMode;
+use crate::action::error::ActionError;
+use crate::action::profile::ActionProfile;
 use crate::action::types::{ActionInput, CharacterAction};
 use crate::env::GameEnv;
-use crate::state::{GameState, Position};
-
-// ============================================================================
-// Action Errors
-// ============================================================================
-
-/// Errors that can occur during action execution.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ActionError {
-    /// Actor not found in game state.
-    ActorNotFound,
-
-    /// Actor is dead (HP = 0).
-    ActorDead,
-
-    /// Target not found in game state.
-    TargetNotFound,
-
-    /// Action profile not found in oracle.
-    ProfileNotFound,
-
-    /// Invalid target for this action.
-    InvalidTarget,
-
-    /// Out of range.
-    OutOfRange,
-
-    /// Position is out of map bounds.
-    OutOfBounds,
-
-    /// Position is invalid (e.g., wall, impassable terrain).
-    InvalidPosition,
-
-    /// Position is blocked by terrain.
-    Blocked,
-
-    /// Position is occupied by another entity.
-    Occupied,
-
-    /// Map oracle not available.
-    MapNotAvailable,
-
-    /// Insufficient resources (lucidity, mana).
-    InsufficientResources,
-
-    /// Action is on cooldown.
-    OnCooldown,
-
-    /// Requirements not met.
-    RequirementsNotMet(String),
-
-    /// Effect application failed.
-    EffectFailed(String),
-
-    /// Formula evaluation failed.
-    FormulaEvaluationFailed(String),
-
-    /// Not yet implemented.
-    NotImplemented(String),
-}
-
-impl core::fmt::Display for ActionError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            ActionError::ActorNotFound => write!(f, "Actor not found"),
-            ActionError::ActorDead => write!(f, "Actor is dead"),
-            ActionError::TargetNotFound => write!(f, "Target not found"),
-            ActionError::ProfileNotFound => write!(f, "Action profile not found"),
-            ActionError::InvalidTarget => write!(f, "Invalid target"),
-            ActionError::OutOfRange => write!(f, "Out of range"),
-            ActionError::OutOfBounds => write!(f, "Position out of bounds"),
-            ActionError::InvalidPosition => write!(f, "Invalid position"),
-            ActionError::Blocked => write!(f, "Position blocked by terrain"),
-            ActionError::Occupied => write!(f, "Position occupied by entity"),
-            ActionError::MapNotAvailable => write!(f, "Map not available"),
-            ActionError::InsufficientResources => write!(f, "Insufficient resources"),
-            ActionError::OnCooldown => write!(f, "Action is on cooldown"),
-            ActionError::RequirementsNotMet(msg) => write!(f, "Requirements not met: {}", msg),
-            ActionError::EffectFailed(msg) => write!(f, "Effect failed: {}", msg),
-            ActionError::FormulaEvaluationFailed(msg) => {
-                write!(f, "Formula evaluation failed: {}", msg)
-            }
-            ActionError::NotImplemented(msg) => write!(f, "Not implemented: {}", msg),
-        }
-    }
-}
-
-// ============================================================================
-// Pre-validation
-// ============================================================================
+use crate::state::{ActorState, GameState, Position};
+use crate::stats::ResourceKind;
 
 /// Pre-validation: Check requirements before executing.
-///
-/// ## Validation Steps
-/// 1. Actor existence and liveness
-/// 2. Action profile lookup
-/// 3. Target validation based on targeting mode
-/// 4. Range checking (Chebyshev distance)
-///
-/// ## Future Extensions
-/// - Resource cost validation
-/// - Cooldown checking
-/// - Requirement checking (items, buffs, etc.)
-/// - Line of sight validation
 pub(super) fn pre_validate(
     action: &CharacterAction,
     state: &GameState,
     env: &GameEnv<'_>,
 ) -> Result<(), ActionError> {
-    // 1. Check actor exists and is alive
+    // 1. Check actor exists
     let actor = state
         .entities
         .actor(action.actor)
         .ok_or(ActionError::ActorNotFound)?;
 
-    if actor.resources.hp == 0 {
-        return Err(ActionError::ActorDead);
+    // 2. Check if it's this actor's turn
+    if state.turn.current_actor != action.actor {
+        return Err(ActionError::NotActorsTurn);
     }
 
-    // 2. Load action profile
+    // 3. Check if actor is ready to act (scheduled and time has come)
+    let current_tick = state.turn.clock;
+    if let Some(ready_at) = actor.ready_at {
+        if ready_at > current_tick {
+            return Err(ActionError::ActorNotReady);
+        }
+    } else {
+        // Actor has no ready_at time set - not scheduled
+        return Err(ActionError::ActorNotReady);
+    }
+
+    // 4. Check resources (HP, MP, Lucidity)
+    validate_resources(actor)?;
+
+    // 5. Check action ability availability
+    // Verify that the actor has this action and it's usable (enabled + not on cooldown)
+    if !actor.can_use_action(action.kind, current_tick) {
+        return Err(ActionError::ActionNotAvailable);
+    }
+
+    // 6. Load action profile
     let profile = env
         .tables()
         .map_err(|_| ActionError::ProfileNotFound)?
         .action_profile(action.kind);
 
-    // 3. Validate target based on targeting mode
-    validate_targeting(action, state, &profile.targeting)?;
+    // 7. Check resource costs
+    validate_resource_costs(actor, &profile)?;
 
-    // TODO: Future validations
-    // - Check resources (lucidity, mana)
-    // - Check cooldowns
-    // - Check requirements
-    // - Check line of sight
+    // 8. Validate target based on targeting mode
+    validate_targeting(action, state, env, &profile.targeting)?;
+
+    Ok(())
+}
+
+/// Validate that actor has sufficient resources to survive.
+///
+/// Checks:
+/// - HP > 0 (actor is alive)
+/// - MP >= 0 (valid state)
+/// - Lucidity >= 0 (valid state)
+fn validate_resources(actor: &ActorState) -> Result<(), ActionError> {
+    // Check HP (must be alive)
+    if actor.resources.hp == 0 {
+        return Err(ActionError::ActorDead);
+    }
+
+    Ok(())
+}
+
+/// Validate that actor can afford the resource costs of this action.
+///
+/// Checks each resource cost in the action profile against the actor's
+/// current resource values.
+fn validate_resource_costs(actor: &ActorState, profile: &ActionProfile) -> Result<(), ActionError> {
+    for cost in &profile.resource_costs {
+        let current = match cost.resource {
+            ResourceKind::Hp => actor.resources.hp,
+            ResourceKind::Mp => actor.resources.mp,
+            ResourceKind::Lucidity => actor.resources.lucidity,
+        };
+
+        if current < cost.amount {
+            return Err(ActionError::InsufficientResources);
+        }
+    }
 
     Ok(())
 }
@@ -167,6 +101,7 @@ pub(super) fn pre_validate(
 fn validate_targeting(
     action: &CharacterAction,
     state: &GameState,
+    _env: &GameEnv<'_>,
     targeting: &TargetingMode,
 ) -> Result<(), ActionError> {
     match targeting {
@@ -223,10 +158,6 @@ fn calculate_distance(from: Position, to: Position) -> u32 {
     let dy = (from.y - to.y).abs();
     dx.max(dy) as u32
 }
-
-// ============================================================================
-// Post-validation
-// ============================================================================
 
 /// Post-validation: Check invariants after execution.
 ///

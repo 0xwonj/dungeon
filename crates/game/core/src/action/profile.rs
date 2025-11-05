@@ -3,11 +3,136 @@
 //! ActionProfile defines the behavior, costs, targeting, and effects for each
 //! action type. Profiles are loaded from RON data files via TablesOracle.
 
-use crate::action::ActionKind;
 use crate::action::effect::ActionEffect;
 use crate::action::targeting::TargetingMode;
 use crate::state::Tick;
 use crate::stats::ResourceKind;
+
+/// Types of actions that can be performed.
+///
+/// Each variant represents a specific action an entity can perform.
+/// Action behavior is defined in RON data files via ActionProfile.
+///
+/// NOTE: Commented variants are not yet implemented (missing RON data files).
+/// Uncomment and implement as needed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ActionKind {
+    // ========================================================================
+    // Basic Actions
+    // ========================================================================
+    /// Move to an adjacent tile.
+    Move,
+
+    /// Wait and do nothing.
+    Wait,
+
+    // /// Use an item from inventory.
+    // UseItem,
+    //
+    // /// Interact with props (doors, levers, etc.).
+    // Interact,
+
+    // ========================================================================
+    // Combat - Melee
+    // ========================================================================
+    /// Basic melee attack.
+    MeleeAttack,
+    // /// Powerful melee attack with extra damage.
+    // PowerAttack,
+    //
+    // /// High damage when attacking from behind.
+    // Backstab,
+    //
+    // /// Attack multiple adjacent enemies.
+    // Cleave,
+
+    // ========================================================================
+    // Combat - Ranged
+    // ========================================================================
+    // /// Basic ranged attack.
+    // RangedAttack,
+    //
+    // /// Aimed shot with bonus accuracy.
+    // AimedShot,
+
+    // ========================================================================
+    // Magic - Offensive
+    // ========================================================================
+    // /// Fire magic attack.
+    // Fireball,
+    //
+    // /// Lightning magic attack.
+    // Lightning,
+
+    // ========================================================================
+    // Magic - Support
+    // ========================================================================
+    // /// Heal self or allies.
+    // Heal,
+    //
+    // /// Create protective barrier.
+    // Shield,
+    //
+    // /// Teleport to nearby location.
+    // Teleport,
+
+    // ========================================================================
+    // Movement
+    // ========================================================================
+    // /// Dash 2+ tiles in one action.
+    // Dash,
+
+    // ========================================================================
+    // Stealth
+    // ========================================================================
+    // /// Become invisible for several turns.
+    // Stealth,
+    //
+    // /// Attack with bonus damage from stealth.
+    // SneakAttack,
+
+    // ========================================================================
+    // Social
+    // ========================================================================
+    // /// Call nearby allies.
+    // CallAllies,
+    //
+    // /// Frighten enemies.
+    // Intimidate,
+    //
+    // /// Buff nearby allies.
+    // Rally,
+}
+
+impl ActionKind {
+    /// Returns the snake_case string representation of this action kind.
+    ///
+    /// This is used for generating file names, logging, and serialization keys.
+    pub fn as_snake_case(self) -> &'static str {
+        match self {
+            // Basic Actions
+            ActionKind::Move => "move",
+            ActionKind::Wait => "wait",
+
+            // Combat - Melee
+            ActionKind::MeleeAttack => "melee_attack",
+        }
+    }
+
+    /// Returns all ActionKind variants.
+    ///
+    /// This is used for iterating all possible actions, e.g., when creating snapshots.
+    pub fn all_variants() -> &'static [ActionKind] {
+        &[
+            // Basic Actions
+            ActionKind::Move,
+            ActionKind::Wait,
+            // Combat - Melee
+            ActionKind::MeleeAttack,
+        ]
+    }
+}
 
 /// Tags for gameplay logic (AI, rules, synergies).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

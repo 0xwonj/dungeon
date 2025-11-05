@@ -6,7 +6,7 @@ use super::{HookContext, HookCriticality, PostExecutionHook};
 
 /// Entry hook for damage-related effect chains.
 ///
-/// This hook does NOT apply damage (damage is already applied by AttackAction, etc.).
+/// This hook does NOT apply damage (damage is already applied by Damage effects).
 /// Instead, it detects when entities have taken damage and chains to follow-up hooks
 /// like death checks, bleeding effects, damage reactions, etc.
 ///
@@ -21,7 +21,7 @@ use super::{HookContext, HookCriticality, PostExecutionHook};
 ///
 /// ```text
 /// Player attacks Goblin
-///   → AttackAction executes and applies damage (HP -= 10)
+///   → MeleeAttack action executes Damage effect (HP -= 10)
 ///   → DamageHook detects damage in delta
 ///   → Chains to death_check (checks if HP <= 0)
 ///   → Chains to bleeding_check (checks if bleeding should apply)
@@ -67,7 +67,7 @@ impl PostExecutionHook for DamageHook {
         // DamageHook doesn't create actions - it just serves as an entry point
         // for chaining to death_check, bleeding, etc.
         //
-        // The damage itself was already applied by AttackAction.
+        // The damage itself was already applied by Damage effects.
         // This hook just detects "damage happened" and triggers the chain.
         vec![]
     }

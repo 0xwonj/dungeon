@@ -10,8 +10,7 @@
 //! - **Public API**: `pre_validate`, `apply`, `post_validate` (called by game engine)
 //! - **Validation**: Pre/post checks isolated in `validation` module
 //! - **Pipeline**: Orchestration logic (target resolution, effect sorting) in `pipeline` module
-//! - **Effects**: Effect application dispatcher and implementations in `effects` module
-//! - **Formula**: Value calculation system in `formula` module
+//! - **Context**: EffectContext and effect dispatcher
 //!
 //! ## Effect Context
 //!
@@ -38,11 +37,11 @@
 //! - Cooldown management
 //! - Resource cost validation
 
-mod effects;
-mod formula;
+mod context;
 mod pipeline;
 mod validation;
 
+use crate::action::error::ActionError;
 use crate::action::types::{ActionResult, CharacterAction};
 use crate::env::GameEnv;
 use crate::state::GameState;
@@ -51,8 +50,7 @@ use crate::state::GameState;
 // Public Exports
 // ============================================================================
 
-pub use effects::EffectContext;
-pub use validation::ActionError;
+pub use context::EffectContext;
 
 // ============================================================================
 // Public API

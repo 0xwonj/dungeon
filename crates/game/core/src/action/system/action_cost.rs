@@ -4,8 +4,9 @@
 //! scaled by their speed stat.
 
 use crate::action::ActionTransition;
+use crate::action::error::ActionCostError;
 use crate::env::GameEnv;
-use crate::error::{ErrorContext, ErrorSeverity, GameError};
+
 use crate::state::{EntityId, GameState, Tick};
 
 /// System action that applies the time cost of an executed action to an actor.
@@ -106,89 +107,5 @@ impl ActionTransition for ActionCostAction {
     fn cost(&self, _env: &GameEnv<'_>) -> Tick {
         // System actions have no time cost
         0
-    }
-}
-
-/// Errors that can occur during action cost application.
-#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ActionCostError {
-    /// System actor validation failed.
-    #[error("action cost action must be executed by SYSTEM actor")]
-    NotSystemActor {
-        #[cfg_attr(feature = "serde", serde(skip))]
-        context: ErrorContext,
-    },
-
-    /// Actor not found in game state.
-    #[error("actor {actor} not found in game state")]
-    ActorNotFound {
-        actor: EntityId,
-        #[cfg_attr(feature = "serde", serde(skip))]
-        context: ErrorContext,
-    },
-
-    /// Actor is not scheduled (missing ready_at timestamp).
-    #[error("actor {actor} is not scheduled (no ready_at timestamp)")]
-    ActorNotScheduled {
-        actor: EntityId,
-        #[cfg_attr(feature = "serde", serde(skip))]
-        context: ErrorContext,
-    },
-}
-
-impl ActionCostError {
-    /// Creates a NotSystemActor error with context.
-    pub fn not_system_actor(nonce: u64) -> Self {
-        Self::NotSystemActor {
-            context: ErrorContext::new(nonce)
-                .with_message("system action executed by non-system actor"),
-        }
-    }
-
-    /// Creates an ActorNotFound error with context.
-    pub fn actor_not_found(actor: EntityId, nonce: u64) -> Self {
-        Self::ActorNotFound {
-            actor,
-            context: ErrorContext::new(nonce)
-                .with_actor(actor)
-                .with_message("target actor not found"),
-        }
-    }
-
-    /// Creates an ActorNotScheduled error with context.
-    pub fn actor_not_scheduled(actor: EntityId, nonce: u64) -> Self {
-        Self::ActorNotScheduled {
-            actor,
-            context: ErrorContext::new(nonce)
-                .with_actor(actor)
-                .with_message("actor has no ready_at timestamp"),
-        }
-    }
-}
-
-impl GameError for ActionCostError {
-    fn severity(&self) -> ErrorSeverity {
-        match self {
-            Self::NotSystemActor { .. } => ErrorSeverity::Validation,
-            Self::ActorNotFound { .. } => ErrorSeverity::Validation,
-            Self::ActorNotScheduled { .. } => ErrorSeverity::Internal,
-        }
-    }
-
-    fn context(&self) -> Option<&ErrorContext> {
-        match self {
-            Self::NotSystemActor { context } => Some(context),
-            Self::ActorNotFound { context, .. } => Some(context),
-            Self::ActorNotScheduled { context, .. } => Some(context),
-        }
-    }
-
-    fn error_code(&self) -> &'static str {
-        match self {
-            Self::NotSystemActor { .. } => "ACTION_COST_NOT_SYSTEM_ACTOR",
-            Self::ActorNotFound { .. } => "ACTION_COST_ACTOR_NOT_FOUND",
-            Self::ActorNotScheduled { .. } => "ACTION_COST_ACTOR_NOT_SCHEDULED",
-        }
     }
 }
