@@ -2,6 +2,7 @@ use arrayvec::ArrayVec;
 use bounded_vector::BoundedVec;
 
 use super::{ActionAbility, EntityId, Equipment, PassiveAbility, Position, StatusEffects, Tick};
+use crate::action::ActionKind;
 use crate::config::GameConfig;
 use crate::stats::{
     ActorBonuses, CoreStats, ResourceCurrent, StatsSnapshot, compute_actor_bonuses,
@@ -228,28 +229,28 @@ impl ActorState {
     // ========================================================================
 
     /// Checks if this actor has a specific action ability (regardless of enabled state).
-    pub fn has_action(&self, kind: super::ActionKind) -> bool {
+    pub fn has_action(&self, kind: ActionKind) -> bool {
         self.actions.iter().any(|a| a.kind == kind)
     }
 
     /// Checks if this actor can use a specific action ability right now.
     ///
     /// Returns true if the action exists, is enabled, and not on cooldown.
-    pub fn can_use_action(&self, kind: super::ActionKind, current_tick: Tick) -> bool {
+    pub fn can_use_action(&self, kind: ActionKind, current_tick: Tick) -> bool {
         self.actions
             .iter()
             .any(|a| a.kind == kind && a.is_ready(current_tick))
     }
 
     /// Sets the cooldown for a specific action ability.
-    pub fn set_action_cooldown(&mut self, kind: super::ActionKind, until: Tick) {
+    pub fn set_action_cooldown(&mut self, kind: ActionKind, until: Tick) {
         if let Some(action) = self.actions.iter_mut().find(|a| a.kind == kind) {
             action.cooldown_until = until;
         }
     }
 
     /// Enables or disables a specific action ability.
-    pub fn set_action_enabled(&mut self, kind: super::ActionKind, enabled: bool) {
+    pub fn set_action_enabled(&mut self, kind: ActionKind, enabled: bool) {
         if let Some(action) = self.actions.iter_mut().find(|a| a.kind == kind) {
             action.enabled = enabled;
         }

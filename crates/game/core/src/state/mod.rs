@@ -4,17 +4,20 @@
 //! bookkeeping, overlays, and initialization helpers. Runtime layers clone or
 //! query this state but mutate it exclusively through the engine.
 pub mod delta;
+pub mod error;
 pub mod types;
 
+use crate::config::GameConfig;
 use crate::env::MapOracle;
 pub use bounded_vector::BoundedVec;
 pub use delta::{
     ActorChanges, ActorFields, CollectionChanges, EntitiesChanges, ItemChanges, ItemFields,
     OccupancyChanges, PropChanges, PropFields, StateDelta, TurnChanges, TurnFields, WorldChanges,
 };
+pub use error::StateError;
 pub use types::{
-    ActionAbilities, ActionAbility, ActionKind, ActorState, ArmorKind, AttackType, EntitiesState,
-    EntityId, Equipment, EquipmentBuilder, InventorySlot, InventoryState, ItemHandle, ItemState,
+    ActionAbilities, ActionAbility, ActorState, ArmorKind, AttackType, EntitiesState, EntityId,
+    Equipment, EquipmentBuilder, InventorySlot, InventoryState, ItemHandle, ItemState,
     PassiveAbilities, PassiveAbility, PassiveKind, Position, PropKind, PropState, StatusEffect,
     StatusEffectKind, StatusEffects, Tick, TileMap, TileView, TurnState, WeaponKind, WorldState,
 };
@@ -106,28 +109,33 @@ impl GameState {
     ///
     /// # Returns
     ///
-    /// A new EntityId that has never been used before.
+    /// - `Ok(EntityId)` - A new unique entity ID
+    /// - `Err(StateError::EntityIdOverflow)` if all available IDs have been exhausted
     ///
-    /// # Panics
+    /// # Notes
     ///
-    /// Panics if we've exhausted all available IDs.
-    pub fn allocate_entity_id(&mut self) -> EntityId {
+    /// Entity IDs 0 (PLAYER) and u32::MAX (SYSTEM) are reserved and will be skipped.
+    pub fn allocate_entity_id(&mut self) -> Result<EntityId, StateError> {
         // Skip reserved IDs (0 = PLAYER, u32::MAX = SYSTEM)
         while self.next_entity_id == EntityId::PLAYER.0 || self.next_entity_id == EntityId::SYSTEM.0
         {
-            self.next_entity_id = self
-                .next_entity_id
-                .checked_add(1)
-                .expect("EntityId overflow");
+            self.next_entity_id =
+                self.next_entity_id
+                    .checked_add(1)
+                    .ok_or(StateError::EntityIdOverflow {
+                        current: self.next_entity_id,
+                    })?;
         }
 
         let id = EntityId(self.next_entity_id);
-        self.next_entity_id = self
-            .next_entity_id
-            .checked_add(1)
-            .expect("EntityId overflow");
+        self.next_entity_id =
+            self.next_entity_id
+                .checked_add(1)
+                .ok_or(StateError::EntityIdOverflow {
+                    current: self.next_entity_id,
+                })?;
 
-        id
+        Ok(id)
     }
 
     /// Add the player actor to the game.
@@ -142,12 +150,12 @@ impl GameState {
     /// # Returns
     ///
     /// - `Ok(())` if player was added successfully
-    /// - `Err` if the actors list is full
+    /// - `Err(StateError::ActorListFull)` if the actors list is at maximum capacity
     pub fn add_player(
         &mut self,
         template: &crate::env::ActorTemplate,
         position: Position,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), StateError> {
         // Create actor from template with PLAYER id
         let mut actor = template.to_actor(EntityId::PLAYER, position);
         actor.ready_at = Some(0); // Ready to act immediately
@@ -156,7 +164,10 @@ impl GameState {
         self.entities
             .actors
             .push(actor)
-            .map_err(|_| "Failed to add player (actors list full)")?;
+            .map_err(|_| StateError::ActorListFull {
+                max: GameConfig::MAX_ACTORS,
+                current: self.entities.actors.len(),
+            })?;
 
         // Add to active_actors
         self.turn.active_actors.insert(EntityId::PLAYER);
@@ -180,14 +191,14 @@ impl GameState {
     /// # Returns
     ///
     /// - `Ok(EntityId)` - The allocated entity ID for this NPC
-    /// - `Err` if the actors list is full
+    /// - `Err(StateError::ActorListFull)` if the actors list is at maximum capacity
     pub fn add_npc(
         &mut self,
         template: &crate::env::ActorTemplate,
         position: Position,
-    ) -> Result<EntityId, &'static str> {
+    ) -> Result<EntityId, StateError> {
         // Allocate new entity ID
-        let id = self.allocate_entity_id();
+        let id = self.allocate_entity_id()?;
 
         // Create actor from template with allocated id
         let mut actor = template.to_actor(id, position);
@@ -197,7 +208,10 @@ impl GameState {
         self.entities
             .actors
             .push(actor)
-            .map_err(|_| "Failed to add NPC (actors list full)")?;
+            .map_err(|_| StateError::ActorListFull {
+                max: GameConfig::MAX_ACTORS,
+                current: self.entities.actors.len(),
+            })?;
 
         // Don't add to active_actors - ActivationHook will handle this
 

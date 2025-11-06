@@ -4,45 +4,31 @@
 //! implementing the activation radius game mechanic.
 
 use crate::action::ActionTransition;
+use crate::action::error::ActivationError;
 use crate::env::GameEnv;
-use crate::error::{ErrorContext, ErrorSeverity, GameError};
-use crate::state::{EntityId, GameState, Position, Tick};
-use crate::stats::calculate_action_cost;
+use crate::state::{EntityId, GameState, Tick};
 
-/// System action that updates entity activation status based on player proximity.
+/// Distance threshold for NPC activation (Chebyshev distance).
 ///
-/// NPCs within the activation radius are added to the active set and scheduled
-/// to act. NPCs outside the radius are deactivated and removed from scheduling.
+/// NPCs within this distance of the player are activated (added to the active set
+/// and assigned ready_at timestamps). NPCs beyond this distance are deactivated.
+const ACTIVATION_RADIUS: u32 = 10;
+
+/// System action that updates NPC activation based on player position.
 ///
-/// This action is typically triggered after the player moves, ensuring that only
-/// nearby entities consume processing time and maintain responsiveness in large maps.
+/// This action:
+/// 1. Gets player position
+/// 2. For all NPCs:
+///    - If within activation radius and inactive: activate (set ready_at)
+///    - If beyond activation radius and active: deactivate (clear ready_at, remove from active set)
 ///
 /// # Invariants
 ///
-/// - Player must exist at the specified position
-/// - Activated entities receive an initial `ready_at` based on Wait action cost
-/// - Deactivated entities have their `ready_at` cleared
-/// - Active set and `ready_at` timestamps remain synchronized
+/// - Player must exist in the game state
+/// - Activation distance uses Chebyshev metric (chessboard distance)
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ActivationAction {
-    /// Player's current position (center of activation radius)
-    pub player_position: Position,
-}
-
-impl ActivationAction {
-    /// Creates a new activation update for the given player position.
-    pub fn new(player_position: Position) -> Self {
-        Self { player_position }
-    }
-
-    /// Calculates the grid distance between two positions (Chebyshev distance).
-    fn grid_distance(a: Position, b: Position) -> u32 {
-        let dx = (a.x - b.x).unsigned_abs();
-        let dy = (a.y - b.y).unsigned_abs();
-        dx.max(dy)
-    }
-}
+pub struct ActivationAction;
 
 impl ActionTransition for ActivationAction {
     type Error = ActivationError;
@@ -60,51 +46,50 @@ impl ActionTransition for ActivationAction {
             return Err(ActivationError::not_system_actor(nonce));
         }
 
+        // Verify player exists
+        state
+            .entities
+            .actor(EntityId::PLAYER)
+            .ok_or_else(|| ActivationError::player_not_found(nonce))?;
+
         Ok(())
     }
 
     fn apply(&self, state: &mut GameState, env: &GameEnv<'_>) -> Result<(), Self::Error> {
-        let activation_radius = env.activation_radius().unwrap_or(0);
-        let clock = state.turn.clock;
+        let nonce = state.turn.nonce;
 
-        // Collect NPC data to avoid borrow checker issues (skip player at index 0)
-        let npc_data: Vec<_> = state
+        // Get player position
+        let player_pos = state
             .entities
-            .all_actors()
-            .filter(|actor| actor.id != EntityId::PLAYER)
-            .map(|npc| {
-                let is_active = state.turn.active_actors.contains(&npc.id);
-                (npc.id, npc.position, is_active, npc.is_alive())
-            })
-            .collect();
+            .actor(EntityId::PLAYER)
+            .ok_or_else(|| ActivationError::player_not_found(nonce))?
+            .position;
 
-        // Process each NPC's activation status
-        for (entity_id, npc_position, is_active, is_alive) in npc_data {
-            let distance = Self::grid_distance(self.player_position, npc_position);
+        // Get current clock time for activation
+        let current_clock = state.turn.clock;
 
-            if distance <= activation_radius {
-                // Within activation radius - activate if not already active and alive
-                if !is_active && is_alive {
-                    state.turn.active_actors.insert(entity_id);
+        // Process all NPCs (skip player at index 0)
+        for actor in state.entities.all_actors_mut() {
+            if actor.id == EntityId::PLAYER {
+                continue;
+            }
 
-                    // Set initial ready_at using activation cost from oracle scaled by speed
-                    // This gives the NPC a brief "wake up" delay before acting
-                    if let Some(actor) = state.entities.actor_mut(entity_id) {
-                        let snapshot = actor.snapshot();
-                        let base_cost = env
-                            .tables()
-                            .map(|t| t.action_costs().activation)
-                            .unwrap_or(100);
-                        let delay = calculate_action_cost(base_cost, snapshot.speed.physical);
-                        actor.ready_at = Some(clock + delay);
-                    }
+            let distance = calculate_distance(player_pos, actor.position, env);
+            let within_radius = distance <= ACTIVATION_RADIUS;
+
+            match (within_radius, actor.ready_at.is_some()) {
+                (true, false) => {
+                    // Activate: NPC is within radius and currently inactive
+                    actor.ready_at = Some(current_clock);
+                    state.turn.active_actors.insert(actor.id);
                 }
-            } else if is_active {
-                // Outside activation radius - deactivate if currently active
-                state.turn.active_actors.remove(&entity_id);
-
-                if let Some(actor) = state.entities.actor_mut(entity_id) {
+                (false, true) => {
+                    // Deactivate: NPC is beyond radius and currently active
                     actor.ready_at = None;
+                    state.turn.active_actors.remove(&actor.id);
+                }
+                _ => {
+                    // No change needed
                 }
             }
         }
@@ -113,13 +98,22 @@ impl ActionTransition for ActivationAction {
     }
 
     fn post_validate(&self, state: &GameState, _env: &GameEnv<'_>) -> Result<(), Self::Error> {
-        // Verify invariant: all entities in active_actors must have ready_at
-        for &entity_id in &state.turn.active_actors {
-            if let Some(actor) = state.entities.actor(entity_id) {
-                debug_assert!(
-                    actor.ready_at.is_some(),
-                    "active actor {:?} must have ready_at timestamp",
-                    entity_id
+        // Verify player is still active (should always be true)
+        debug_assert!(
+            state.turn.active_actors.contains(&EntityId::PLAYER),
+            "player must be in active set"
+        );
+
+        // Verify active_actors set matches actors with ready_at
+        #[cfg(debug_assertions)]
+        {
+            for actor in state.entities.all_actors() {
+                let has_ready_at = actor.ready_at.is_some();
+                let in_active_set = state.turn.active_actors.contains(&actor.id);
+                debug_assert_eq!(
+                    has_ready_at, in_active_set,
+                    "actor {} has ready_at={} but in_active_set={}",
+                    actor.id, has_ready_at, in_active_set
                 );
             }
         }
@@ -133,61 +127,16 @@ impl ActionTransition for ActivationAction {
     }
 }
 
-/// Errors that can occur during activation updates.
-#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ActivationError {
-    /// System actor validation failed.
-    #[error("activation action must be executed by SYSTEM actor")]
-    NotSystemActor {
-        #[cfg_attr(feature = "serde", serde(skip))]
-        context: ErrorContext,
-    },
-
-    /// Player not found in game state.
-    #[error("player not found in game state")]
-    PlayerNotFound {
-        #[cfg_attr(feature = "serde", serde(skip))]
-        context: ErrorContext,
-    },
-}
-
-impl ActivationError {
-    /// Creates a NotSystemActor error with context.
-    pub fn not_system_actor(nonce: u64) -> Self {
-        Self::NotSystemActor {
-            context: ErrorContext::new(nonce)
-                .with_message("system action executed by non-system actor"),
-        }
-    }
-
-    /// Creates a PlayerNotFound error with context.
-    pub fn player_not_found(nonce: u64) -> Self {
-        Self::PlayerNotFound {
-            context: ErrorContext::new(nonce).with_message("player entity not found"),
-        }
-    }
-}
-
-impl GameError for ActivationError {
-    fn severity(&self) -> ErrorSeverity {
-        match self {
-            Self::NotSystemActor { .. } => ErrorSeverity::Validation,
-            Self::PlayerNotFound { .. } => ErrorSeverity::Fatal,
-        }
-    }
-
-    fn context(&self) -> Option<&ErrorContext> {
-        match self {
-            Self::NotSystemActor { context } => Some(context),
-            Self::PlayerNotFound { context } => Some(context),
-        }
-    }
-
-    fn error_code(&self) -> &'static str {
-        match self {
-            Self::NotSystemActor { .. } => "ACTIVATION_NOT_SYSTEM_ACTOR",
-            Self::PlayerNotFound { .. } => "ACTIVATION_PLAYER_NOT_FOUND",
-        }
-    }
+/// Calculate Chebyshev distance (chessboard distance) between two positions.
+///
+/// This is `max(|dx|, |dy|)`, which treats diagonal movement as having the same
+/// cost as orthogonal movement (like a chess king).
+fn calculate_distance(
+    from: crate::state::Position,
+    to: crate::state::Position,
+    _env: &GameEnv<'_>,
+) -> u32 {
+    let dx = (from.x - to.x).abs();
+    let dy = (from.y - to.y).abs();
+    dx.max(dy) as u32
 }

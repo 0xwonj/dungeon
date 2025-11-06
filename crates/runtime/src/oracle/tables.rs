@@ -3,9 +3,13 @@
 //! Provides default game balance values that can be overridden
 //! for different game modes, difficulty settings, or on-chain governance.
 
+use game_content::ActionProfileRegistry;
+use game_core::ActionKind;
 use game_core::{
-    ActionCosts, CombatParams, DamageParams, HitChanceParams, SpeedParams, TablesOracle,
+    ActionCosts, ActionProfile, CombatParams, DamageParams, HitChanceParams, SpeedParams,
+    TablesOracle,
 };
+use std::sync::Arc;
 
 /// Default balance tables oracle implementation.
 ///
@@ -22,6 +26,7 @@ pub struct TablesOracleImpl {
     action_costs: ActionCosts,
     combat: CombatParams,
     speed: SpeedParams,
+    action_profiles: Arc<ActionProfileRegistry>,
 }
 
 impl Default for TablesOracleImpl {
@@ -33,10 +38,14 @@ impl Default for TablesOracleImpl {
 impl TablesOracleImpl {
     /// Create a new tables oracle with default balance values.
     pub fn new() -> Self {
+        let action_profiles =
+            ActionProfileRegistry::load().expect("Failed to load action profiles from data files");
+
         Self {
             action_costs: Self::default_action_costs(),
             combat: Self::default_combat(),
             speed: Self::default_speed(),
+            action_profiles: Arc::new(action_profiles),
         }
     }
 
@@ -98,5 +107,9 @@ impl TablesOracle for TablesOracleImpl {
 
     fn speed(&self) -> SpeedParams {
         self.speed
+    }
+
+    fn action_profile(&self, kind: ActionKind) -> ActionProfile {
+        self.action_profiles.get(kind).clone()
     }
 }

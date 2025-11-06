@@ -10,36 +10,9 @@ mod transition;
 
 pub use errors::{ExecuteError, TransitionPhase, TransitionPhaseError};
 
-use crate::action::Action;
-use crate::combat::AttackResult;
+use crate::action::{Action, ActionResult};
 use crate::env::GameEnv;
 use crate::state::{GameState, StateDelta};
-
-/// Execution result metadata for different action types.
-///
-/// Contains action-specific outcome information (e.g., combat results, item effects).
-/// System actions return `System` (no meaningful result).
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ActionResult {
-    /// Combat attack result (hit/miss/critical, damage dealt).
-    Attack(AttackResult),
-
-    /// Movement action (no specific result metadata yet).
-    Move,
-
-    /// Item usage action (future: healing amount, effects applied).
-    UseItem,
-
-    /// Interaction action (future: dialogue, quest triggers).
-    Interact,
-
-    /// Wait action (no result metadata).
-    Wait,
-
-    /// System actions (PrepareTurn, ActionCost, Activation) have no result.
-    System,
-}
 
 /// Complete outcome of action execution.
 ///
@@ -51,7 +24,8 @@ pub struct ExecutionOutcome {
     pub delta: StateDelta,
 
     /// Action-specific execution result (combat outcome, item effects, etc.).
-    pub action_result: ActionResult,
+    /// `None` for system actions (PrepareTurn, ActionCost, Activation).
+    pub action_result: Option<ActionResult>,
 }
 
 /// Game engine that manages action execution, turn scheduling, and game logic.
@@ -124,11 +98,11 @@ impl<'a> GameEngine<'a> {
                 // System actions are always valid (actor is implicitly SYSTEM)
                 Ok(())
             }
-            Action::Character { actor, .. } => {
+            Action::Character(character_action) => {
                 let current_actor = self.state.turn.current_actor;
-                if *actor != current_actor {
+                if character_action.actor != current_actor {
                     return Err(ExecuteError::actor_not_current(
-                        *actor,
+                        character_action.actor,
                         current_actor,
                         nonce,
                     ));

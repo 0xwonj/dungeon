@@ -96,7 +96,10 @@ pub enum AiKind {
     /// Scripted behavior AI
     Scripted,
 
-    /// Utility-based AI with 3-layer decision making (Intent → Tactic → Action)
+    /// Goal-based AI (recommended: Goal → Evaluate all candidates → Select best)
+    GoalBased,
+
+    /// Utility-based AI (legacy: Intent → Tactic → Action)
     Utility,
 }
 
@@ -128,6 +131,7 @@ impl fmt::Display for AiKind {
             Self::Aggressive => "aggressive",
             Self::Passive => "passive",
             Self::Scripted => "scripted",
+            Self::GoalBased => "goal_based",
             Self::Utility => "utility",
         };
         write!(f, "{}", s)

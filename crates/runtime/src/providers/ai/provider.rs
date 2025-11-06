@@ -1,121 +1,137 @@
-//! Utility-based AI action provider.
+//! Goal-based AI action provider.
+//!
+//! This provider uses a simple goal-oriented approach:
+//! 1. Select a goal based on current situation and traits
+//! 2. Generate all possible action candidates
+//! 3. Score each candidate by how well it serves the goal
+//! 4. Execute the highest-scoring candidate
 
 use async_trait::async_trait;
-use game_core::{Action, CharacterActionKind, EntityId, GameEnv, GameState, WaitAction};
+use game_core::{Action, CharacterAction, EntityId, GameEnv, GameState};
 
-use super::scoring::actions::ActionScorer;
-use super::scoring::selector::{IntentScorer, TacticScorer};
+use super::AiContext;
+use super::generator::ActionCandidateGenerator;
+use super::goal::GoalSelector;
 use crate::api::{ActionProvider, Result};
-use crate::providers::ai::AiContext;
 
-/// Utility-based AI provider using three-layer decision-making.
+/// Goal-based AI provider.
 ///
-/// This provider implements intelligent NPC behavior using a structured
-/// utility scoring approach:
+/// This is a simpler alternative to the layered Intent→Tactic→Action system.
+/// Instead of abstract strategic/tactical layers, it:
+/// 1. Picks a concrete goal (e.g., "Attack Player", "Flee from Player")
+/// 2. Evaluates all possible actions by how well they serve that goal
+/// 3. Executes the best action
 ///
-/// 1. **Layer 1 (Intent)**: What does the NPC want to do?
-/// 2. **Layer 2 (Tactic)**: How should they achieve it?
-/// 3. **Layer 3 (Action)**: Which specific action to execute?
+/// # Design Philosophy
 ///
-/// # Design
-///
-/// The provider:
-/// 1. Gets available actions from game-core
-/// 2. Builds an [`AiContext`] with game state
-/// 3. Selects intent using [`IntentScorer`]
-/// 4. Selects tactic using [`TacticScorer`]
-/// 5. Selects action using [`ActionScorer`]
-/// 6. Falls back to Wait if no valid action found
-///
-/// All scoring is deterministic and based on:
-/// - Feasibility (can this be done?)
-/// - Situation (is this favorable?)
-/// - Personality (does this fit NPC traits?)
-/// - Modifiers (contextual adjustments)
+/// - **Natural**: Goals match how we think ("I want to attack that enemy")
+/// - **Simple**: One decision (goal) → one evaluation (score actions) → one output
+/// - **Flexible**: Easy to add new goals without restructuring layers
+/// - **Debuggable**: Clear trace of goal → action → score
 #[derive(Debug, Clone, Default)]
-pub struct UtilityAiProvider;
+pub struct GoalBasedAiProvider;
 
-impl UtilityAiProvider {
-    /// Creates a new utility AI provider.
+impl GoalBasedAiProvider {
+    /// Creates a new goal-based AI provider.
     pub fn new() -> Self {
         Self
     }
 }
 
 #[async_trait]
-impl ActionProvider for UtilityAiProvider {
+impl ActionProvider for GoalBasedAiProvider {
     async fn provide_action(
         &self,
         entity: EntityId,
         state: &GameState,
         env: GameEnv<'_>,
     ) -> Result<Action> {
-        // Get actor
-        let actor = state
+        // Validate entity exists
+        let _actor = state
             .entities
             .actor(entity)
             .ok_or_else(|| crate::api::errors::RuntimeError::InvalidEntityId(entity))?;
 
-        // Get available actions from game-core
-        let available_actions = game_core::get_available_actions(actor, state, &env);
+        // Get available ActionKinds from game-core
+        let available_kinds = game_core::get_available_actions(entity, state, &env);
 
         tracing::debug!(
-            "NPC {:?} has {} available actions",
+            "GoalBasedAI: entity={:?} has {} available actions",
             entity,
-            available_actions.len()
+            available_kinds.len()
         );
 
         // Build AI context
         let ctx =
-            AiContext::new(entity, state, env).with_available_actions(available_actions.clone());
+            AiContext::new(entity, state, env).with_available_actions(available_kinds.clone());
 
-        // Debug: Check if trait profile is loaded
-        // TODO: Restore after actor system migration
-        if let Some(_profile) = ctx.trait_profile() {
-            tracing::debug!("NPC {:?} has trait profile loaded", entity);
-        } else {
-            tracing::debug!(
-                "NPC {:?} has NO trait profile loaded (expected during migration)",
+        // ====================================================================
+        // Step 1: Select Goal
+        // ====================================================================
+
+        let goal = GoalSelector::select(&ctx);
+
+        tracing::info!("GoalBasedAI: entity={:?} selected goal: {:?}", entity, goal);
+
+        // ====================================================================
+        // Step 2: Generate Candidates
+        // ====================================================================
+
+        let candidates = ActionCandidateGenerator::generate(&available_kinds, &ctx);
+
+        if candidates.is_empty() {
+            tracing::warn!(
+                "GoalBasedAI: entity={:?} has no action candidates, falling back to Wait",
                 entity
             );
+            return Ok(Action::Character(CharacterAction::new(
+                entity,
+                game_core::ActionKind::Wait,
+                game_core::ActionInput::None,
+            )));
         }
 
-        // Layer 1: Select Intent
-        let (intent, intent_score) = IntentScorer::select(&ctx);
         tracing::debug!(
-            "NPC {:?} selected Intent: {:?} (score: {})",
+            "GoalBasedAI: entity={:?} evaluating {} candidates",
             entity,
-            intent,
-            intent_score.value()
+            candidates.len()
         );
 
-        // Layer 2: Select Tactic
-        let (tactic, tactic_score) = TacticScorer::select(intent, &ctx);
-        tracing::debug!(
-            "NPC {:?} selected Tactic: {:?} (score: {})",
-            entity,
-            tactic,
-            tactic_score.value()
-        );
+        // ====================================================================
+        // Step 3: Score Candidates by Goal
+        // ====================================================================
 
-        // Layer 3: Select Action
-        let action_kind = ActionScorer::select(tactic, &available_actions, &ctx);
+        let mut best_candidate = None;
+        let mut best_score = 0;
 
-        tracing::debug!("NPC {:?} selected Action: {:?}", entity, action_kind);
+        for (kind, input) in candidates {
+            let score = goal.evaluate_action(kind, &input, &ctx);
 
-        // Convert to Action or fallback to Wait
-        let action = match action_kind {
-            Some(kind) => Action::character(entity, kind),
-            None => {
-                tracing::warn!(
-                    "NPC {:?} - No valid action found for tactic {:?}, falling back to Wait",
-                    entity,
-                    tactic
-                );
-                Action::character(entity, CharacterActionKind::Wait(WaitAction::new(entity)))
+            tracing::debug!("  Candidate: {:?} + {:?} = score {}", kind, input, score);
+
+            if score > best_score {
+                best_score = score;
+                best_candidate = Some((kind, input));
             }
-        };
+        }
 
-        Ok(action)
+        // ====================================================================
+        // Step 4: Build Final Action
+        // ====================================================================
+
+        let (kind, input) =
+            best_candidate.unwrap_or((game_core::ActionKind::Wait, game_core::ActionInput::None));
+
+        tracing::info!(
+            "GoalBasedAI: entity={:?} selected action: {:?} with input {:?} (score={})",
+            entity,
+            kind,
+            input,
+            best_score
+        );
+
+        let character_action = CharacterAction::new(entity, kind, input);
+
+        Ok(Action::Character(character_action))
     }
 }
