@@ -13,8 +13,9 @@ use tracing::{debug, error};
 
 use crate::api::{Result, RuntimeError};
 use crate::events::{Event, EventBus, GameStateEvent};
-use crate::hooks::HookRegistry;
+use crate::handlers::HandlerCriticality;
 use crate::oracle::OracleManager;
+use crate::providers::SystemActionProvider;
 
 /// Commands that can be sent to the simulation worker
 pub enum Command {
@@ -44,7 +45,7 @@ pub struct SimulationWorker {
     oracles: OracleManager,
     command_rx: mpsc::Receiver<Command>,
     event_bus: EventBus,
-    hooks: HookRegistry,
+    system_provider: SystemActionProvider,
 }
 
 impl SimulationWorker {
@@ -54,7 +55,7 @@ impl SimulationWorker {
         oracles: OracleManager,
         command_rx: mpsc::Receiver<Command>,
         event_bus: EventBus,
-        hooks: HookRegistry,
+        system_provider: SystemActionProvider,
     ) -> Self {
         tracing::info!(
             "SimulationWorker initialized with active_actors: {:?}, total actors: {}",
@@ -67,7 +68,7 @@ impl SimulationWorker {
             oracles,
             command_rx,
             event_bus,
-            hooks,
+            system_provider,
         }
     }
 
@@ -202,194 +203,173 @@ impl SimulationWorker {
     }
 
     /// Handles player/NPC action with full workflow:
-    /// execute → hooks → commit
+    /// execute → cascading system actions
     ///
     /// Actor validation is performed by GameEngine::execute (game-core).
     ///
-    /// If the action fails (at any validation phase), a Wait action is automatically
-    /// executed to consume the turn and prevent infinite loops.
+    /// If the action fails due to ActorDead, just skip the turn without fallback.
     fn handle_player_action(&mut self, action: Action) -> Result<()> {
         let clock = self.state.turn.clock;
 
-        // Execute primary action on staging state
-        // GameEngine::execute validates actor before execution
+        // Capture state before action
+        let state_before = self.state.clone();
+
+        // Execute primary action
+        // We need to clone state temporarily to satisfy borrow checker
         let mut working_state = self.state.clone();
         let delta = match self.execute_action(&action, &mut working_state) {
-            Ok(delta) => delta,
+            Ok(delta) => {
+                // Commit working state
+                self.state = working_state;
+                delta
+            }
             Err(error) => {
-                // Log failure details before consuming error
-                let phase_str = error.phase().map(|p| p.as_str()).unwrap_or("unknown");
+                // Check if actor is dead
+                if matches!(
+                    error,
+                    ExecuteError::Character(ref e) if matches!(e.error, game_core::ActionError::ActorDead)
+                ) {
+                    tracing::warn!(
+                        target: "runtime::worker",
+                        actor = ?action.actor(),
+                        "Dead actor attempted action, skipping turn"
+                    );
+                    return Ok(());
+                }
+
+                // For other errors, try Wait fallback
                 tracing::warn!(
                     target: "runtime::worker",
                     actor = ?action.actor(),
-                    action = ?action,
-                    phase = phase_str,
                     error = %error.message(),
-                    "Action failed, executing Wait to consume turn"
+                    "Action failed, attempting Wait fallback"
                 );
 
                 self.handle_execute_error(&action, error, clock);
 
-                // Execute Wait action to consume turn and prevent infinite loops
-                self.execute_wait_fallback(action.actor(), &mut working_state)
-                    .expect("Wait action should never fail - this is a bug")
+                // Try Wait action
+                match self.execute_wait_fallback(action.actor(), &mut working_state) {
+                    Ok(delta) => {
+                        // Commit working state
+                        self.state = working_state;
+                        delta
+                    }
+                    Err(_) => {
+                        // Wait also failed (probably dead actor), just skip
+                        return Ok(());
+                    }
+                }
             }
         };
 
-        // Apply post-execution hooks
-        // If a critical hook fails, abort the action
-        if let Err(error) = self.apply_hooks(&delta, &mut working_state) {
-            self.handle_execute_error(&action, error, clock);
+        // Process cascading system actions
+        if let Err(error) = self.process_cascading(delta, state_before) {
+            error!(target: "runtime::worker", error = ?error, "Cascading system actions failed");
             return Ok(());
         }
 
-        // Commit the final state
-        self.state = working_state;
-
         Ok(())
     }
 
-    /// Applies all registered post-execution hooks to the working state.
+    /// Process cascading system actions via SystemActionProvider.
     ///
-    /// Hooks execute system actions via the unified execute_action method.
-    /// Returns Ok(()) if all critical hooks succeeded, or Err if a critical hook failed.
-    fn apply_hooks(
+    /// This is the core of the reactive system action generation:
+    /// 1. Provider analyzes delta and generates system actions
+    /// 2. Execute generated system actions
+    /// 3. New actions may generate more system actions (cascading)
+    /// 4. Repeat until no new actions are generated
+    fn process_cascading(
         &mut self,
-        delta: &game_core::StateDelta,
-        working_state: &mut GameState,
+        initial_delta: game_core::StateDelta,
+        initial_state_before: GameState,
     ) -> std::result::Result<(), ExecuteError> {
-        // Clone hooks to avoid borrow conflicts
-        // (hooks are Arc-wrapped, so this is cheap)
-        let hooks: Vec<_> = self.hooks.root_hooks().to_vec();
+        const MAX_PASSES: usize = 10;
 
-        // Execute all root hooks in priority order
-        for hook in hooks {
-            if let Err(e) = self.execute_hook_with_chaining(hook.as_ref(), delta, working_state, 0)
-            {
-                self.handle_hook_error(hook.as_ref(), e)?;
-            }
-        }
+        // Track (delta, state_before) pairs for provider
+        let mut current_deltas = vec![(initial_delta, initial_state_before)];
 
-        Ok(())
-    }
+        for pass in 0..MAX_PASSES {
+            let mut next_deltas = vec![];
 
-    /// Executes a single hook with chaining support.
-    ///
-    /// This is the core hook execution logic that:
-    /// 1. Checks if the hook should trigger
-    /// 2. Creates actions from the hook
-    /// 3. Executes each action via execute_action
-    /// 4. Recursively executes next hooks in the chain
-    fn execute_hook_with_chaining(
-        &mut self,
-        hook: &dyn crate::hooks::PostExecutionHook,
-        delta: &game_core::StateDelta,
-        state: &mut GameState,
-        depth: usize,
-    ) -> std::result::Result<(), ExecuteError> {
-        const MAX_DEPTH: usize = 50;
-        if depth > MAX_DEPTH {
-            let nonce = state.turn.nonce;
-            return Err(ExecuteError::hook_chain_too_deep(
-                hook.name().to_string(),
-                depth,
-                nonce,
-            ));
-        }
-
-        // 1. Check trigger condition
-        let ctx = crate::hooks::HookContext {
-            delta,
-            state,
-            oracles: &self.oracles,
-        };
-
-        if !hook.should_trigger(&ctx) {
-            return Ok(());
-        }
-
-        // 2. Create actions from the hook
-        let actions = hook.create_actions(&ctx);
-        if actions.is_empty() {
-            return Ok(());
-        }
-
-        // 3. Execute each action and chain to next hooks after the last one
-        for (idx, action) in actions.iter().enumerate() {
-            // Execute action via the unified execute_action method
-            let new_delta = self.execute_action(action, state)?;
-
-            // 4. Execute next hooks in chain only after the last action
-            if idx == actions.len() - 1 {
-                self.execute_next_hooks(hook, &new_delta, state, depth + 1)?;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Executes the next hooks in the chain.
-    fn execute_next_hooks(
-        &mut self,
-        hook: &dyn crate::hooks::PostExecutionHook,
-        delta: &game_core::StateDelta,
-        state: &mut GameState,
-        depth: usize,
-    ) -> std::result::Result<(), ExecuteError> {
-        // Collect next hooks to avoid borrow conflicts
-        let next_hooks: Vec<_> = hook
-            .next_hook_names()
-            .iter()
-            .filter_map(|name| self.hooks.find(name).cloned())
-            .collect();
-
-        for next_hook in next_hooks {
-            self.execute_hook_with_chaining(next_hook.as_ref(), delta, state, depth)?;
-        }
-        Ok(())
-    }
-
-    /// Handles hook execution errors based on criticality level.
-    ///
-    /// Returns Ok(()) for Important/Optional hooks, Err for Critical hooks.
-    fn handle_hook_error(
-        &self,
-        hook: &dyn crate::hooks::PostExecutionHook,
-        error: ExecuteError,
-    ) -> std::result::Result<(), ExecuteError> {
-        use crate::hooks::HookCriticality;
-
-        let (level, message) = match hook.criticality() {
-            HookCriticality::Critical => {
-                error!(
-                    target: "runtime::worker",
-                    hook = hook.name(),
-                    criticality = "critical",
-                    error = ?error,
-                    "Critical hook failed, aborting action"
+            // Process all deltas from this pass
+            for (delta, state_before) in current_deltas {
+                // Provider generates system actions from delta
+                let reactive_actions = self.system_provider.generate_actions(
+                    &delta,
+                    &state_before,
+                    &self.state,
+                    &self.oracles,
                 );
-                return Err(error);
-            }
-            HookCriticality::Important => ("important", "Hook failed, continuing"),
-            HookCriticality::Optional => ("optional", "Optional hook failed"),
-        };
 
-        match hook.criticality() {
-            HookCriticality::Important => error!(
-                target: "runtime::worker",
-                hook = hook.name(),
-                criticality = level,
-                error = ?error,
-                "{}", message
-            ),
-            HookCriticality::Optional => debug!(
-                target: "runtime::worker",
-                hook = hook.name(),
-                criticality = level,
-                error = ?error,
-                "{}", message
-            ),
-            HookCriticality::Critical => unreachable!(),
+                if !reactive_actions.is_empty() {
+                    debug!(
+                        target: "runtime::worker",
+                        pass = pass,
+                        action_count = reactive_actions.len(),
+                        "Processing system actions"
+                    );
+                }
+
+                // Execute all generated system actions
+                for (action, handler_name, criticality) in reactive_actions {
+                    // Clone state before executing to track before/after
+                    let state_before_action = self.state.clone();
+
+                    // Clone state for execution (borrow checker requirement)
+                    let mut working_state = self.state.clone();
+                    match self.execute_action(&action, &mut working_state) {
+                        Ok(new_delta) => {
+                            // Commit working state
+                            self.state = working_state;
+                            next_deltas.push((new_delta, state_before_action));
+                        }
+                        Err(e) => {
+                            // Handle based on criticality
+                            match criticality {
+                                HandlerCriticality::Critical => {
+                                    error!(
+                                        target: "runtime::worker",
+                                        handler = handler_name,
+                                        error = ?e,
+                                        "Critical handler failed"
+                                    );
+                                    return Err(e);
+                                }
+                                HandlerCriticality::Important => {
+                                    error!(
+                                        target: "runtime::worker",
+                                        handler = handler_name,
+                                        error = ?e,
+                                        "Handler failed, continuing"
+                                    );
+                                }
+                                HandlerCriticality::Optional => {
+                                    debug!(
+                                        target: "runtime::worker",
+                                        handler = handler_name,
+                                        "Optional handler failed"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // No more reactions, we're done
+            if next_deltas.is_empty() {
+                debug!(target: "runtime::worker", passes = pass + 1, "Cascading complete");
+                break;
+            }
+
+            if pass == MAX_PASSES - 1 {
+                tracing::warn!(
+                    target: "runtime::worker",
+                    "Cascading hit max passes limit (possible infinite loop)"
+                );
+            }
+
+            current_deltas = next_deltas;
         }
 
         Ok(())
@@ -407,6 +387,9 @@ impl SimulationWorker {
                 (phase_error.phase, phase_error.error.to_string())
             }
             ExecuteError::Activation(phase_error) => {
+                (phase_error.phase, phase_error.error.to_string())
+            }
+            ExecuteError::RemoveFromActive(phase_error) => {
                 (phase_error.phase, phase_error.error.to_string())
             }
             ExecuteError::HookChainTooDeep {

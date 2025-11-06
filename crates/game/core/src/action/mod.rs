@@ -35,11 +35,11 @@ pub mod types;
 pub use effect::{
     ActionEffect, Condition, Displacement, EffectKind, ExecutionPhase, InteractionType,
 };
-pub use error::{ActionCostError, ActionError, ActivationError, TurnError};
+pub use error::{ActionCostError, ActionError, ActivationError, RemoveFromActiveError, TurnError};
 pub use execute::{EffectContext, apply, post_validate, pre_validate};
 pub use formula::Formula;
 pub use profile::{ActionKind, ActionProfile, ActionTag, Requirement, ResourceCost};
-pub use system::{ActionCostAction, ActivationAction, PrepareTurnAction};
+pub use system::{ActionCostAction, ActivationAction, PrepareTurnAction, RemoveFromActiveAction};
 pub use targeting::TargetingMode;
 pub use types::{
     ActionInput, ActionResult, ActionSummary, AppliedValue, CardinalDirection, CharacterAction,
@@ -84,6 +84,7 @@ pub enum SystemActionKind {
     PrepareTurn(PrepareTurnAction),
     ActionCost(ActionCostAction),
     Activation(ActivationAction),
+    RemoveFromActive(RemoveFromActiveAction),
 }
 
 /// Top-level action enum that can be either a character action or system action.
@@ -140,6 +141,7 @@ impl Action {
                 SystemActionKind::PrepareTurn(action) => action.cost(env),
                 SystemActionKind::ActionCost(action) => action.cost(env),
                 SystemActionKind::Activation(action) => action.cost(env),
+                SystemActionKind::RemoveFromActive(action) => action.cost(env),
             },
         };
 
@@ -156,6 +158,7 @@ impl Action {
                 SystemActionKind::PrepareTurn(_) => "prepare_turn",
                 SystemActionKind::ActionCost(_) => "action_cost",
                 SystemActionKind::Activation(_) => "activation",
+                SystemActionKind::RemoveFromActive(_) => "remove_from_active",
             },
         }
     }

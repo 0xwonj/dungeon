@@ -342,3 +342,66 @@ impl GameError for ActivationError {
         }
     }
 }
+
+/// Errors that can occur when removing entity from active set.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum RemoveFromActiveError {
+    /// System actor validation failed.
+    #[error("remove from active action must be executed by SYSTEM actor")]
+    NotSystemActor {
+        #[cfg_attr(feature = "serde", serde(skip))]
+        context: ErrorContext,
+    },
+
+    /// Entity not found in game state.
+    #[error("entity {entity} not found in game state")]
+    EntityNotFound {
+        entity: EntityId,
+        #[cfg_attr(feature = "serde", serde(skip))]
+        context: ErrorContext,
+    },
+}
+
+impl RemoveFromActiveError {
+    /// Creates a NotSystemActor error with context.
+    pub fn not_system_actor(nonce: u64) -> Self {
+        Self::NotSystemActor {
+            context: ErrorContext::new(nonce)
+                .with_message("system action executed by non-system actor"),
+        }
+    }
+
+    /// Creates an EntityNotFound error with context.
+    pub fn entity_not_found(entity: EntityId, nonce: u64) -> Self {
+        Self::EntityNotFound {
+            entity,
+            context: ErrorContext::new(nonce)
+                .with_actor(entity)
+                .with_message("entity not found"),
+        }
+    }
+}
+
+impl GameError for RemoveFromActiveError {
+    fn severity(&self) -> ErrorSeverity {
+        match self {
+            Self::NotSystemActor { .. } => ErrorSeverity::Validation,
+            Self::EntityNotFound { .. } => ErrorSeverity::Validation,
+        }
+    }
+
+    fn context(&self) -> Option<&ErrorContext> {
+        match self {
+            Self::NotSystemActor { context } => Some(context),
+            Self::EntityNotFound { context, .. } => Some(context),
+        }
+    }
+
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::NotSystemActor { .. } => "REMOVE_FROM_ACTIVE_NOT_SYSTEM_ACTOR",
+            Self::EntityNotFound { .. } => "REMOVE_FROM_ACTIVE_ENTITY_NOT_FOUND",
+        }
+    }
+}

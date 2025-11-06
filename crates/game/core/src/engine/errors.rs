@@ -2,6 +2,7 @@
 
 use crate::action::{
     ActionCostAction, ActionError, ActionTransition, ActivationAction, PrepareTurnAction,
+    RemoveFromActiveAction,
 };
 use crate::error::{ErrorContext, ErrorSeverity, GameError};
 
@@ -109,6 +110,10 @@ pub enum ExecuteError {
     #[cfg_attr(feature = "serde", serde(skip))]
     Activation(TransitionPhaseError<<ActivationAction as ActionTransition>::Error>),
 
+    #[error("remove from active action failed: {0}")]
+    #[cfg_attr(feature = "serde", serde(skip))]
+    RemoveFromActive(TransitionPhaseError<<RemoveFromActiveAction as ActionTransition>::Error>),
+
     #[error("hook chain too deep: hook '{hook_name}' reached depth {depth}")]
     HookChainTooDeep {
         hook_name: String,
@@ -181,6 +186,7 @@ impl ExecuteError {
             Self::PrepareTurn(e) => Some(e.phase),
             Self::ActionCost(e) => Some(e.phase),
             Self::Activation(e) => Some(e.phase),
+            Self::RemoveFromActive(e) => Some(e.phase),
             Self::HookChainTooDeep { .. }
             | Self::SystemActionNotFromSystem { .. }
             | Self::ActorNotCurrent { .. } => None,
@@ -239,6 +245,7 @@ impl GameError for ExecuteError {
             Self::PrepareTurn(e) => e.severity(),
             Self::ActionCost(e) => e.severity(),
             Self::Activation(e) => e.severity(),
+            Self::RemoveFromActive(e) => e.severity(),
             Self::HookChainTooDeep { .. } => ErrorSeverity::Fatal,
             Self::SystemActionNotFromSystem { .. } => ErrorSeverity::Validation,
             Self::ActorNotCurrent { .. } => ErrorSeverity::Validation,
@@ -251,6 +258,7 @@ impl GameError for ExecuteError {
             Self::PrepareTurn(e) => e.context(),
             Self::ActionCost(e) => e.context(),
             Self::Activation(e) => e.context(),
+            Self::RemoveFromActive(e) => e.context(),
             Self::HookChainTooDeep { context, .. } => Some(context),
             Self::SystemActionNotFromSystem { context, .. } => Some(context),
             Self::ActorNotCurrent { context, .. } => Some(context),
@@ -263,6 +271,7 @@ impl GameError for ExecuteError {
             Self::PrepareTurn(e) => e.error_code(),
             Self::ActionCost(e) => e.error_code(),
             Self::Activation(e) => e.error_code(),
+            Self::RemoveFromActive(e) => e.error_code(),
             Self::HookChainTooDeep { .. } => "EXECUTE_HOOK_CHAIN_TOO_DEEP",
             Self::SystemActionNotFromSystem { .. } => "EXECUTE_SYSTEM_ACTION_INVALID",
             Self::ActorNotCurrent { .. } => "EXECUTE_ACTOR_NOT_CURRENT",

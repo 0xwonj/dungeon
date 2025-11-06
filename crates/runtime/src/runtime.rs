@@ -14,8 +14,8 @@ use crate::api::{
     ActionProvider, ProviderKind, ProviderRegistry, Result, RuntimeError, RuntimeHandle,
 };
 use crate::events::EventBus;
-use crate::hooks::{HookRegistry, PostExecutionHook};
 use crate::oracle::OracleManager;
+use crate::providers::SystemActionProvider;
 use crate::workers::{
     CheckpointStrategy, Command, PersistenceConfig, PersistenceWorker, ProofMetrics, ProverWorker,
     SimulationWorker,
@@ -250,7 +250,7 @@ pub struct RuntimeBuilder {
     oracles: Option<OracleManager>,
     scenario: Option<crate::scenario::Scenario>,
     providers: ProviderRegistry,
-    hooks: Option<HookRegistry>,
+    system_provider: Option<SystemActionProvider>,
 }
 
 impl RuntimeBuilder {
@@ -263,7 +263,7 @@ impl RuntimeBuilder {
             oracles: None,
             scenario: None,
             providers: ProviderRegistry::new(),
-            hooks: None,
+            system_provider: None,
         }
     }
 
@@ -353,47 +353,16 @@ impl RuntimeBuilder {
         self
     }
 
-    /// Set custom post-execution hooks.
+    /// Set custom event handlers.
     ///
-    /// If not provided, the default hooks (ActionCost, Activation) are used.
-    /// Use this to add custom hooks or replace the default set entirely.
-    pub fn with_hooks(mut self, hooks: HookRegistry) -> Self {
-        self.hooks = Some(hooks);
-        self
-    }
-
-    /// Adds hooks to the default hook set.
+    /// If not provided, the default handlers (ActionCost, Death, Activation) are used.
+    /// Use this to add custom handlers or replace the default set entirely.
+    /// Set a custom SystemActionProvider.
     ///
-    /// This is a convenience method for adding custom hooks without replacing
-    /// the entire default set.
-    ///
-    /// # Arguments
-    ///
-    /// * `root_hooks` - Additional hooks to execute on every action
-    /// * `lookup_hooks` - Additional hooks that are only chained (not executed as root)
-    ///
-    /// Note: If you've already called `with_hooks()`, calling this will discard
-    /// those hooks and rebuild from the default set plus your new hooks.
-    pub fn add_hooks(
-        mut self,
-        additional_root_hooks: Vec<std::sync::Arc<dyn PostExecutionHook>>,
-        additional_lookup_hooks: Vec<std::sync::Arc<dyn PostExecutionHook>>,
-    ) -> Self {
-        use crate::hooks::{ActionCostHook, ActivationHook};
-        use std::sync::Arc;
-
-        // Start with default hooks
-        let mut root_hooks: Vec<Arc<dyn PostExecutionHook>> = vec![
-            Arc::new(ActionCostHook) as Arc<dyn PostExecutionHook>,
-            Arc::new(ActivationHook) as Arc<dyn PostExecutionHook>,
-        ];
-        root_hooks.extend(additional_root_hooks);
-
-        // All hooks = root + lookup-only
-        let mut all_hooks = root_hooks.clone();
-        all_hooks.extend(additional_lookup_hooks);
-
-        self.hooks = Some(HookRegistry::new(root_hooks, all_hooks));
+    /// By default, the runtime uses a provider with standard handlers (ActionCost, Death, Activation).
+    /// Use this method to inject a custom provider with additional or modified handlers.
+    pub fn with_system_provider(mut self, provider: SystemActionProvider) -> Self {
+        self.system_provider = Some(provider);
         self
     }
 
@@ -469,7 +438,7 @@ impl RuntimeBuilder {
             oracles,
             scenario,
             providers,
-            hooks,
+            system_provider,
         } = self;
 
         let oracles = oracles.ok_or_else(|| RuntimeError::MissingOracles)?;
@@ -496,17 +465,16 @@ impl RuntimeBuilder {
 
         let handle = RuntimeHandle::new(command_tx.clone(), event_bus.clone(), providers.clone());
 
-        // Use provided hooks or default registry
-        let hooks = hooks.unwrap_or_default();
+        // Use provided system provider or default
+        let system_provider = system_provider.unwrap_or_default();
 
         // Create workers using factory methods
-        // NOTE: SimulationWorker no longer owns providers (moved to Runtime)
         let sim_worker_handle = Self::create_simulation_worker(
             initial_state,
             oracles.clone(),
             command_rx,
             event_bus.clone(),
-            hooks,
+            system_provider,
         );
 
         let persistence_worker_handle = Self::create_persistence_worker(
@@ -543,10 +511,15 @@ impl RuntimeBuilder {
         oracles: OracleManager,
         command_rx: mpsc::Receiver<Command>,
         event_bus: EventBus,
-        hooks: HookRegistry,
+        system_provider: SystemActionProvider,
     ) -> JoinHandle<()> {
-        let sim_worker =
-            SimulationWorker::new(initial_state, oracles, command_rx, event_bus, hooks);
+        let sim_worker = SimulationWorker::new(
+            initial_state,
+            oracles,
+            command_rx,
+            event_bus,
+            system_provider,
+        );
 
         tokio::spawn(async move {
             sim_worker.run().await;

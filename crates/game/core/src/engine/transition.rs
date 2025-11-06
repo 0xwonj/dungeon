@@ -80,6 +80,10 @@ pub(super) fn execute_transition(
                 SystemActionKind::Activation(transition) => {
                     drive_transition(transition, state, env).map_err(ExecuteError::Activation)?;
                 }
+                SystemActionKind::RemoveFromActive(transition) => {
+                    drive_transition(transition, state, env)
+                        .map_err(ExecuteError::RemoveFromActive)?;
+                }
             }
             Ok(None)
         }

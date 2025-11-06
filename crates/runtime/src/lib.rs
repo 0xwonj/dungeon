@@ -11,13 +11,13 @@
 //! - [`providers`] contains concrete action provider implementations
 //! - [`events`] provides topic-based event bus for flexible event routing
 //! - [`workers`] keeps background tasks internal to the crate
-//! - [`hooks`] provides post-execution hook system for runtime orchestration
+//! - [`handlers`] provides event-based reactive action generation
 //! - [`oracle`] and [`repository`] provide data adapters reused by other crates
 //! - [`scenario`] provides entity placement and game initialization
 //! - [`types`] provides common type aliases for semantic clarity
 pub mod api;
 pub mod events;
-pub mod hooks;
+pub mod handlers;
 pub mod oracle;
 pub mod providers;
 pub mod repository;
@@ -32,15 +32,18 @@ pub use api::{
     ActionProvider, AiKind, InteractiveKind, ProviderKind, ProviderRegistry, Result, RuntimeError,
     RuntimeHandle,
 };
-pub use events::{Event, EventBus, GameStateEvent, ProofEvent, Topic};
-pub use hooks::{
-    ActionCostHook, ActivationHook, HookContext, HookCriticality, HookRegistry, PostExecutionHook,
+pub use events::{
+    Event, EventBus, GameEvent, GameStateEvent, HealthThreshold, ProofEvent, Topic, extract_events,
+};
+pub use handlers::{
+    ActionCostHandler, ActivationHandler, DeathHandler, EventContext, HandlerCriticality,
 };
 pub use oracle::{
     ActorOracleImpl, AiConfig, ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, OracleManager,
     TablesOracleImpl,
 };
 pub use providers::ai::{AiContext, GoalBasedAiProvider};
+pub use providers::{SystemActionHandler, SystemActionProvider};
 pub use repository::{
     ActionLogEntry, ActionLogReader, ActionLogWriter, Checkpoint, CheckpointRepository,
     EventRepository, FileActionLog, FileCheckpointRepository, FileEventLog,
