@@ -8,9 +8,6 @@ use ratatui::{
     widgets::{Block, Borders, List, ListDirection, ListItem},
 };
 
-/// Height of message panel in lines.
-pub const MESSAGE_PANEL_HEIGHT: u16 = 5;
-
 /// Render the message log panel.
 ///
 /// Displays recent messages in bottom-to-top order (newest at bottom).
@@ -18,6 +15,7 @@ pub fn render<T: PresentationMapper<Style = Style>>(
     frame: &mut Frame,
     area: Rect,
     messages: &[MessageEntry],
+    panel_height: u16,
     theme: &T,
 ) {
     let mut items: Vec<ListItem> = messages
@@ -26,7 +24,7 @@ pub fn render<T: PresentationMapper<Style = Style>>(
         .collect();
 
     // Pad with empty lines to maintain consistent height
-    while items.len() < MESSAGE_PANEL_HEIGHT as usize {
+    while items.len() < panel_height as usize {
         items.push(ListItem::new(""));
     }
 

@@ -3,11 +3,16 @@
 //! These types provide presentation-optimized views of game entities,
 //! directly reusing game-core types to avoid duplication between ZK and UI.
 
-use game_core::{EntityId, ItemHandle, Position, PropKind, Tick, stats::StatsSnapshot};
+use arrayvec::ArrayVec;
+use game_core::{
+    ActionAbility, EntityId, GameConfig, ItemHandle, PassiveAbility, Position, PropKind, Tick,
+    stats::StatsSnapshot,
+};
 
 /// Actor view (Player + NPCs) for rendering and targeting.
 ///
-/// Uses `game_core::StatsSnapshot` directly - the same type used in ZK proofs.
+/// This is a complete view of `ActorState` for presentation purposes,
+/// including all fields needed by the UI without requiring additional state queries.
 #[derive(Clone, Debug)]
 pub struct ActorView {
     pub id: EntityId,
@@ -20,6 +25,10 @@ pub struct ActorView {
     /// - `Some(tick)`: Actor will act at this tick
     /// - `None`: Actor is not currently scheduled (outside activation radius)
     pub ready_at: Option<Tick>,
+    /// Active abilities that can be used (Move, Attack, Fireball, etc.).
+    pub actions: ArrayVec<ActionAbility, { GameConfig::MAX_ACTIONS }>,
+    /// Passive abilities that provide automatic benefits.
+    pub passives: ArrayVec<PassiveAbility, { GameConfig::MAX_PASSIVES }>,
 }
 
 impl ActorView {
@@ -30,6 +39,8 @@ impl ActorView {
             is_player: actor.id == EntityId::PLAYER,
             stats: actor.snapshot(),
             ready_at: actor.ready_at,
+            actions: actor.actions.clone(),
+            passives: actor.passives.clone(),
         }
     }
 }

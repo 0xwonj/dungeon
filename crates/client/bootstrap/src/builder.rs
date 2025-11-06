@@ -5,12 +5,12 @@ use std::sync::Arc;
 use anyhow::Result;
 use runtime::{AiKind, ProviderKind, Runtime, Scenario};
 
-use crate::config::CliConfig;
+use crate::config::ClientConfig;
 use crate::oracles::{ContentOracleFactory, OracleBundle, OracleFactory};
 
 /// Builder that assembles runtime state, oracles, and configuration for clients.
 pub struct RuntimeBuilder {
-    config: CliConfig,
+    config: ClientConfig,
     oracle_factory: Arc<dyn OracleFactory>,
 }
 
@@ -19,7 +19,7 @@ impl RuntimeBuilder {
     ///
     /// This uses ContentOracleFactory by default, loading content from RON/TOML files.
     /// Use `oracle_factory()` to override with a custom factory.
-    pub fn new(config: CliConfig) -> Self {
+    pub fn new(config: ClientConfig) -> Self {
         let default_factory = ContentOracleFactory::default_paths();
         Self {
             config,
@@ -137,7 +137,7 @@ impl RuntimeBuilder {
 }
 
 pub struct RuntimeSetup {
-    pub config: CliConfig,
+    pub config: ClientConfig,
     pub oracles: OracleBundle,
     pub runtime: Runtime,
 }
