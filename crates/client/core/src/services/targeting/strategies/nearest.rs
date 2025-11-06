@@ -23,12 +23,16 @@ pub struct NearestStrategy;
 
 impl TargetingStrategy for NearestStrategy {
     fn select_target(&self, view_model: &ViewModel) -> Option<Position> {
-        let player_pos = view_model.player.position;
+        let player_pos = view_model.player.position?;
 
         view_model
             .npcs()
-            .min_by_key(|npc| manhattan_distance(player_pos, npc.position))
-            .map(|npc| npc.position)
+            .filter_map(|npc| {
+                let npc_pos = npc.position?;
+                Some((npc, manhattan_distance(player_pos, npc_pos)))
+            })
+            .min_by_key(|(_, dist)| *dist)
+            .and_then(|(npc, _)| npc.position)
     }
 
     fn name(&self) -> &'static str {

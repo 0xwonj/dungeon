@@ -2,12 +2,13 @@
 //!
 //! Handlers react to GameEvents and generate system actions in response.
 //! These are used by SystemActionProvider to implement game logic.
+//!
+//! Note: Action cost application is now integrated into character action execution
+//! within game-core, so ActionCostHandler has been removed.
 
-mod action_cost;
 mod activation;
 mod death;
 
-pub use action_cost::ActionCostHandler;
 pub use activation::ActivationHandler;
 pub use death::DeathHandler;
 

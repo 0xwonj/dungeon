@@ -22,7 +22,7 @@ where
                     // Convert Position → EntityId for entity-based tracking
                     self.view_model
                         .npcs()
-                        .find(|npc| npc.position == target_pos)
+                        .find(|npc| npc.position == Some(target_pos))
                         .map(|npc| npc.id)
                 } else {
                     // No NPCs - default to player
@@ -89,7 +89,7 @@ where
         let entities_here: Vec<_> = self
             .view_model
             .npcs()
-            .filter(|npc| npc.position == cursor_pos)
+            .filter(|npc| npc.position == Some(cursor_pos))
             .collect();
 
         if entities_here.is_empty() {
@@ -125,7 +125,7 @@ where
         let entity_at_cursor = self
             .view_model
             .npcs()
-            .find(|npc| npc.position == cursor_pos)
+            .find(|npc| npc.position == Some(cursor_pos))
             .map(|npc| npc.id);
 
         self.app_state.set_highlighted_entity(entity_at_cursor);
@@ -133,7 +133,9 @@ where
 
     /// Find all valid target entities within range of player.
     pub(in crate::event) fn find_targets_in_range(&self, range: &u32) -> Vec<EntityId> {
-        let player_pos = self.view_model.player.position;
+        let Some(player_pos) = self.view_model.player.position else {
+            return vec![];
+        };
 
         self.view_model
             .actors
@@ -141,7 +143,9 @@ where
             .filter(|actor| {
                 actor.id != EntityId::PLAYER
                     && actor.stats.resource_current.hp > 0
-                    && chebyshev_distance(player_pos, actor.position) <= *range
+                    && actor
+                        .position
+                        .is_some_and(|pos| chebyshev_distance(player_pos, pos) <= *range)
             })
             .map(|actor| actor.id)
             .collect()

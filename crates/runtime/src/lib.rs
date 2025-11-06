@@ -35,9 +35,7 @@ pub use api::{
 pub use events::{
     Event, EventBus, GameEvent, GameStateEvent, HealthThreshold, ProofEvent, Topic, extract_events,
 };
-pub use handlers::{
-    ActionCostHandler, ActivationHandler, DeathHandler, EventContext, HandlerCriticality,
-};
+pub use handlers::{ActivationHandler, DeathHandler, EventContext, HandlerCriticality};
 pub use oracle::{
     ActorOracleImpl, AiConfig, ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, OracleManager,
     TablesOracleImpl,

@@ -16,7 +16,7 @@ use game_core::{
 #[derive(Clone, Debug)]
 pub struct ActorView {
     pub id: EntityId,
-    pub position: Position,
+    pub position: Option<Position>,
     pub is_player: bool,
     /// Complete stats snapshot from game-core.
     /// Use `.hp()`, `.mp()` methods to get current/max values.

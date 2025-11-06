@@ -4,19 +4,22 @@
 //! state transitions that are not initiated by in-game entities. These include:
 //!
 //! - Turn scheduling and actor selection
-//! - Action cost application and cooldown management
 //! - Entity activation/deactivation based on game rules
+//! - Entity removal from world and turn scheduling
+//!
+//! Note: Action cost application is now handled directly within character action
+//! execution (see `action::execute::pipeline`) to avoid double validation overhead.
 //!
 //! All system actions implement [`ActionTransition`] and follow the same three-phase
 //! validation pipeline as player/NPC actions, ensuring they are fully auditable and
 //! provable in zero-knowledge proof systems.
 
-mod action_cost;
 mod activation;
+mod deactivate;
 mod prepare_turn;
-mod remove_from_active;
+mod remove_from_world;
 
-pub use action_cost::ActionCostAction;
 pub use activation::ActivationAction;
+pub use deactivate::DeactivateAction;
 pub use prepare_turn::PrepareTurnAction;
-pub use remove_from_active::RemoveFromActiveAction;
+pub use remove_from_world::RemoveFromWorldAction;

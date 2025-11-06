@@ -52,7 +52,7 @@ impl ActorTemplate {
 
         ActorState {
             id,
-            position,
+            position: Some(position),
             core_stats: self.core_stats.clone(),
             resources,
             equipment: self.equipment.clone(),

@@ -120,18 +120,14 @@ fn validate_targeting(
                 _ => return Err(ActionError::InvalidTarget),
             };
 
-            // Check target exists
-            let actor = state
-                .entities
-                .actor(action.actor)
-                .ok_or(ActionError::ActorNotFound)?;
-            let target = state
-                .entities
-                .actor(target_id)
-                .ok_or(ActionError::TargetNotFound)?;
-
             // Check range (Chebyshev distance)
-            let distance = calculate_distance(actor.position, target.position);
+            let actor_pos = state
+                .actor_position(action.actor)
+                .ok_or(ActionError::ActorNotFound)?;
+            let target_pos = state
+                .actor_position(target_id)
+                .ok_or(ActionError::TargetNotFound)?;
+            let distance = calculate_distance(actor_pos, target_pos);
             if distance > *range {
                 return Err(ActionError::OutOfRange);
             }

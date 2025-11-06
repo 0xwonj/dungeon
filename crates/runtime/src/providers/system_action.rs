@@ -70,14 +70,12 @@ impl SystemActionProvider {
     /// Create a provider with default handlers.
     ///
     /// Default handlers:
-    /// - ActionCostHandler: Apply action timing costs
-    /// - DeathHandler: Remove dead entities from turn scheduling
+    /// - DeathHandler: Remove dead entities from turn scheduling and world
     /// - ActivationHandler: Activate/deactivate NPCs based on player position
     pub fn with_defaults() -> Self {
-        use crate::handlers::{ActionCostHandler, ActivationHandler, DeathHandler};
+        use crate::handlers::{ActivationHandler, DeathHandler};
 
         let mut provider = Self::new();
-        provider.add_handler(Box::new(ActionCostHandler));
         provider.add_handler(Box::new(DeathHandler));
         provider.add_handler(Box::new(ActivationHandler));
         provider
@@ -127,6 +125,7 @@ impl SystemActionProvider {
         for event in &events {
             for handler in &self.handlers {
                 let handler_actions = handler.generate_actions(event, &ctx);
+
                 for action in handler_actions {
                     actions.push((action, handler.name(), handler.criticality()));
                 }

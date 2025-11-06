@@ -30,21 +30,28 @@ use crate::action::error::ActionError;
 /// Apply action: Execute effects and return result.
 ///
 /// ## Execution Flow
-/// 1. Load `ActionProfile` from `TablesOracle`
-/// 2. Resolve targets using `resolve_targets`
-/// 3. For each target:
+/// 1. Capture actor snapshot for cost calculation (before state changes)
+/// 2. Load `ActionProfile` from `TablesOracle`
+/// 3. Resolve targets using `resolve_targets`
+/// 4. For each target:
 ///    - Sort effects by phase (PreEffect → Primary → PostEffect → Finalize)
 ///    - Within same phase, sort by priority (higher first)
 ///    - Create `EffectContext` with mutable state access
 ///    - Apply each effect via `apply_effect`
 ///    - Collect `EffectResult` for each effect
-/// 4. Build and return `ActionResult` with all effect results
+/// 5. Apply action cost to actor's ready_at timestamp
+/// 6. Build and return `ActionResult` with all effect results
 ///
 /// ## Phase Execution Order
 /// - `PreEffect` (0): Setup, positioning, buffs
 /// - `Primary` (1): Main damage/healing
 /// - `PostEffect` (2): On-hit effects, conditionals
 /// - `Finalize` (3): Cleanup, death checks
+///
+/// ## Action Cost Application
+/// The action cost is calculated based on the actor's stats BEFORE the action
+/// executes (to prevent self-buffs from affecting the current action's cost).
+/// After effects are applied, the cost is added to the actor's ready_at timestamp.
 ///
 /// ## Error Handling
 /// Any error during effect application stops execution immediately.
@@ -53,19 +60,30 @@ pub(super) fn apply(
     state: &mut GameState,
     env: &GameEnv<'_>,
 ) -> Result<ActionResult, ActionError> {
-    // 1. Load action profile
+    // 1. Capture actor snapshot BEFORE execution for cost calculation
+    let actor_snapshot = state
+        .entities
+        .actor(action.actor)
+        .ok_or(ActionError::ActorNotFound)?
+        .snapshot();
+
+    // 2. Calculate action cost using pre-execution stats
+    let action_wrapper = crate::action::Action::character(action.clone());
+    let cost = action_wrapper.cost(&actor_snapshot, env);
+
+    // 3. Load action profile
     let profile = env
         .tables()
         .map_err(|_| ActionError::ProfileNotFound)?
         .action_profile(action.kind);
 
-    // 2. Resolve targets
+    // 4. Resolve targets
     let targets = resolve_targets(action, state, env, &profile)?;
 
-    // 3. Collect all effect results
+    // 5. Collect all effect results
     let mut effect_results = Vec::new();
 
-    // 4. Execute effects for each target
+    // 6. Execute effects for each target
     for target in targets {
         // Sort effects by phase and priority
         let mut effects = profile.effects.clone();
@@ -92,7 +110,16 @@ pub(super) fn apply(
         }
     }
 
-    // 5. Build ActionResult from collected effect results
+    // 7. Apply action cost to actor's ready_at timestamp
+    // This happens AFTER all effects to ensure effects don't accidentally modify
+    // the ready_at that we're trying to update
+    if let Some(actor) = state.entities.actor_mut(action.actor)
+        && let Some(ready_at) = actor.ready_at
+    {
+        actor.ready_at = Some(ready_at + cost);
+    }
+
+    // 8. Build ActionResult from collected effect results
     Ok(ActionResult::from_effects(effect_results))
 }
 

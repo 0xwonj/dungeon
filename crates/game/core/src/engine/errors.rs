@@ -1,8 +1,8 @@
 //! Error types for action execution pipeline.
 
 use crate::action::{
-    ActionCostAction, ActionError, ActionTransition, ActivationAction, PrepareTurnAction,
-    RemoveFromActiveAction,
+    ActionError, ActionTransition, ActivationAction, DeactivateAction, PrepareTurnAction,
+    RemoveFromWorldAction,
 };
 use crate::error::{ErrorContext, ErrorSeverity, GameError};
 
@@ -102,17 +102,17 @@ pub enum ExecuteError {
     #[cfg_attr(feature = "serde", serde(skip))]
     PrepareTurn(TransitionPhaseError<<PrepareTurnAction as ActionTransition>::Error>),
 
-    #[error("action cost action failed: {0}")]
-    #[cfg_attr(feature = "serde", serde(skip))]
-    ActionCost(TransitionPhaseError<<ActionCostAction as ActionTransition>::Error>),
-
     #[error("activation action failed: {0}")]
     #[cfg_attr(feature = "serde", serde(skip))]
     Activation(TransitionPhaseError<<ActivationAction as ActionTransition>::Error>),
 
-    #[error("remove from active action failed: {0}")]
+    #[error("deactivate action failed: {0}")]
     #[cfg_attr(feature = "serde", serde(skip))]
-    RemoveFromActive(TransitionPhaseError<<RemoveFromActiveAction as ActionTransition>::Error>),
+    Deactivate(TransitionPhaseError<<DeactivateAction as ActionTransition>::Error>),
+
+    #[error("remove from world action failed: {0}")]
+    #[cfg_attr(feature = "serde", serde(skip))]
+    RemoveFromWorld(TransitionPhaseError<<RemoveFromWorldAction as ActionTransition>::Error>),
 
     #[error("hook chain too deep: hook '{hook_name}' reached depth {depth}")]
     HookChainTooDeep {
@@ -184,9 +184,9 @@ impl ExecuteError {
         match self {
             Self::Character(e) => Some(e.phase),
             Self::PrepareTurn(e) => Some(e.phase),
-            Self::ActionCost(e) => Some(e.phase),
             Self::Activation(e) => Some(e.phase),
-            Self::RemoveFromActive(e) => Some(e.phase),
+            Self::Deactivate(e) => Some(e.phase),
+            Self::RemoveFromWorld(e) => Some(e.phase),
             Self::HookChainTooDeep { .. }
             | Self::SystemActionNotFromSystem { .. }
             | Self::ActorNotCurrent { .. } => None,
@@ -243,9 +243,9 @@ impl GameError for ExecuteError {
         match self {
             Self::Character(_) => ErrorSeverity::Validation,
             Self::PrepareTurn(e) => e.severity(),
-            Self::ActionCost(e) => e.severity(),
             Self::Activation(e) => e.severity(),
-            Self::RemoveFromActive(e) => e.severity(),
+            Self::Deactivate(e) => e.severity(),
+            Self::RemoveFromWorld(e) => e.severity(),
             Self::HookChainTooDeep { .. } => ErrorSeverity::Fatal,
             Self::SystemActionNotFromSystem { .. } => ErrorSeverity::Validation,
             Self::ActorNotCurrent { .. } => ErrorSeverity::Validation,
@@ -256,9 +256,9 @@ impl GameError for ExecuteError {
         match self {
             Self::Character(_) => None,
             Self::PrepareTurn(e) => e.context(),
-            Self::ActionCost(e) => e.context(),
             Self::Activation(e) => e.context(),
-            Self::RemoveFromActive(e) => e.context(),
+            Self::Deactivate(e) => e.context(),
+            Self::RemoveFromWorld(e) => e.context(),
             Self::HookChainTooDeep { context, .. } => Some(context),
             Self::SystemActionNotFromSystem { context, .. } => Some(context),
             Self::ActorNotCurrent { context, .. } => Some(context),
@@ -269,9 +269,9 @@ impl GameError for ExecuteError {
         match self {
             Self::Character(_) => "EXECUTE_CHARACTER_ACTION",
             Self::PrepareTurn(e) => e.error_code(),
-            Self::ActionCost(e) => e.error_code(),
             Self::Activation(e) => e.error_code(),
-            Self::RemoveFromActive(e) => e.error_code(),
+            Self::Deactivate(e) => e.error_code(),
+            Self::RemoveFromWorld(e) => e.error_code(),
             Self::HookChainTooDeep { .. } => "EXECUTE_HOOK_CHAIN_TOO_DEEP",
             Self::SystemActionNotFromSystem { .. } => "EXECUTE_SYSTEM_ACTION_INVALID",
             Self::ActorNotCurrent { .. } => "EXECUTE_ACTOR_NOT_CURRENT",

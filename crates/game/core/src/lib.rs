@@ -12,11 +12,11 @@ pub mod error;
 pub mod state;
 pub mod stats;
 pub use action::{
-    Action, ActionCostAction, ActionCostError, ActionEffect, ActionError, ActionInput, ActionKind,
-    ActionProfile, ActionResult, ActionTag, ActionTransition, ActivationAction, ActivationError,
-    CardinalDirection, CharacterAction, DamageType, EffectContext, EffectKind, ExecutionPhase,
-    Formula, PrepareTurnAction, ResourceCost, SystemActionKind, TargetingMode, TurnError,
-    get_available_actions,
+    Action, ActionEffect, ActionError, ActionInput, ActionKind, ActionProfile, ActionResult,
+    ActionTag, ActionTransition, ActivationAction, ActivationError, CardinalDirection,
+    CharacterAction, DamageType, DeactivateAction, EffectContext, EffectKind, ExecutionPhase,
+    Formula, PrepareTurnAction, RemoveFromWorldAction, RemoveFromWorldError, ResourceCost,
+    SystemActionKind, TargetingMode, TurnError, get_available_actions,
 };
 pub use config::GameConfig;
 pub use engine::{

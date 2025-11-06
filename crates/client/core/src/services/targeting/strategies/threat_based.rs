@@ -50,8 +50,9 @@ impl ThreatBasedStrategy {
     /// Calculate target priority score for an NPC.
     ///
     /// Higher score = higher priority for auto-targeting.
-    fn calculate_priority(&self, npc: &ActorView, player_pos: Position) -> i32 {
-        let distance = manhattan_distance(player_pos, npc.position);
+    fn calculate_priority(&self, npc: &ActorView, player_pos: Position) -> Option<i32> {
+        let npc_pos = npc.position?;
+        let distance = manhattan_distance(player_pos, npc_pos);
 
         if distance <= self.threat_radius {
             // Within threat radius: very high priority
@@ -59,10 +60,10 @@ impl ThreatBasedStrategy {
             let health_factor = self.calculate_health_threat(npc);
             let speed_factor = npc.stats.speed.physical / 10;
 
-            2000 + distance_factor + health_factor + speed_factor
+            Some(2000 + distance_factor + health_factor + speed_factor)
         } else {
             // Outside threat radius: moderate priority (closer = better)
-            1000 - distance as i32
+            Some(1000 - distance as i32)
         }
     }
 
@@ -81,17 +82,19 @@ impl ThreatBasedStrategy {
 
 impl TargetingStrategy for ThreatBasedStrategy {
     fn select_target(&self, view_model: &ViewModel) -> Option<Position> {
-        let player_pos = view_model.player.position;
+        let player_pos = view_model.player.position?;
         let mut best_target: Option<(Position, i32)> = None;
 
         // Iterate over NPCs and find highest-priority target
         for npc in view_model.npcs() {
-            let priority = self.calculate_priority(npc, player_pos);
+            let Some(priority) = self.calculate_priority(npc, player_pos) else {
+                continue;
+            };
 
             match best_target {
-                None => best_target = Some((npc.position, priority)),
+                None => best_target = npc.position.map(|pos| (pos, priority)),
                 Some((_, current_priority)) if priority > current_priority => {
-                    best_target = Some((npc.position, priority));
+                    best_target = npc.position.map(|pos| (pos, priority));
                 }
                 _ => {}
             }

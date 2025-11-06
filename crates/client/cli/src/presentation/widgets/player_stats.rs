@@ -48,7 +48,10 @@ pub fn render<T: PresentationMapper<Style = Style>>(
 
     lines.push(Line::from(vec![
         Span::styled("Position: ", Style::default().fg(Color::White)),
-        Span::raw(format!("({}, {})", player.position.x, player.position.y)),
+        Span::raw(match player.position {
+            Some(pos) => format!("({}, {})", pos.x, pos.y),
+            None => "Not on map".to_string(),
+        }),
     ]));
 
     // World statistics

@@ -9,7 +9,7 @@ use game_core::engine::{ExecuteError, TransitionPhase};
 use game_core::{
     Action, EntityId, GameEngine, GameState, PrepareTurnAction, SystemActionKind, Tick,
 };
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::api::{Result, RuntimeError};
 use crate::events::{Event, EventBus, GameStateEvent};
@@ -229,7 +229,7 @@ impl SimulationWorker {
                     error,
                     ExecuteError::Character(ref e) if matches!(e.error, game_core::ActionError::ActorDead)
                 ) {
-                    tracing::warn!(
+                    debug!(
                         target: "runtime::worker",
                         actor = ?action.actor(),
                         "Dead actor attempted action, skipping turn"
@@ -238,7 +238,7 @@ impl SimulationWorker {
                 }
 
                 // For other errors, try Wait fallback
-                tracing::warn!(
+                debug!(
                     target: "runtime::worker",
                     actor = ?action.actor(),
                     error = %error.message(),
@@ -275,8 +275,8 @@ impl SimulationWorker {
     ///
     /// This is the core of the reactive system action generation:
     /// 1. Provider analyzes delta and generates system actions
-    /// 2. Execute generated system actions
-    /// 3. New actions may generate more system actions (cascading)
+    /// 2. Execute each system action individually
+    /// 3. Each action may generate new deltas that trigger more system actions (cascading)
     /// 4. Repeat until no new actions are generated
     fn process_cascading(
         &mut self,
@@ -301,27 +301,33 @@ impl SimulationWorker {
                     &self.oracles,
                 );
 
-                if !reactive_actions.is_empty() {
-                    debug!(
-                        target: "runtime::worker",
-                        pass = pass,
-                        action_count = reactive_actions.len(),
-                        "Processing system actions"
-                    );
-                }
+                tracing::debug!(
+                    target: "runtime::worker",
+                    pass = pass,
+                    action_count = reactive_actions.len(),
+                    delta_empty = delta.is_empty(),
+                    action = ?delta.action.as_snake_case(),
+                    "Cascading: generated {} system actions",
+                    reactive_actions.len()
+                );
 
-                // Execute all generated system actions
+                // Execute each action individually
                 for (action, handler_name, criticality) in reactive_actions {
-                    // Clone state before executing to track before/after
-                    let state_before_action = self.state.clone();
+                    // Capture state before this action
+                    let action_state_before = self.state.clone();
 
-                    // Clone state for execution (borrow checker requirement)
-                    let mut working_state = self.state.clone();
-                    match self.execute_action(&action, &mut working_state) {
-                        Ok(new_delta) => {
-                            // Commit working state
-                            self.state = working_state;
-                            next_deltas.push((new_delta, state_before_action));
+                    // Execute action
+                    match Self::execute_action_impl(
+                        &action,
+                        &mut self.state,
+                        &self.oracles,
+                        &self.event_bus,
+                    ) {
+                        Ok(action_delta) => {
+                            // If action produced changes, queue for next pass
+                            if !action_delta.is_empty() {
+                                next_deltas.push((action_delta, action_state_before));
+                            }
                         }
                         Err(e) => {
                             // Handle based on criticality
@@ -331,7 +337,7 @@ impl SimulationWorker {
                                         target: "runtime::worker",
                                         handler = handler_name,
                                         error = ?e,
-                                        "Critical handler failed"
+                                        "Critical system action failed - aborting cascading"
                                     );
                                     return Err(e);
                                 }
@@ -340,14 +346,14 @@ impl SimulationWorker {
                                         target: "runtime::worker",
                                         handler = handler_name,
                                         error = ?e,
-                                        "Handler failed, continuing"
+                                        "Important system action failed - continuing cascading"
                                     );
                                 }
                                 HandlerCriticality::Optional => {
                                     debug!(
                                         target: "runtime::worker",
                                         handler = handler_name,
-                                        "Optional handler failed"
+                                        "Optional system action failed - continuing cascading"
                                     );
                                 }
                             }
@@ -363,7 +369,7 @@ impl SimulationWorker {
             }
 
             if pass == MAX_PASSES - 1 {
-                tracing::warn!(
+                warn!(
                     target: "runtime::worker",
                     "Cascading hit max passes limit (possible infinite loop)"
                 );
@@ -383,13 +389,13 @@ impl SimulationWorker {
             ExecuteError::PrepareTurn(phase_error) => {
                 (phase_error.phase, phase_error.error.to_string())
             }
-            ExecuteError::ActionCost(phase_error) => {
-                (phase_error.phase, phase_error.error.to_string())
-            }
             ExecuteError::Activation(phase_error) => {
                 (phase_error.phase, phase_error.error.to_string())
             }
-            ExecuteError::RemoveFromActive(phase_error) => {
+            ExecuteError::Deactivate(phase_error) => {
+                (phase_error.phase, phase_error.error.to_string())
+            }
+            ExecuteError::RemoveFromWorld(phase_error) => {
                 (phase_error.phase, phase_error.error.to_string())
             }
             ExecuteError::HookChainTooDeep {

@@ -35,7 +35,7 @@ pub fn render<T: PresentationMapper<Style = Style>>(
             .actors
             .iter()
             .find(|a| a.id == entity_id)
-            .map(|a| a.position)
+            .and_then(|a| a.position)
     } else {
         // Fallback: cursor position in manual mode
         app_state.examine_position()
@@ -60,7 +60,11 @@ pub fn render<T: PresentationMapper<Style = Style>>(
 
                 // Priority: Actor > Prop > Item > Terrain
                 // Check for actors at this position
-                if let Some(actor) = view_model.actors.iter().find(|a| a.position == position) {
+                if let Some(actor) = view_model
+                    .actors
+                    .iter()
+                    .find(|a| a.position == Some(position))
+                {
                     let is_current = view_model.turn.current_actor == actor.id;
                     let (glyph, mut style) =
                         theme.render_actor(&actor.stats, actor.is_player, is_current);
@@ -152,18 +156,24 @@ fn compute_targeting_visualization(
             require_entity,
         } => {
             // If require_entity, highlight all valid entities within range
-            let valid_target_positions: Vec<Position> = if *require_entity {
+            let valid_target_positions: Vec<Position> = if let Some(player_position) = player_pos
+                && *require_entity
+            {
                 view_model
                     .actors
                     .iter()
                     .filter(|actor| {
                         actor.id != game_core::EntityId::PLAYER
                             && actor.stats.resource_current.hp > 0
+                            && actor.position.is_some()
                             && max_range
-                                .map(|r| chebyshev_distance(player_pos, actor.position) <= r)
+                                .map(|r| {
+                                    chebyshev_distance(player_position, actor.position.unwrap())
+                                        <= r
+                                })
                                 .unwrap_or(true)
                     })
-                    .map(|a| a.position)
+                    .filter_map(|a| a.position)
                     .collect()
             } else {
                 vec![]
@@ -179,11 +189,12 @@ fn compute_targeting_visualization(
 
         TargetingInputMode::Direction { selected } => {
             // Show directional path if direction is selected
-            let directional_path = if let Some(direction) = selected {
-                compute_directional_path(player_pos, *direction, 5) // Assume max range 5
-            } else {
-                vec![]
-            };
+            let directional_path =
+                if let (Some(player_pos), Some(direction)) = (player_pos, selected) {
+                    compute_directional_path(player_pos, *direction, 5) // Assume max range 5
+                } else {
+                    vec![]
+                };
 
             TargetingVisualization {
                 is_targeting: true,

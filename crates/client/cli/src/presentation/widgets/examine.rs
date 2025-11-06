@@ -48,12 +48,15 @@ pub fn render<T: PresentationMapper<Style = Style>>(
             .actors
             .iter()
             .find(|a| a.id == entity_id)
-            .map(|a| a.position)
+            .and_then(|a| a.position)
             .or(ctx.cursor_position)
-            .unwrap_or(view_model.player.position)
+            .or(view_model.player.position)
+            .unwrap_or_else(|| game_core::Position::new(0, 0))
     } else {
         // No highlighted entity - use cursor or player position
-        ctx.cursor_position.unwrap_or(view_model.player.position)
+        ctx.cursor_position
+            .or(view_model.player.position)
+            .unwrap_or_else(|| game_core::Position::new(0, 0))
     };
 
     // Top section: Tile info
@@ -95,7 +98,10 @@ fn render_tile_info(
         "No"
     };
 
-    let occupied = if view_model.actors.iter().any(|a| a.position == position)
+    let occupied = if view_model
+        .actors
+        .iter()
+        .any(|a| a.position == Some(position))
         || view_model.props.iter().any(|p| p.position == position)
     {
         "Yes"
@@ -220,7 +226,10 @@ fn render_actor_details<'a, T: PresentationMapper<Style = Style>>(
         ]),
         Line::from(vec![
             Span::styled("Position: ", Style::default().fg(Color::White)),
-            Span::raw(format!("({}, {})", actor.position.x, actor.position.y)),
+            Span::raw(match actor.position {
+                Some(pos) => format!("({}, {})", pos.x, pos.y),
+                None => "Not on map".to_string(),
+            }),
         ]),
         Line::from(vec![
             Span::styled("HP: ", Style::default().fg(Color::White)),

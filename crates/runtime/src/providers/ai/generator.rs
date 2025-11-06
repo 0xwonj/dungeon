@@ -1,6 +1,7 @@
 //! Generates all possible action candidates from available actions.
 
 use game_core::{ActionInput, ActionKind, CardinalDirection, EntityId};
+use tracing::debug;
 
 use super::AiContext;
 
@@ -123,16 +124,25 @@ impl ActionCandidateGenerator {
         let mut targets = Vec::new();
 
         let actor_pos = match ctx.state.entities.actor(actor) {
-            Some(a) => a.position,
+            Some(a) => match a.position {
+                Some(pos) => pos,
+                None => {
+                    debug!("Actor {:?} has no position", actor);
+                    return targets;
+                }
+            },
             None => {
-                tracing::warn!("Actor {:?} not found in entities", actor);
+                debug!("Actor {:?} not found in entities", actor);
                 return targets;
             }
         };
 
         // Check player as potential target
         let player = ctx.state.entities.player();
-        let dist = actor_pos.chebyshev_distance(player.position);
+        let Some(player_pos) = player.position else {
+            return targets; // Player not on map
+        };
+        let dist = actor_pos.chebyshev_distance(player_pos);
 
         if dist <= range {
             // TODO: Add actual LOS check when MapOracle supports it

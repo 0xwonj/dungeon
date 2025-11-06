@@ -94,7 +94,9 @@ where
 
                 // Validate range if specified
                 if let Some(range) = max_range {
-                    let player_pos = self.view_model.player.position;
+                    let Some(player_pos) = self.view_model.player.position else {
+                        return Ok(());
+                    };
                     let distance = chebyshev_distance(player_pos, cursor_pos);
                     if distance > *range {
                         // Out of range - show message and don't execute
@@ -197,8 +199,9 @@ where
                     let cursor_pos = valid_targets
                         .first()
                         .and_then(|&id| self.view_model.actors.iter().find(|a| a.id == id))
-                        .map(|a| a.position)
-                        .unwrap_or(self.view_model.player.position);
+                        .and_then(|a| a.position)
+                        .or(self.view_model.player.position)
+                        .unwrap_or_else(|| game_core::Position::new(0, 0));
 
                     self.app_state.enter_targeting(
                         TargetingState {
@@ -216,12 +219,17 @@ where
             game_core::TargetingMode::Directional { .. } => {
                 // Direction targeting - enter targeting mode
                 if let Some(input_mode) = TargetingInputMode::from_targeting_mode(&targeting) {
+                    let player_pos = self
+                        .view_model
+                        .player
+                        .position
+                        .unwrap_or_else(|| game_core::Position::new(0, 0));
                     self.app_state.enter_targeting(
                         TargetingState {
                             action_kind,
                             input_mode,
                         },
-                        self.view_model.player.position,
+                        player_pos,
                     );
                 }
             }

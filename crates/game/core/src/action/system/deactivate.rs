@@ -1,44 +1,49 @@
-//! Remove entity from active set system action.
+//! Deactivate entity system action.
 //!
-//! This action removes an entity from the active actor set, typically when
-//! they die or become otherwise unavailable for turn scheduling.
+//! This action removes an entity from the active actor set without affecting
+//! their position in the world. Use RemoveFromWorldAction to also clear position.
 
 use crate::action::ActionTransition;
-use crate::action::error::RemoveFromActiveError;
+use crate::action::error::DeactivateError;
 use crate::env::GameEnv;
 use crate::state::{EntityId, GameState, Tick};
 
-/// System action that removes an entity from the active set.
+/// System action that deactivates an entity from turn scheduling.
 ///
-/// This action:
+/// This action only:
 /// 1. Sets the entity's `ready_at` to None
 /// 2. Removes the entity from `turn.active_actors`
 ///
+/// Does NOT affect:
+/// - Entity position
+/// - World occupancy
+/// - Entity stats or inventory
+///
 /// # Use Cases
 ///
-/// - Entity death
+/// - Temporarily disabling an entity from taking turns
+/// - Part of death cleanup (combined with RemoveFromWorldAction)
 /// - Entity becoming incapacitated
-/// - Entity leaving the game area
 ///
 /// # Invariants
 ///
 /// - Entity must exist in the game state
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct RemoveFromActiveAction {
-    /// The entity to remove from active set
+pub struct DeactivateAction {
+    /// The entity to deactivate
     pub entity: EntityId,
 }
 
-impl RemoveFromActiveAction {
-    /// Creates a new RemoveFromActive action.
+impl DeactivateAction {
+    /// Creates a new Deactivate action.
     pub fn new(entity: EntityId) -> Self {
         Self { entity }
     }
 }
 
-impl ActionTransition for RemoveFromActiveAction {
-    type Error = RemoveFromActiveError;
+impl ActionTransition for DeactivateAction {
+    type Error = DeactivateError;
     type Result = ();
 
     fn actor(&self) -> EntityId {
@@ -50,14 +55,14 @@ impl ActionTransition for RemoveFromActiveAction {
 
         // Verify this action is executed by the SYSTEM actor
         if self.actor() != EntityId::SYSTEM {
-            return Err(RemoveFromActiveError::not_system_actor(nonce));
+            return Err(DeactivateError::not_system_actor(nonce));
         }
 
         // Verify entity exists
         state
             .entities
             .actor(self.entity)
-            .ok_or_else(|| RemoveFromActiveError::entity_not_found(self.entity, nonce))?;
+            .ok_or_else(|| DeactivateError::entity_not_found(self.entity, nonce))?;
 
         Ok(())
     }

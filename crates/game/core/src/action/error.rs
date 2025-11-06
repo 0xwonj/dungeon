@@ -141,90 +141,6 @@ impl GameError for ActionError {
 // System Action Errors
 // ============================================================================
 
-/// Errors that can occur during action cost deduction.
-#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ActionCostError {
-    /// System actor validation failed.
-    #[error("action cost action must be executed by SYSTEM actor")]
-    NotSystemActor {
-        #[cfg_attr(feature = "serde", serde(skip))]
-        context: ErrorContext,
-    },
-
-    /// Actor not found in game state.
-    #[error("actor {actor} not found in game state")]
-    ActorNotFound {
-        actor: EntityId,
-        #[cfg_attr(feature = "serde", serde(skip))]
-        context: ErrorContext,
-    },
-
-    /// Actor is not scheduled (missing ready_at timestamp).
-    #[error("actor {actor} is not scheduled (no ready_at timestamp)")]
-    ActorNotScheduled {
-        actor: EntityId,
-        #[cfg_attr(feature = "serde", serde(skip))]
-        context: ErrorContext,
-    },
-}
-
-impl ActionCostError {
-    /// Creates a NotSystemActor error with context.
-    pub fn not_system_actor(nonce: u64) -> Self {
-        Self::NotSystemActor {
-            context: ErrorContext::new(nonce)
-                .with_message("system action executed by non-system actor"),
-        }
-    }
-
-    /// Creates an ActorNotFound error with context.
-    pub fn actor_not_found(actor: EntityId, nonce: u64) -> Self {
-        Self::ActorNotFound {
-            actor,
-            context: ErrorContext::new(nonce)
-                .with_actor(actor)
-                .with_message("target actor not found"),
-        }
-    }
-
-    /// Creates an ActorNotScheduled error with context.
-    pub fn actor_not_scheduled(actor: EntityId, nonce: u64) -> Self {
-        Self::ActorNotScheduled {
-            actor,
-            context: ErrorContext::new(nonce)
-                .with_actor(actor)
-                .with_message("actor has no ready_at timestamp"),
-        }
-    }
-}
-
-impl GameError for ActionCostError {
-    fn severity(&self) -> ErrorSeverity {
-        match self {
-            Self::NotSystemActor { .. } => ErrorSeverity::Validation,
-            Self::ActorNotFound { .. } => ErrorSeverity::Validation,
-            Self::ActorNotScheduled { .. } => ErrorSeverity::Internal,
-        }
-    }
-
-    fn context(&self) -> Option<&ErrorContext> {
-        match self {
-            Self::NotSystemActor { context } => Some(context),
-            Self::ActorNotFound { context, .. } => Some(context),
-            Self::ActorNotScheduled { context, .. } => Some(context),
-        }
-    }
-
-    fn error_code(&self) -> &'static str {
-        match self {
-            Self::NotSystemActor { .. } => "ACTION_COST_NOT_SYSTEM_ACTOR",
-            Self::ActorNotFound { .. } => "ACTION_COST_ACTOR_NOT_FOUND",
-            Self::ActorNotScheduled { .. } => "ACTION_COST_ACTOR_NOT_SCHEDULED",
-        }
-    }
-}
-
 /// Errors that can occur during turn preparation.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -343,12 +259,12 @@ impl GameError for ActivationError {
     }
 }
 
-/// Errors that can occur when removing entity from active set.
+/// Errors that can occur when deactivating an entity.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum RemoveFromActiveError {
+pub enum DeactivateError {
     /// System actor validation failed.
-    #[error("remove from active action must be executed by SYSTEM actor")]
+    #[error("deactivate action must be executed by SYSTEM actor")]
     NotSystemActor {
         #[cfg_attr(feature = "serde", serde(skip))]
         context: ErrorContext,
@@ -363,7 +279,7 @@ pub enum RemoveFromActiveError {
     },
 }
 
-impl RemoveFromActiveError {
+impl DeactivateError {
     /// Creates a NotSystemActor error with context.
     pub fn not_system_actor(nonce: u64) -> Self {
         Self::NotSystemActor {
@@ -383,7 +299,7 @@ impl RemoveFromActiveError {
     }
 }
 
-impl GameError for RemoveFromActiveError {
+impl GameError for DeactivateError {
     fn severity(&self) -> ErrorSeverity {
         match self {
             Self::NotSystemActor { .. } => ErrorSeverity::Validation,
@@ -400,8 +316,85 @@ impl GameError for RemoveFromActiveError {
 
     fn error_code(&self) -> &'static str {
         match self {
-            Self::NotSystemActor { .. } => "REMOVE_FROM_ACTIVE_NOT_SYSTEM_ACTOR",
-            Self::EntityNotFound { .. } => "REMOVE_FROM_ACTIVE_ENTITY_NOT_FOUND",
+            Self::NotSystemActor { .. } => "DEACTIVATE_NOT_SYSTEM_ACTOR",
+            Self::EntityNotFound { .. } => "DEACTIVATE_ENTITY_NOT_FOUND",
+        }
+    }
+}
+
+/// Errors that can occur when removing entity from world.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum RemoveFromWorldError {
+    /// System actor validation failed.
+    #[error("remove from world action must be executed by SYSTEM actor")]
+    NotSystemActor {
+        #[cfg_attr(feature = "serde", serde(skip))]
+        context: ErrorContext,
+    },
+
+    /// Entity not found in game state.
+    #[error("entity {entity} not found in game state")]
+    EntityNotFound {
+        entity: EntityId,
+        #[cfg_attr(feature = "serde", serde(skip))]
+        context: ErrorContext,
+    },
+
+    /// Entity still has a position after removal.
+    #[error("entity {entity} still has position after removal from world")]
+    StillHasPosition { entity: EntityId, nonce: u64 },
+
+    /// Entity still in occupancy map after removal.
+    #[error("entity {entity} still in occupancy map after removal from world")]
+    StillInOccupancy { entity: EntityId, nonce: u64 },
+}
+
+impl RemoveFromWorldError {
+    /// Creates a NotSystemActor error with context.
+    pub fn not_system_actor(nonce: u64) -> Self {
+        Self::NotSystemActor {
+            context: ErrorContext::new(nonce)
+                .with_message("system action executed by non-system actor"),
+        }
+    }
+
+    /// Creates an EntityNotFound error with context.
+    pub fn entity_not_found(entity: EntityId, nonce: u64) -> Self {
+        Self::EntityNotFound {
+            entity,
+            context: ErrorContext::new(nonce)
+                .with_actor(entity)
+                .with_message("entity not found"),
+        }
+    }
+}
+
+impl GameError for RemoveFromWorldError {
+    fn severity(&self) -> ErrorSeverity {
+        match self {
+            Self::NotSystemActor { .. } => ErrorSeverity::Validation,
+            Self::EntityNotFound { .. } => ErrorSeverity::Validation,
+            Self::StillHasPosition { .. } => ErrorSeverity::Internal,
+            Self::StillInOccupancy { .. } => ErrorSeverity::Internal,
+        }
+    }
+
+    fn context(&self) -> Option<&ErrorContext> {
+        match self {
+            Self::NotSystemActor { context } => Some(context),
+            Self::EntityNotFound { context, .. } => Some(context),
+            Self::StillHasPosition { .. } => None,
+            Self::StillInOccupancy { .. } => None,
+        }
+    }
+
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::NotSystemActor { .. } => "REMOVE_FROM_WORLD_NOT_SYSTEM_ACTOR",
+            Self::EntityNotFound { .. } => "REMOVE_FROM_WORLD_ENTITY_NOT_FOUND",
+            Self::StillHasPosition { .. } => "REMOVE_FROM_WORLD_STILL_HAS_POSITION",
+            Self::StillInOccupancy { .. } => "REMOVE_FROM_WORLD_STILL_IN_OCCUPANCY",
         }
     }
 }

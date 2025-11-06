@@ -40,17 +40,20 @@ impl FastestStrategy {
 
 impl TargetingStrategy for FastestStrategy {
     fn select_target(&self, view_model: &ViewModel) -> Option<Position> {
-        let player_pos = view_model.player.position;
+        let player_pos = view_model.player.position?;
 
         view_model
             .npcs()
             .filter(|npc| {
                 // Filter by distance if max_distance is set
+                let Some(npc_pos) = npc.position else {
+                    return false;
+                };
                 self.max_distance
-                    .is_none_or(|max_dist| manhattan_distance(player_pos, npc.position) <= max_dist)
+                    .is_none_or(|max_dist| manhattan_distance(player_pos, npc_pos) <= max_dist)
             })
             .max_by_key(|npc| npc.stats.speed.physical)
-            .map(|npc| npc.position)
+            .and_then(|npc| npc.position)
     }
 
     fn name(&self) -> &'static str {

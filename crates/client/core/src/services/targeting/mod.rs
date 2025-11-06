@@ -34,7 +34,7 @@ pub fn find_targets_at_position(
 ) -> Vec<(EntityId, &ActorView)> {
     view_model
         .npcs()
-        .filter(|npc| npc.position == position)
+        .filter(|npc| npc.position == Some(position))
         .map(|npc| (npc.id, npc))
         .collect()
 }

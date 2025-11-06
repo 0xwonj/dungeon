@@ -66,11 +66,15 @@ where
                         .actors
                         .iter()
                         .find(|a| a.id == entity_id)
-                        .map(|a| a.position)
-                        .unwrap_or(self.view_model.player.position)
+                        .and_then(|a| a.position)
+                        .or(self.view_model.player.position)
+                        .unwrap_or_else(|| game_core::Position::new(0, 0))
                 } else {
                     // No highlighted entity - default to player
-                    self.view_model.player.position
+                    self.view_model
+                        .player
+                        .position
+                        .unwrap_or_else(|| game_core::Position::new(0, 0))
                 };
 
                 self.app_state.toggle_examine(cursor_pos);
@@ -164,14 +168,16 @@ where
     ) -> Result<()> {
         use game_core::{ActionInput, ActionKind, CharacterAction};
 
-        let player_pos = self.view_model.player.position;
+        let Some(player_pos) = self.view_model.player.position else {
+            return Ok(());
+        };
         let (dx, dy) = direction.offset();
         let target_pos = game_core::Position::new(player_pos.x + dx, player_pos.y + dy);
 
         // Check if there's an enemy at target position
         let enemy_at_target = self.view_model.actors.iter().find(|actor| {
             actor.id != EntityId::PLAYER
-                && actor.position == target_pos
+                && actor.position == Some(target_pos)
                 && actor.stats.resource_current.hp > 0
         });
 

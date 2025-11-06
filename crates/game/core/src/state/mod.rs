@@ -105,6 +105,29 @@ impl GameState {
             .unwrap_or(false)
     }
 
+    /// Returns the position of an actor by ID.
+    ///
+    /// Returns `None` if the actor is not found or has no position.
+    ///
+    /// In debug builds, verifies that the actor's position matches the occupancy map.
+    pub fn actor_position(&self, id: EntityId) -> Option<Position> {
+        let pos = self.entities.position(id)?;
+
+        // Debug-only: Verify occupancy map consistency
+        debug_assert!(
+            self.world
+                .tile_map
+                .occupants(&pos)
+                .map(|occupants| occupants.contains(&id))
+                .unwrap_or(false),
+            "Actor {} has position {:?} but is not in occupancy map at that location",
+            id.0,
+            pos
+        );
+
+        Some(pos)
+    }
+
     /// Allocates a new unique EntityId.
     ///
     /// # Returns

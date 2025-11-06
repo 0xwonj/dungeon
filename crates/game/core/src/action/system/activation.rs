@@ -60,36 +60,65 @@ impl ActionTransition for ActivationAction {
 
         // Get player position
         let player_pos = state
-            .entities
-            .actor(EntityId::PLAYER)
-            .ok_or_else(|| ActivationError::player_not_found(nonce))?
-            .position;
+            .actor_position(EntityId::PLAYER)
+            .ok_or_else(|| ActivationError::player_not_found(nonce))?;
 
         // Get current clock time for activation
         let current_clock = state.turn.clock;
 
-        // Process all NPCs (skip player at index 0)
-        for actor in state.entities.all_actors_mut() {
-            if actor.id == EntityId::PLAYER {
+        // Phase 1: Iterate tiles within activation radius to activate nearby NPCs
+        // This is O(radius²)
+        let radius = ACTIVATION_RADIUS as i32;
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                let tile_pos = crate::state::Position {
+                    x: player_pos.x + dx,
+                    y: player_pos.y + dy,
+                };
+
+                // Get occupants at this tile
+                let Some(occupants) = state.world.tile_map.occupants(&tile_pos) else {
+                    continue;
+                };
+
+                // Check each occupant (typically 0-2 entities per tile)
+                for &entity_id in occupants.iter() {
+                    if entity_id == EntityId::PLAYER {
+                        continue;
+                    }
+
+                    // Only activate if not already active
+                    if let Some(actor) = state.entities.actor_mut(entity_id)
+                        && actor.ready_at.is_none()
+                    {
+                        actor.ready_at = Some(current_clock);
+                        state.turn.active_actors.insert(entity_id);
+                    }
+                }
+            }
+        }
+
+        // Phase 2: Deactivate actors that moved outside radius
+        // Iterate active_actors set (typically small) and check distance
+        let active_actors: Vec<EntityId> = state.turn.active_actors.iter().copied().collect();
+        for entity_id in active_actors {
+            if entity_id == EntityId::PLAYER {
                 continue;
             }
 
-            let distance = calculate_distance(player_pos, actor.position, env);
-            let within_radius = distance <= ACTIVATION_RADIUS;
-
-            match (within_radius, actor.ready_at.is_some()) {
-                (true, false) => {
-                    // Activate: NPC is within radius and currently inactive
-                    actor.ready_at = Some(current_clock);
-                    state.turn.active_actors.insert(actor.id);
-                }
-                (false, true) => {
-                    // Deactivate: NPC is beyond radius and currently active
+            if let Some(actor) = state.entities.actor_mut(entity_id) {
+                // If actor has no position (dead, in inventory, etc.), deactivate them
+                let Some(actor_pos) = actor.position else {
                     actor.ready_at = None;
-                    state.turn.active_actors.remove(&actor.id);
-                }
-                _ => {
-                    // No change needed
+                    state.turn.active_actors.remove(&entity_id);
+                    continue;
+                };
+
+                let distance = calculate_distance(player_pos, actor_pos, env);
+                if distance > ACTIVATION_RADIUS {
+                    // Deactivate: NPC moved beyond radius
+                    actor.ready_at = None;
+                    state.turn.active_actors.remove(&entity_id);
                 }
             }
         }
@@ -112,8 +141,8 @@ impl ActionTransition for ActivationAction {
                 let in_active_set = state.turn.active_actors.contains(&actor.id);
                 debug_assert_eq!(
                     has_ready_at, in_active_set,
-                    "actor {} has ready_at={} but in_active_set={}",
-                    actor.id, has_ready_at, in_active_set
+                    "actor {} has ready_at={:?} but in_active_set={}",
+                    actor.id, actor.ready_at, in_active_set
                 );
             }
         }

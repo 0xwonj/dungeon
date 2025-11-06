@@ -87,6 +87,13 @@ impl EntitiesState {
     pub fn all_actors_mut(&mut self) -> impl Iterator<Item = &mut ActorState> {
         self.actors.iter_mut()
     }
+
+    /// Returns the position of an actor by ID.
+    ///
+    /// Returns `None` if the actor is not found or has no position.
+    pub fn position(&self, id: EntityId) -> Option<Position> {
+        self.actor(id)?.position
+    }
 }
 
 impl EntitiesState {
@@ -95,7 +102,7 @@ impl EntitiesState {
         // Create default player actor
         let player = ActorState::new(
             EntityId::PLAYER,
-            Position::default(),
+            Some(Position::default()),
             CoreStats::default(),
             InventoryState::default(),
         );
@@ -128,7 +135,9 @@ impl EntitiesState {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ActorState {
     pub id: EntityId,
-    pub position: Position,
+    /// Position on the map. None means the actor is not on the map
+    /// (dead, in inventory, summoning, etc.)
+    pub position: Option<Position>,
 
     // === SSOT: Core Stats ===
     pub core_stats: CoreStats,
@@ -169,7 +178,7 @@ impl ActorState {
     /// Bonuses start empty (no equipment/effects).
     pub fn new(
         id: EntityId,
-        position: Position,
+        position: Option<Position>,
         core_stats: CoreStats,
         inventory: InventoryState,
     ) -> Self {
