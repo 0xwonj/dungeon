@@ -1,31 +1,36 @@
-//! Utility-based AI system for NPCs.
+//! Goal-based AI system for NPCs.
 //!
-//! This module provides a three-layer utility scoring system for NPC decision-making:
+//! This module provides a simple, natural approach to NPC decision-making:
 //!
-//! 1. **Intent Selection** (Layer 1): What does the NPC want to do?
-//!    - Combat, Survival, Exploration, Social, Resource, Idle
+//! 1. **Goal Selection**: Pick a concrete goal based on situation and traits
+//!    - Examples: "Attack Player", "Flee from Player", "Heal Self", "Idle"
 //!
-//! 2. **Tactic Selection** (Layer 2): How should they achieve that intent?
-//!    - AggressiveMelee, Kiting, Flee, HealAlly, etc.
+//! 2. **Candidate Generation**: Generate all possible action+input combinations
+//!    - For each available ActionKind, generate valid ActionInput variants
+//!    - Example: Move action → 8 directional candidates
 //!
-//! 3. **Action Selection** (Layer 3): Which specific action to execute?
-//!    - Selects from available_actions based on tactic-specific scoring
+//! 3. **Evaluation**: Score each candidate by how well it serves the goal
+//!    - Each goal has custom scoring logic (0-100 points)
+//!    - Example: "Flee from Player" → Moving away scores 100, towards scores 0
+//!
+//! 4. **Selection**: Execute the highest-scoring candidate
 //!
 //! # Core Components
 //!
-//! - [`AiContext`]: The blackboard for AI decision-making (game state + available actions)
-//! - [`UtilityAiProvider`]: Main AI provider implementing [`crate::ActionProvider`]
-//! - [`Intent`] / [`Tactic`]: Strategic and tactical decision types
-//! - [`scoring`]: Utility scoring functions for all three layers
+//! - [`GoalBasedAiProvider`]: Main AI provider implementing [`crate::ActionProvider`]
+//! - [`Goal`]: Goal enum with evaluation logic for each goal type
+//! - [`GoalSelector`]: Selects goal based on HP, distance, traits, etc.
+//! - [`ActionCandidateGenerator`]: Generates all valid action+input pairs
+//! - [`AiContext`]: Shared context providing game state and helper methods
 
 pub mod context;
+pub mod generator;
+pub mod goal;
 pub mod provider;
 pub mod scoring;
-pub mod types;
 
-// Re-export core types
+// Re-export public API
 pub use context::AiContext;
-pub use provider::UtilityAiProvider;
-pub use scoring::actions::ActionScorer;
-pub use scoring::selector::{IntentScorer, TacticScorer};
-pub use types::{Intent, Tactic};
+pub use generator::ActionCandidateGenerator;
+pub use goal::{Goal, GoalSelector};
+pub use provider::GoalBasedAiProvider;

@@ -76,14 +76,15 @@ impl StateDelta {
     /// have no meaning and should not be used.
     #[cfg(feature = "zkvm")]
     pub fn empty() -> Self {
-        use crate::action::{CharacterActionKind, WaitAction};
+        use crate::action::{ActionInput, ActionKind, CharacterAction};
         use crate::state::EntityId;
 
         Self {
-            action: Action::Character {
-                actor: EntityId(0),
-                kind: CharacterActionKind::Wait(WaitAction::new(EntityId(0))),
-            },
+            action: Action::Character(CharacterAction::new(
+                EntityId(0),
+                ActionKind::Wait,
+                ActionInput::None,
+            )),
             clock: 0,
             turn: TurnChanges::default(),
             entities: EntitiesChanges::empty(),

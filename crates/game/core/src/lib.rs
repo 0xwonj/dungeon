@@ -5,7 +5,6 @@
 //! All state mutation flows through [`engine::GameEngine`], and supporting
 //! crates depend on the types re-exported here.
 pub mod action;
-pub mod combat;
 pub mod config;
 pub mod engine;
 pub mod env;
@@ -13,18 +12,15 @@ pub mod error;
 pub mod state;
 pub mod stats;
 pub use action::{
-    Action, ActionCostAction, ActionCostError, ActionTransition, ActivationAction, ActivationError,
-    AttackAction, AttackError, CardinalDirection, CharacterActionKind, InteractAction,
-    InventoryIndex, ItemTarget, MoveAction, MoveError, PrepareTurnAction, SystemActionKind,
-    TurnError, UseItemAction, WaitAction, get_available_actions,
-};
-pub use combat::{
-    AttackOutcome, AttackResult, apply_damage, calculate_damage, calculate_hit_chance, check_hit,
-    resolve_attack,
+    Action, ActionCostAction, ActionCostError, ActionEffect, ActionError, ActionInput, ActionKind,
+    ActionProfile, ActionResult, ActionTag, ActionTransition, ActivationAction, ActivationError,
+    CardinalDirection, CharacterAction, DamageType, EffectContext, EffectKind, ExecutionPhase,
+    Formula, PrepareTurnAction, ResourceCost, SystemActionKind, TargetingMode, TurnError,
+    get_available_actions,
 };
 pub use config::GameConfig;
 pub use engine::{
-    ActionResult, ExecuteError, ExecutionOutcome, GameEngine, TransitionPhase, TransitionPhaseError,
+    ExecuteError, ExecutionOutcome, GameEngine, TransitionPhase, TransitionPhaseError,
 };
 pub use env::{
     ActionCosts, ActorOracle, ActorTemplate, ActorTemplateBuilder, ActorsSnapshot, ArmorData,
@@ -37,17 +33,17 @@ pub use env::{
 };
 pub use error::{ErrorContext, ErrorSeverity, GameError, NeverError};
 pub use state::{
-    ActionAbilities, ActionAbility, ActionKind, ActorChanges, ActorFields, ActorState, ArmorKind,
-    AttackType, CollectionChanges, EntitiesChanges, EntitiesState, EntityId, Equipment,
-    EquipmentBuilder, GameState, InventorySlot, InventoryState, ItemChanges, ItemFields,
-    ItemHandle, ItemState, OccupancyChanges, PassiveAbilities, PassiveAbility, PassiveKind,
-    Position, PropChanges, PropFields, PropKind, PropState, StateDelta, StatusEffect,
-    StatusEffectKind, StatusEffects, Tick, TileMap, TileView, TurnChanges, TurnFields, TurnState,
-    WeaponKind, WorldChanges, WorldState,
+    ActionAbilities, ActionAbility, ActorChanges, ActorFields, ActorState, ArmorKind, AttackType,
+    CollectionChanges, EntitiesChanges, EntitiesState, EntityId, Equipment, EquipmentBuilder,
+    GameState, InventorySlot, InventoryState, ItemChanges, ItemFields, ItemHandle, ItemState,
+    OccupancyChanges, PassiveAbilities, PassiveAbility, PassiveKind, Position, PropChanges,
+    PropFields, PropKind, PropState, StateDelta, StateError, StatusEffect, StatusEffectKind,
+    StatusEffects, Tick, TileMap, TileView, TurnChanges, TurnFields, TurnState, WeaponKind,
+    WorldChanges, WorldState,
 };
 pub use stats::{
-    ActorBonuses, Bonus, BonusStack, CoreEffective, CoreStatBonuses, CoreStats, DerivedBonuses,
-    DerivedStats, ModifierBonuses, ResourceBonuses, ResourceCurrent, ResourceMaximums,
-    SpeedBonuses, SpeedKind, SpeedStats, StatBounds, StatLayer, StatModifiers, StatsSnapshot,
-    StatsSnapshotBuilder, compute_actor_bonuses,
+    ActorBonuses, Bonus, BonusStack, CoreEffective, CoreStatBonuses, CoreStatKind, CoreStats,
+    DerivedBonuses, DerivedStats, ModifierBonuses, ResourceBonuses, ResourceCurrent, ResourceKind,
+    ResourceMaximums, SpeedBonuses, SpeedKind, SpeedStats, StatBounds, StatLayer, StatModifiers,
+    StatsSnapshot, StatsSnapshotBuilder, compute_actor_bonuses,
 };

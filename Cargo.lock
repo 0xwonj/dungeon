@@ -661,6 +661,7 @@ name = "client-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arrayvec",
  "async-trait",
  "bitflags 2.10.0",
  "game-core",

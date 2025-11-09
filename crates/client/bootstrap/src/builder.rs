@@ -3,14 +3,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
-use runtime::{AiKind, ProviderKind, Runtime, Scenario, UtilityAiProvider};
+use runtime::{AiKind, ProviderKind, Runtime, Scenario};
 
-use crate::config::CliConfig;
+use crate::config::ClientConfig;
 use crate::oracles::{ContentOracleFactory, OracleBundle, OracleFactory};
 
 /// Builder that assembles runtime state, oracles, and configuration for clients.
 pub struct RuntimeBuilder {
-    config: CliConfig,
+    config: ClientConfig,
     oracle_factory: Arc<dyn OracleFactory>,
 }
 
@@ -19,7 +19,7 @@ impl RuntimeBuilder {
     ///
     /// This uses ContentOracleFactory by default, loading content from RON/TOML files.
     /// Use `oracle_factory()` to override with a custom factory.
-    pub fn new(config: CliConfig) -> Self {
+    pub fn new(config: ClientConfig) -> Self {
         let default_factory = ContentOracleFactory::default_paths();
         Self {
             config,
@@ -111,16 +111,22 @@ impl RuntimeBuilder {
         let runtime = builder.build().await?;
 
         // Register AI providers
-        let utility_ai_kind = ProviderKind::Ai(AiKind::Utility);
         let handle = runtime.handle();
 
-        // Register UtilityAiProvider for all NPCs
-        // This provider uses 3-layer decision making (Intent → Tactic → Action)
-        // All behavior is driven by TraitProfile from game-content
-        handle.register_provider(utility_ai_kind, UtilityAiProvider::new())?;
+        // Register GoalBasedAiProvider (recommended)
+        // This provider uses goal-oriented decision making (Goal → Evaluate candidates → Select best)
+        // Simpler and more natural than the layered Intent → Tactic → Action approach
+        let goal_based_kind = ProviderKind::Ai(AiKind::GoalBased);
+        handle.register_provider(goal_based_kind, runtime::GoalBasedAiProvider::new())?;
 
-        // Set UtilityAi as default for all NPCs
-        handle.set_default_provider(utility_ai_kind)?;
+        // Register UtilityAiProvider (legacy, for comparison)
+        // This provider uses 3-layer decision making (Intent → Tactic → Action)
+        // Note: Currently has compilation errors due to old action system
+        // let utility_ai_kind = ProviderKind::Ai(AiKind::Utility);
+        // handle.register_provider(utility_ai_kind, runtime::UtilityAiProvider::new())?;
+
+        // Set GoalBased as default for all NPCs
+        handle.set_default_provider(goal_based_kind)?;
 
         Ok(RuntimeSetup {
             config: self.config,
@@ -131,7 +137,7 @@ impl RuntimeBuilder {
 }
 
 pub struct RuntimeSetup {
-    pub config: CliConfig,
+    pub config: ClientConfig,
     pub oracles: OracleBundle,
     pub runtime: Runtime,
 }

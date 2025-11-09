@@ -1,13 +1,15 @@
 //! Terminal client entry point.
 mod app;
+mod config;
 mod cursor;
+mod event;
 mod input;
 mod presentation;
 mod state;
 
 use anyhow::Result;
 use app::CliApp;
-use client_bootstrap::config::CliConfig;
+use client_bootstrap::ClientConfig;
 use client_core::frontend::FrontendApp;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -17,12 +19,17 @@ async fn main() -> Result<()> {
     // Load .env file if it exists (silently ignore if not found)
     let _ = dotenvy::dotenv();
 
-    let config = CliConfig::from_env();
+    let client_config = ClientConfig::from_env();
+    let cli_config = config::CliConfig::from_env();
 
     // Setup logging: both to stderr and to file
-    setup_logging(&config.session_id)?;
+    setup_logging(&client_config.session_id)?;
 
-    CliApp::builder(config).build().await?.run().await
+    CliApp::builder(client_config, cli_config)
+        .build()
+        .await?
+        .run()
+        .await
 }
 
 /// Setup logging to both stderr and file

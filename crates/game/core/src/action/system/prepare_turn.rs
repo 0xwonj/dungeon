@@ -4,8 +4,8 @@
 //! the game clock to that entity's scheduled time.
 
 use crate::action::ActionTransition;
+use crate::action::error::TurnError;
 use crate::env::GameEnv;
-use crate::error::{ErrorContext, ErrorSeverity, GameError};
 use crate::state::{EntityId, GameState, Tick};
 
 /// System action that prepares the next turn by selecting which entity acts next.
@@ -108,64 +108,5 @@ impl ActionTransition for PrepareTurnAction {
     fn cost(&self, _env: &GameEnv<'_>) -> Tick {
         // System actions have no time cost
         0
-    }
-}
-
-/// Errors that can occur during turn operations.
-#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum TurnError {
-    /// System actor validation failed.
-    #[error("prepare turn action must be executed by SYSTEM actor")]
-    NotSystemActor {
-        #[cfg_attr(feature = "serde", serde(skip))]
-        context: ErrorContext,
-    },
-
-    /// No active entities available for scheduling.
-    #[error("no entities are currently active")]
-    NoActiveEntities {
-        #[cfg_attr(feature = "serde", serde(skip))]
-        context: ErrorContext,
-    },
-}
-
-impl TurnError {
-    /// Creates a NotSystemActor error with context.
-    pub fn not_system_actor(nonce: u64) -> Self {
-        Self::NotSystemActor {
-            context: ErrorContext::new(nonce)
-                .with_message("system action executed by non-system actor"),
-        }
-    }
-
-    /// Creates a NoActiveEntities error with context.
-    pub fn no_active_entities(nonce: u64) -> Self {
-        Self::NoActiveEntities {
-            context: ErrorContext::new(nonce).with_message("turn scheduling failed"),
-        }
-    }
-}
-
-impl GameError for TurnError {
-    fn severity(&self) -> ErrorSeverity {
-        match self {
-            Self::NotSystemActor { .. } => ErrorSeverity::Validation,
-            Self::NoActiveEntities { .. } => ErrorSeverity::Fatal,
-        }
-    }
-
-    fn context(&self) -> Option<&ErrorContext> {
-        match self {
-            Self::NotSystemActor { context } => Some(context),
-            Self::NoActiveEntities { context } => Some(context),
-        }
-    }
-
-    fn error_code(&self) -> &'static str {
-        match self {
-            Self::NotSystemActor { .. } => "TURN_NOT_SYSTEM_ACTOR",
-            Self::NoActiveEntities { .. } => "TURN_NO_ACTIVE_ENTITIES",
-        }
     }
 }

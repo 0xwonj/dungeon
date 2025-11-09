@@ -1,0 +1,33 @@
+// Attack actions - combat actions that deal damage
+//
+// - MeleeAttack: Basic melee attack (weapon damage + STR bonus)
+
+[
+    // Melee Attack
+    ActionProfile(
+        kind: MeleeAttack,
+        tags: [Attack, Melee, Physical],
+        targeting: SingleTarget(
+            range: 1,
+            requires_los: false,
+        ),
+        base_cost: 100,
+        resource_costs: [],
+        effects: [
+            ActionEffect(
+                kind: Damage(DamageEffect(
+                    formula: Sum([
+                        WeaponDamage(percent: 100),
+                        CasterStat(stat: Str, percent: 50),
+                    ]),
+                    damage_type: Physical,
+                    can_crit: true,
+                )),
+                phase: Primary,
+                priority: 0,
+            ),
+        ],
+        requirements: [],
+        cooldown: None,
+    ),
+]

@@ -12,6 +12,24 @@
 use super::bonus::{BonusStack, StatBounds, StatLayer};
 use super::core::CoreEffective;
 
+// ============================================================================
+// Resource Kind (for formulas and references)
+// ============================================================================
+
+/// Enum representing individual resource types.
+///
+/// Used in formulas, effect systems, and resource costs to reference specific resources.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ResourceKind {
+    /// Health points.
+    Hp,
+    /// Magic points (mana).
+    Mp,
+    /// Action resource (lucidity) - consumed by actions.
+    Lucidity,
+}
+
 /// Maximum resource values computed from stats.
 ///
 /// These are NOT stored - always recomputed from CoreEffective.
@@ -24,6 +42,15 @@ pub struct ResourceMaximums {
 }
 
 impl ResourceMaximums {
+    /// Get the max value for a specific resource.
+    pub fn get(&self, resource: ResourceKind) -> u32 {
+        match resource {
+            ResourceKind::Hp => self.hp_max,
+            ResourceKind::Mp => self.mp_max,
+            ResourceKind::Lucidity => self.lucidity_max,
+        }
+    }
+
     /// Compute maximum resource values from CoreEffective (internal helper)
     ///
     /// Formulas:

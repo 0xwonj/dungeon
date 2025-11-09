@@ -14,7 +14,9 @@
 mod action_cost;
 mod activation;
 mod prepare_turn;
+mod remove_from_active;
 
-pub use action_cost::{ActionCostAction, ActionCostError};
-pub use activation::{ActivationAction, ActivationError};
-pub use prepare_turn::{PrepareTurnAction, TurnError};
+pub use action_cost::ActionCostAction;
+pub use activation::ActivationAction;
+pub use prepare_turn::PrepareTurnAction;
+pub use remove_from_active::RemoveFromActiveAction;

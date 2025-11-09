@@ -7,6 +7,34 @@
 
 use super::bonus::{Bonus, BonusStack, StatBounds, StatLayer};
 
+// ============================================================================
+// Core Stat Kind (for formulas and references)
+// ============================================================================
+
+/// Enum representing individual core stats.
+///
+/// Used in formulas and effect systems to reference specific stats.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum CoreStatKind {
+    /// Physical power, melee damage.
+    Str,
+    /// Health, stamina, physical resilience.
+    Con,
+    /// Physical speed, evasion, accuracy.
+    Dex,
+    /// Cognitive speed, learning, spell power.
+    Int,
+    /// Mental fortitude, spellcasting, focus.
+    Wil,
+    /// Force of personality, ritual power, critical strikes.
+    Ego,
+}
+
+// ============================================================================
+// Core Stats
+// ============================================================================
+
 /// The six core attributes that define a character.
 ///
 /// These are permanently stored and form the foundation for all calculations.

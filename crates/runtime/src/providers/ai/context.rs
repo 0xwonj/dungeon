@@ -1,32 +1,29 @@
-//! AI context for utility-based decision making.
+//! AI context for goal-based decision making.
 //!
-//! The [`AiContext`] serves as the "blackboard" for AI decision-making across
-//! all three layers (Intent, Tactic, Action selection). It provides:
+//! The [`AiContext`] serves as the "blackboard" for AI decision-making. It provides:
 //!
 //! - Read access to game state
 //! - Cached available actions (computed once per turn)
-//! - Helper methods for scoring functions
-//! - Action storage mechanism
+//! - Helper methods for situation assessment
+//! - Access to trait profiles
 
 use game_content::traits::TraitProfile;
-use game_core::{Action, CharacterActionKind, EntityId, GameEnv, GameState};
+use game_core::{ActionKind, EntityId, GameEnv, GameState};
 
-/// Context for AI decision-making across all three layers.
+/// Context for AI decision-making.
 ///
 /// # Design
 ///
-/// This struct provides all the information needed for utility scoring:
+/// This struct provides all the information needed for goal-based AI:
 ///
 /// 1. **Game State**: Current world state (entity positions, HP, etc.)
-/// 2. **Available Actions**: Pre-computed list of executable actions (cached)
-/// 3. **Oracles**: Static game data (maps, items, NPC templates)
-/// 4. **Action Storage**: Selected action to be executed
+/// 2. **Available Actions**: Pre-computed list of executable action kinds
+/// 3. **Oracles**: Static game data (maps, items, NPC templates, action profiles)
 ///
 /// # Caching Strategy
 ///
 /// `available_actions` is computed once per turn using `get_available_actions()`
-/// and reused across all three decision layers. This avoids redundant computation
-/// and ensures consistency.
+/// and cached to avoid redundant computation.
 ///
 /// # Lifetime
 ///
@@ -43,17 +40,10 @@ pub struct AiContext<'a> {
     /// Read-only access to all game oracles.
     pub env: GameEnv<'a>,
 
-    /// Cached list of available actions for this entity.
+    /// Cached list of available action kinds for this entity.
     ///
     /// Computed once per turn using `game_core::get_available_actions()`.
-    /// All three decision layers use this same list, avoiding redundant computation.
-    available_actions: Vec<CharacterActionKind>,
-
-    /// The action selected for execution.
-    ///
-    /// This is `None` initially. Layer 3 (Action Selection) sets this
-    /// via `set_action()`.
-    action: Option<Action>,
+    available_actions: Vec<ActionKind>,
 }
 
 impl<'a> AiContext<'a> {
@@ -67,7 +57,7 @@ impl<'a> AiContext<'a> {
     ///
     /// # Returns
     ///
-    /// A new context with no action set and empty available_actions.
+    /// A new context with empty available_actions.
     /// Use `with_available_actions()` to populate the action cache.
     pub fn new(entity: EntityId, state: &'a GameState, env: GameEnv<'a>) -> Self {
         Self {
@@ -75,69 +65,28 @@ impl<'a> AiContext<'a> {
             state,
             env,
             available_actions: Vec::new(),
-            action: None,
         }
     }
 
     /// Sets the available actions cache (builder pattern).
     ///
     /// This should be called immediately after `new()` to populate the
-    /// action cache for use by all three decision layers.
+    /// action cache for goal evaluation.
     ///
     /// # Arguments
     ///
-    /// * `actions` - List of available actions from `game_core::get_available_actions()`
+    /// * `actions` - List of available action kinds from `game_core::get_available_actions()`
     ///
     /// # Returns
     ///
     /// Self for method chaining.
-    pub fn with_available_actions(mut self, actions: Vec<CharacterActionKind>) -> Self {
+    pub fn with_available_actions(mut self, actions: Vec<ActionKind>) -> Self {
         self.available_actions = actions;
         self
     }
 
-    /// Sets the action that this entity should execute.
-    ///
-    /// # Arguments
-    ///
-    /// * `action` - The action to execute
-    ///
-    /// # Panics
-    ///
-    /// Panics if an action was already set. This indicates a bug in the
-    /// behavior tree (multiple action nodes succeeded in a single evaluation).
-    pub fn set_action(&mut self, action: Action) {
-        if self.action.is_some() {
-            panic!(
-                "Action already set for entity {:?}. \
-                 Multiple action nodes succeeded in the same evaluation.",
-                self.entity
-            );
-        }
-        self.action = Some(action);
-    }
-
-    /// Extracts the action from this context, if one was set.
-    ///
-    /// This consumes the context and returns the action. If no action was set,
-    /// returns `None`.
-    ///
-    /// # Returns
-    ///
-    /// The action that was set, or `None` if no action node succeeded.
-    pub fn take_action(self) -> Option<Action> {
-        self.action
-    }
-
-    /// Checks if an action has been set.
-    ///
-    /// This is useful for debugging or conditional logic.
-    pub fn has_action(&self) -> bool {
-        self.action.is_some()
-    }
-
     // ========================================================================
-    // Utility Scoring Helper Methods
+    // Situation Assessment Helper Methods
     // ========================================================================
 
     /// Gets HP ratio for the current entity (0-100).
@@ -304,8 +253,8 @@ impl<'a> AiContext<'a> {
         direction: game_core::CardinalDirection,
     ) -> game_core::Position {
         let current = self.my_position();
-        // Use the game's coordinate system (from CardinalDirection::delta)
-        let (dx, dy) = direction.delta();
+        // Use the game's coordinate system (from CardinalDirection::offset)
+        let (dx, dy) = direction.offset();
         game_core::Position::new(current.x + dx, current.y + dy)
     }
 
@@ -352,118 +301,14 @@ impl<'a> AiContext<'a> {
     // Available Actions Accessors
     // ========================================================================
 
-    /// Gets the cached list of available actions.
+    /// Gets the cached list of available action kinds.
     ///
-    /// This list is computed once per turn and reused across all decision layers.
+    /// This list is computed once per turn and cached for efficient reuse.
     ///
     /// # Returns
     ///
-    /// Slice of all actions this entity can currently execute.
-    pub fn available_actions(&self) -> &[CharacterActionKind] {
+    /// Slice of all action kinds this entity can currently execute.
+    pub fn available_actions(&self) -> &[ActionKind] {
         &self.available_actions
-    }
-
-    /// Filters available actions to attack actions only.
-    ///
-    /// # Returns
-    ///
-    /// Iterator over attack actions (melee, ranged, special attacks).
-    pub fn attack_actions(&self) -> impl Iterator<Item = &CharacterActionKind> {
-        self.available_actions
-            .iter()
-            .filter(|action| matches!(action, CharacterActionKind::Attack(_)))
-    }
-
-    /// Filters available actions to movement actions only.
-    ///
-    /// # Returns
-    ///
-    /// Iterator over movement actions (Move in various directions).
-    pub fn movement_actions(&self) -> impl Iterator<Item = &CharacterActionKind> {
-        self.available_actions
-            .iter()
-            .filter(|action| matches!(action, CharacterActionKind::Move(_)))
-    }
-
-    /// Filters available actions to item usage actions only.
-    ///
-    /// # Returns
-    ///
-    /// Iterator over UseItem actions.
-    pub fn item_actions(&self) -> impl Iterator<Item = &CharacterActionKind> {
-        self.available_actions
-            .iter()
-            .filter(|action| matches!(action, CharacterActionKind::UseItem(_)))
-    }
-
-    /// Filters available actions to interaction actions only.
-    ///
-    /// # Returns
-    ///
-    /// Iterator over Interact actions (doors, chests, NPCs).
-    pub fn interact_actions(&self) -> impl Iterator<Item = &CharacterActionKind> {
-        self.available_actions
-            .iter()
-            .filter(|action| matches!(action, CharacterActionKind::Interact(_)))
-    }
-
-    /// Checks if Wait action is available.
-    ///
-    /// # Returns
-    ///
-    /// True if Wait is in the available actions list.
-    pub fn can_wait(&self) -> bool {
-        self.available_actions
-            .iter()
-            .any(|action| matches!(action, CharacterActionKind::Wait(_)))
-    }
-
-    /// Checks if any attack action is available.
-    ///
-    /// # Returns
-    ///
-    /// True if at least one attack action exists.
-    pub fn has_attack_actions(&self) -> bool {
-        let has_attacks = self.attack_actions().next().is_some();
-
-        tracing::debug!(
-            "NPC {:?} has_attack_actions: {} (total available: {})",
-            self.entity,
-            has_attacks,
-            self.available_actions.len()
-        );
-
-        if !has_attacks && !self.available_actions.is_empty() {
-            tracing::debug!("  Available actions: {:?}", self.available_actions);
-        }
-
-        has_attacks
-    }
-
-    /// Checks if any movement action is available.
-    ///
-    /// # Returns
-    ///
-    /// True if at least one movement action exists.
-    pub fn has_movement_actions(&self) -> bool {
-        self.movement_actions().next().is_some()
-    }
-
-    /// Checks if any item usage action is available.
-    ///
-    /// # Returns
-    ///
-    /// True if at least one item action exists.
-    pub fn has_item_actions(&self) -> bool {
-        self.item_actions().next().is_some()
-    }
-
-    /// Counts total number of available actions.
-    ///
-    /// # Returns
-    ///
-    /// Number of actions in the cache.
-    pub fn action_count(&self) -> usize {
-        self.available_actions.len()
     }
 }

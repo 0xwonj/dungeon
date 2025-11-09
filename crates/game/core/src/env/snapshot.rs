@@ -15,10 +15,10 @@
 extern crate alloc;
 
 #[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, vec::Vec};
 
 #[cfg(feature = "std")]
-use std::vec::Vec;
+use std::{collections::BTreeMap, vec::Vec};
 
 use super::{
     ActorOracle, ConfigOracle, ItemDefinition, ItemOracle, MapDimensions, MapOracle, StaticTile,
@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 // ============================================================================
 
 /// Complete snapshot of all oracle data for zkVM guest execution
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OracleSnapshot {
     pub map: MapSnapshot,
@@ -204,12 +204,13 @@ impl ActorsSnapshot {
 ///
 /// This snapshot captures all game balance values for deterministic
 /// execution in zkVM and future on-chain verification.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TablesSnapshot {
     pub action_costs: super::ActionCosts,
     pub combat: super::CombatParams,
     pub speed: super::SpeedParams,
+    pub action_profiles: BTreeMap<crate::action::ActionKind, crate::action::ActionProfile>,
 }
 
 impl TablesSnapshot {
@@ -217,18 +218,32 @@ impl TablesSnapshot {
         action_costs: super::ActionCosts,
         combat: super::CombatParams,
         speed: super::SpeedParams,
+        action_profiles: BTreeMap<crate::action::ActionKind, crate::action::ActionProfile>,
     ) -> Self {
         Self {
             action_costs,
             combat,
             speed,
+            action_profiles,
         }
     }
 
     /// Creates a tables snapshot from a TablesOracle.
     #[cfg(feature = "std")]
     pub fn from_oracle(oracle: &dyn TablesOracle) -> Self {
-        Self::new(oracle.action_costs(), oracle.combat(), oracle.speed())
+        // Load all action profiles from the oracle
+        let mut action_profiles = BTreeMap::new();
+        for &kind in crate::action::ActionKind::all_variants() {
+            let profile = oracle.action_profile(kind);
+            action_profiles.insert(kind, profile);
+        }
+
+        Self::new(
+            oracle.action_costs(),
+            oracle.combat(),
+            oracle.speed(),
+            action_profiles,
+        )
     }
 }
 
@@ -348,6 +363,20 @@ impl<'a> TablesOracle for SnapshotTablesOracle<'a> {
 
     fn speed(&self) -> super::SpeedParams {
         self.snapshot.speed
+    }
+
+    fn action_profile(&self, kind: crate::action::ActionKind) -> crate::action::ActionProfile {
+        self.snapshot
+            .action_profiles
+            .get(&kind)
+            .cloned()
+            .unwrap_or_else(|| {
+                panic!(
+                    "ActionProfile for {:?} not found in snapshot. \
+                     This action may not have RON data defined.",
+                    kind
+                )
+            })
     }
 }
 

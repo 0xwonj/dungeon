@@ -24,6 +24,7 @@ pub use traits::{
 
 #[cfg(feature = "loaders")]
 pub use loaders::{
-    ActorLoader, AiKindSpec, ConfigLoader, ContentFactory, InteractiveKindSpec, ItemLoader,
-    MapLoader, ProviderKindSpec, TablesLoader, load_trait_registry,
+    ActionProfileRegistry, ActorLoader, AiKindSpec, ConfigLoader, ContentFactory,
+    InteractiveKindSpec, ItemLoader, MapLoader, ProviderKindSpec, TablesLoader,
+    load_trait_registry,
 };

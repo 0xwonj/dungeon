@@ -43,9 +43,9 @@ pub mod speed;
 
 // Re-export primary types
 pub use bonus::{ActorBonuses, Bonus, BonusStack, StatBounds, StatLayer, compute_actor_bonuses};
-pub use core::{CoreEffective, CoreStatBonuses, CoreStats};
+pub use core::{CoreEffective, CoreStatBonuses, CoreStatKind, CoreStats};
 pub use derived::{DerivedBonuses, DerivedStats};
 pub use modifiers::{ModifierBonuses, StatModifiers};
-pub use resources::{ResourceBonuses, ResourceCurrent, ResourceMaximums};
+pub use resources::{ResourceBonuses, ResourceCurrent, ResourceKind, ResourceMaximums};
 pub use snapshot::{StatsSnapshot, StatsSnapshotBuilder};
 pub use speed::{SpeedBonuses, SpeedKind, SpeedStats, calculate_action_cost};

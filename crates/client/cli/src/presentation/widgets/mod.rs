@@ -6,6 +6,8 @@
 //! - No side effects or state mutations
 //! - Framework-specific (Ratatui) but follow PresentationMapper pattern where applicable
 
+pub mod ability_menu;
+pub mod action_slots;
 pub mod examine;
 pub mod footer;
 pub mod game_area;

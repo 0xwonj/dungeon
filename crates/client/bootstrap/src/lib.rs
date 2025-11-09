@@ -7,5 +7,5 @@ pub mod config;
 pub mod oracles;
 
 pub use builder::{RuntimeBuilder, RuntimeSetup};
-pub use config::CliConfig;
+pub use config::ClientConfig;
 pub use oracles::{ContentOracleFactory, OracleBundle, OracleFactory};
