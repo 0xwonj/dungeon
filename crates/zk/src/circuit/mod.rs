@@ -85,16 +85,22 @@ impl StateTransition {
 }
 
 /// Arkworks circuit prover using Groth16 (Phase 2+).
+#[derive(Debug, Clone)]
 pub struct ArkworksProver {
-    _placeholder: (),
+    #[allow(dead_code)]
+    oracle_snapshot: crate::OracleSnapshot,
 }
 
 impl ArkworksProver {
-    pub fn new() -> Self {
-        Self { _placeholder: () }
+    pub fn new(oracle_snapshot: crate::OracleSnapshot) -> Self {
+        tracing::warn!(
+            "ArkworksProver is a stub implementation - proofs have no cryptographic guarantees"
+        );
+        Self { oracle_snapshot }
     }
 
-    pub fn prove(
+    /// Legacy method for StateDelta-based proving (will be used in Phase 2).
+    pub fn prove_delta(
         &self,
         _delta: &StateDelta,
         _before_state: &GameState,
@@ -106,9 +112,45 @@ impl ArkworksProver {
     }
 }
 
-impl Default for ArkworksProver {
-    fn default() -> Self {
-        Self::new()
+impl crate::Prover for ArkworksProver {
+    fn prove(
+        &self,
+        _before_state: &GameState,
+        _action: &game_core::Action,
+        _after_state: &GameState,
+    ) -> Result<ProofData, ProofError> {
+        tracing::warn!("ArkworksProver::prove called - returning dummy proof");
+
+        // Stub implementation returns a placeholder proof
+        // Real implementation (Phase 2) will:
+        // 1. Generate witness from before_state, action, after_state
+        // 2. Compute R1CS constraint satisfaction
+        // 3. Generate Groth16 proof
+        // 4. Serialize proof for on-chain verification
+
+        Ok(ProofData {
+            bytes: vec![0xAA, 0xBB, 0xCC, 0xDD], // Placeholder proof bytes
+            backend: crate::ProofBackend::Arkworks,
+        })
+    }
+
+    fn verify(&self, proof: &ProofData) -> Result<bool, ProofError> {
+        if proof.backend != crate::ProofBackend::Arkworks {
+            return Err(ProofError::ZkvmError(format!(
+                "ArkworksProver can only verify arkworks proofs, got {:?}",
+                proof.backend
+            )));
+        }
+
+        tracing::warn!("ArkworksProver::verify called - returning true (no real verification)");
+
+        // Stub implementation accepts all proofs
+        // Real implementation (Phase 2) will:
+        // 1. Deserialize Groth16 proof
+        // 2. Verify against verifying key
+        // 3. Check public inputs match expected state hash
+
+        Ok(true)
     }
 }
 

@@ -83,6 +83,7 @@ pub use game_core::{Action, GameState, StateDelta};
 /// - `risc0` (default) → Risc0Prover
 /// - `sp1` (not implemented) → Sp1Prover
 /// - `stub` → StubProver (testing only)
+/// - `arkworks` → ArkworksProver (stub implementation)
 #[cfg(feature = "risc0")]
 pub type ZkProver = Risc0Prover;
 
@@ -91,3 +92,6 @@ pub type ZkProver = Sp1Prover;
 
 #[cfg(feature = "stub")]
 pub type ZkProver = crate::prover::StubProver;
+
+#[cfg(feature = "arkworks")]
+pub type ZkProver = crate::circuit::ArkworksProver;
