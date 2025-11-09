@@ -188,16 +188,6 @@ pub fn hash_many(inputs: &[Fp254]) -> Result<Fp254, ProofError> {
 }
 
 #[cfg(feature = "arkworks")]
-/// Encode signed i32 coordinate to field element.
-///
-/// Maps [-2^31, 2^31-1] to [0, 2^32-1] using bias to handle negatives correctly.
-/// Required because direct i32->u64 cast wraps negatives to large positive values.
-fn encode_coord(coord: i32) -> Fp254 {
-    const BIAS: u64 = 1u64 << 31;
-    Fp254::from((coord as i64 as u64).wrapping_add(BIAS))
-}
-
-#[cfg(feature = "arkworks")]
 /// Serialize an actor to field elements for hashing.
 ///
 /// Serializes essential actor fields:
@@ -210,8 +200,8 @@ fn encode_coord(coord: i32) -> Fp254 {
 pub fn serialize_actor(actor: &ActorState) -> Vec<Fp254> {
     vec![
         Fp254::from(actor.id.0 as u64),
-        encode_coord(actor.position.x),
-        encode_coord(actor.position.y),
+        Fp254::from(actor.position.x as u64),
+        Fp254::from(actor.position.y as u64),
         Fp254::from(actor.resources.hp as u64),
         // For max HP, we need to compute it from stats snapshot
         // For simplicity, use current HP as placeholder (will be fixed in full implementation)
@@ -239,8 +229,8 @@ pub fn serialize_prop(prop: &PropState) -> Vec<Fp254> {
 
     vec![
         Fp254::from(prop.id.0 as u64),
-        encode_coord(prop.position.x),
-        encode_coord(prop.position.y),
+        Fp254::from(prop.position.x as u64),
+        Fp254::from(prop.position.y as u64),
         Fp254::from(kind_value),
         Fp254::from(if prop.is_active { 1u64 } else { 0u64 }),
     ]
@@ -257,8 +247,8 @@ pub fn serialize_prop(prop: &PropState) -> Vec<Fp254> {
 pub fn serialize_item(item: &ItemState) -> Vec<Fp254> {
     vec![
         Fp254::from(item.id.0 as u64),
-        encode_coord(item.position.x),
-        encode_coord(item.position.y),
+        Fp254::from(item.position.x as u64),
+        Fp254::from(item.position.y as u64),
         Fp254::from(item.handle.0 as u64),
         Fp254::from(item.quantity as u64),
     ]
@@ -367,8 +357,9 @@ mod game_state_tests {
         // Should have 5 field elements: id, x, y, hp, max_hp
         assert_eq!(serialized.len(), 5);
         assert_eq!(serialized[0], Fp254::from(EntityId::PLAYER.0 as u64));
-        assert_eq!(serialized[1], Fp254::from(5u64));
-        assert_eq!(serialized[2], Fp254::from(10u64));
+        // Coordinates are cast directly: i32 -> u64 -> Fp254
+        assert_eq!(serialized[1], Fp254::from(5i32 as u64));
+        assert_eq!(serialized[2], Fp254::from(10i32 as u64));
     }
 
     #[test]
