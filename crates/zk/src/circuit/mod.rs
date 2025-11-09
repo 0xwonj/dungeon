@@ -37,18 +37,65 @@
 use crate::{ProofData, ProofError};
 use game_core::{GameState, StateDelta};
 
+#[cfg(feature = "arkworks")]
+use ark_bn254::Fr as Fp254;
+
 /// State transition with Merkle witnesses (Phase 2).
 ///
 /// This structure represents a proven state transition with all necessary
 /// Merkle proofs for changed entities.
 ///
 /// See: docs/state-delta-architecture.md Section 5.2
+#[cfg(not(feature = "arkworks"))]
 pub struct StateTransition {
-    // TODO: Implement in Phase 2
     _placeholder: (),
 }
 
+#[cfg(not(feature = "arkworks"))]
 impl StateTransition {
+    pub fn from_delta(
+        _delta: StateDelta,
+        _before_state: &GameState,
+        _after_state: &GameState,
+    ) -> Result<Self, ProofError> {
+        Err(ProofError::CircuitProofError(
+            "Arkworks circuit not yet implemented - use zkVM backend".to_string(),
+        ))
+    }
+
+    pub fn prove(&self) -> Result<ProofData, ProofError> {
+        Err(ProofError::CircuitProofError(
+            "Arkworks circuit not yet implemented - use zkVM backend".to_string(),
+        ))
+    }
+}
+
+/// State transition with Merkle witnesses.
+///
+/// For the hello world implementation, this contains:
+/// - root: The Merkle root hash
+/// - leaf: A leaf value to prove
+/// - path: The Merkle authentication path
+#[cfg(feature = "arkworks")]
+#[derive(Clone, Debug)]
+pub struct StateTransition {
+    pub root: Fp254,
+    pub leaf: Fp254,
+    pub path: merkle::MerklePath,
+}
+
+#[cfg(feature = "arkworks")]
+impl StateTransition {
+    /// Create a new state transition for hello world proof
+    ///
+    /// # Arguments
+    /// * `root` - The Merkle root hash
+    /// * `leaf` - The leaf value to prove
+    /// * `path` - The Merkle authentication path
+    pub fn new(root: Fp254, leaf: Fp254, path: merkle::MerklePath) -> Self {
+        Self { root, leaf, path }
+    }
+
     /// Convert a StateDelta into a StateTransition with Merkle witnesses.
     ///
     /// # Algorithm (from architecture doc)
@@ -70,17 +117,42 @@ impl StateTransition {
         _after_state: &GameState,
     ) -> Result<Self, ProofError> {
         // Phase 2: Implement Poseidon-based Merkle tree building and witness generation
+        // For now, this is a placeholder for future StateDelta-based witness generation
         Err(ProofError::CircuitProofError(
-            "Arkworks circuit not yet implemented - use zkVM backend".to_string(),
+            "StateDelta-based witness generation not yet implemented - use StateTransition::new()".to_string(),
         ))
     }
 
     /// Generate a Groth16 proof from this transition.
+    ///
+    /// This creates a circuit, generates proving keys, and produces a proof.
     pub fn prove(&self) -> Result<ProofData, ProofError> {
-        // Phase 2: Implement Groth16 proving with Arkworks
-        Err(ProofError::CircuitProofError(
-            "Arkworks circuit not yet implemented - use zkVM backend".to_string(),
-        ))
+        use ark_std::test_rng;
+
+        // For hello world, use a test RNG
+        // In production, use a cryptographically secure RNG
+        let mut rng = test_rng();
+
+        // Generate keys for this circuit
+        let keys = groth16::Groth16Keys::generate(&mut rng)?;
+
+        // Create circuit with witness
+        let circuit = constraints::HelloWorldCircuit::new(
+            self.root,
+            self.leaf,
+            self.path.clone(),
+        );
+
+        // Generate proof
+        let proof = groth16::prove(circuit, &keys, &mut rng)?;
+
+        // Serialize proof
+        let proof_bytes = groth16::serialize_proof(&proof)?;
+
+        Ok(ProofData {
+            bytes: proof_bytes,
+            backend: crate::ProofBackend::Arkworks,
+        })
     }
 }
 
@@ -154,25 +226,37 @@ impl crate::Prover for ArkworksProver {
     }
 }
 
-// Submodules (to be implemented in Phase 2)
+// Submodules
 
 #[cfg(feature = "arkworks")]
-/// Poseidon-based Merkle tree implementations (Phase 2).
-///
-/// Sparse Merkle tree for state commitments using Poseidon hash.
-/// See: docs/state-delta-architecture.md Section 5.3
-pub mod merkle {}
-
-#[cfg(feature = "arkworks")]
-/// Witness generation (Phase 2).
-///
-/// Generate Merkle witnesses from StateDelta.
-/// See: docs/state-delta-architecture.md Section 5.4
-pub mod witness {}
-
-#[cfg(feature = "arkworks")]
-/// State commitment structures (Phase 2).
+/// Poseidon-based hash functions and state commitments.
 ///
 /// State root computation and commitment schemes using Poseidon hash.
 /// See: docs/state-delta-architecture.md Section 5.2
-pub mod commitment {}
+pub mod commitment;
+
+#[cfg(feature = "arkworks")]
+/// Sparse Merkle tree implementations.
+///
+/// Sparse Merkle tree for state commitments using Poseidon hash.
+/// See: docs/state-delta-architecture.md Section 5.3
+pub mod merkle;
+
+#[cfg(feature = "arkworks")]
+/// Witness generation from StateDelta.
+///
+/// Generate Merkle witnesses from StateDelta.
+/// See: docs/state-delta-architecture.md Section 5.4
+pub mod witness;
+
+#[cfg(feature = "arkworks")]
+/// R1CS constraint generation for state transitions.
+///
+/// Defines circuits that prove state transition validity.
+pub mod constraints;
+
+#[cfg(feature = "arkworks")]
+/// Groth16 proof generation and verification.
+///
+/// Proving key generation, proof creation, and verification.
+pub mod groth16;

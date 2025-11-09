@@ -76,11 +76,20 @@ stub = ["zkvm"]
 # Future: Arkworks Circuit Backend
 # ────────────────────────────────────────────────────────────────────────────
 
-# Arkworks Groth16 circuit (not implemented - placeholder for future)
-# Will provide EVM-compatible proofs using BN254 curve
-# Requires implementing state transitions as R1CS constraints
-# Dependencies will be added when implementation begins
-arkworks = []
+# Arkworks Groth16 circuit (implementation in progress)
+# Provides EVM-compatible proofs using BN254 curve
+# Implements state transitions as R1CS constraints
+arkworks = [
+    "dep:ark-ff",
+    "dep:ark-ec",
+    "dep:ark-bn254",
+    "dep:ark-groth16",
+    "dep:ark-relations",
+    "dep:ark-crypto-primitives",
+    "dep:ark-serialize",
+    "dep:ark-std",
+    "dep:ark-r1cs-std"
+]
 
 [build-dependencies]
 risc0-build = { workspace = true, optional = true }
@@ -92,13 +101,26 @@ serde = { workspace = true }
 bincode = { workspace = true }
 tracing = { workspace = true }
 
-# zkVM dependencies (only RISC0 is currently implemented)
+# zkVM dependencies
 risc0-zkvm = { workspace = true, optional = true }
 
+# Arkworks dependencies for circuit-based proving
+ark-ff = { workspace = true, optional = true }
+ark-ec = { workspace = true, optional = true }
+ark-bn254 = { workspace = true, optional = true }
+ark-groth16 = { workspace = true, optional = true }
+ark-relations = { workspace = true, optional = true }
+ark-crypto-primitives = { workspace = true, optional = true, features = ["crh", "sponge"] }
+ark-serialize = { workspace = true, optional = true }
+ark-std = { workspace = true, optional = true }
+ark-r1cs-std = { workspace = true, optional = true }
+
+[dev-dependencies]
+bounded-vector = { workspace = true }
+
 # NOTE: Unused backend dependencies are intentionally omitted
-# Add these when implementing the respective backends:
+# Add these when implementing SP1 backend:
 # - sp1-sdk = { version = "5.2", optional = true }
-# - ark-ff, ark-ec, ark-bn254, ark-groth16, ark-relations, ark-crypto-primitives
 
 [package.metadata.risc0]
 methods = ["methods/guest"]

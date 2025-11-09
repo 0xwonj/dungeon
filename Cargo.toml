@@ -71,10 +71,22 @@ arrayvec = { version = "0.7", default-features = false }
 bitflags = { version = "2.9", default-features = false }
 
 # ----------------------------------------------------------------------------
-# ZK Dependencies (only RISC0 is currently implemented)
+# ZK Dependencies
 # ----------------------------------------------------------------------------
+# RISC0 zkVM (production backend)
 risc0-zkvm = "3.0"
 risc0-build = "3.0"
+
+# Arkworks ecosystem for circuit-based proving (Groth16 on BN254)
+ark-ff = "0.5"                    # Finite field arithmetic
+ark-ec = "0.5"                    # Elliptic curve operations
+ark-bn254 = "0.5"                 # BN254 curve for EVM compatibility
+ark-groth16 = "0.5"               # Groth16 proof system
+ark-relations = "0.5"             # R1CS constraint systems
+ark-crypto-primitives = { version = "0.5", features = ["crh", "sponge"] }  # Poseidon hash, Merkle trees
+ark-serialize = "0.5"             # Serialization for proofs
+ark-std = "0.5"                   # Standard library compatibility
+ark-r1cs-std = "0.5"              # R1CS gadgets for constraints
 
 # ----------------------------------------------------------------------------
 # Terminal UI (client only)
