@@ -5,11 +5,11 @@
 use crate::ProofError;
 
 #[cfg(feature = "arkworks")]
+use super::commitment::{hash_one, hash_two};
+#[cfg(feature = "arkworks")]
 use ark_bn254::Fr as Fp254;
 #[cfg(feature = "arkworks")]
 use std::collections::BTreeMap;
-#[cfg(feature = "arkworks")]
-use super::commitment::{hash_one, hash_two};
 
 #[cfg(feature = "arkworks")]
 /// Merkle proof path with sibling hashes and direction bits
@@ -61,8 +61,14 @@ impl SparseMerkleTree {
             let level_size = 1u32 << (self.depth - level);
 
             for i in 0..level_size {
-                let left = current_level.get(&(i * 2)).copied().unwrap_or(self.empty_hash);
-                let right = current_level.get(&(i * 2 + 1)).copied().unwrap_or(self.empty_hash);
+                let left = current_level
+                    .get(&(i * 2))
+                    .copied()
+                    .unwrap_or(self.empty_hash);
+                let right = current_level
+                    .get(&(i * 2 + 1))
+                    .copied()
+                    .unwrap_or(self.empty_hash);
                 next_level.insert(i, hash_two(left, right)?);
             }
 
@@ -79,7 +85,8 @@ impl SparseMerkleTree {
         }
 
         self.build_tree()?;
-        Ok(self.tree_cache
+        Ok(self
+            .tree_cache
             .get(&self.depth)
             .and_then(|level| level.get(&0))
             .copied()
@@ -89,7 +96,8 @@ impl SparseMerkleTree {
     pub fn prove(&mut self, index: u32) -> Result<MerklePath, ProofError> {
         if !self.leaves.contains_key(&index) {
             return Err(ProofError::CircuitProofError(format!(
-                "Leaf at index {} not found", index
+                "Leaf at index {} not found",
+                index
             )));
         }
 
@@ -101,9 +109,14 @@ impl SparseMerkleTree {
 
         for level in 0..self.depth {
             let is_right = current_idx % 2 == 1;
-            let sibling_idx = if is_right { current_idx - 1 } else { current_idx + 1 };
+            let sibling_idx = if is_right {
+                current_idx - 1
+            } else {
+                current_idx + 1
+            };
 
-            let sibling_hash = self.tree_cache
+            let sibling_hash = self
+                .tree_cache
                 .get(&level)
                 .and_then(|level_map| level_map.get(&sibling_idx))
                 .copied()
@@ -114,13 +127,20 @@ impl SparseMerkleTree {
             current_idx /= 2;
         }
 
-        Ok(MerklePath { siblings, path_bits })
+        Ok(MerklePath {
+            siblings,
+            path_bits,
+        })
     }
 
-    pub fn verify(leaf: Fp254, path: &MerklePath, expected_root: Fp254) -> Result<bool, ProofError> {
+    pub fn verify(
+        leaf: Fp254,
+        path: &MerklePath,
+        expected_root: Fp254,
+    ) -> Result<bool, ProofError> {
         if path.siblings.len() != path.path_bits.len() {
             return Err(ProofError::CircuitProofError(
-                "Path length mismatch".to_string()
+                "Path length mismatch".to_string(),
             ));
         }
 
@@ -168,6 +188,16 @@ pub fn hash_many(inputs: &[Fp254]) -> Result<Fp254, ProofError> {
 }
 
 #[cfg(feature = "arkworks")]
+/// Encode signed i32 coordinate to field element.
+///
+/// Maps [-2^31, 2^31-1] to [0, 2^32-1] using bias to handle negatives correctly.
+/// Required because direct i32->u64 cast wraps negatives to large positive values.
+fn encode_coord(coord: i32) -> Fp254 {
+    const BIAS: u64 = 1u64 << 31;
+    Fp254::from((coord as i64 as u64).wrapping_add(BIAS))
+}
+
+#[cfg(feature = "arkworks")]
 /// Serialize an actor to field elements for hashing.
 ///
 /// Serializes essential actor fields:
@@ -180,8 +210,8 @@ pub fn hash_many(inputs: &[Fp254]) -> Result<Fp254, ProofError> {
 pub fn serialize_actor(actor: &ActorState) -> Vec<Fp254> {
     vec![
         Fp254::from(actor.id.0 as u64),
-        Fp254::from(actor.position.x as u64),
-        Fp254::from(actor.position.y as u64),
+        encode_coord(actor.position.x),
+        encode_coord(actor.position.y),
         Fp254::from(actor.resources.hp as u64),
         // For max HP, we need to compute it from stats snapshot
         // For simplicity, use current HP as placeholder (will be fixed in full implementation)
@@ -209,8 +239,8 @@ pub fn serialize_prop(prop: &PropState) -> Vec<Fp254> {
 
     vec![
         Fp254::from(prop.id.0 as u64),
-        Fp254::from(prop.position.x as u64),
-        Fp254::from(prop.position.y as u64),
+        encode_coord(prop.position.x),
+        encode_coord(prop.position.y),
         Fp254::from(kind_value),
         Fp254::from(if prop.is_active { 1u64 } else { 0u64 }),
     ]
@@ -227,8 +257,8 @@ pub fn serialize_prop(prop: &PropState) -> Vec<Fp254> {
 pub fn serialize_item(item: &ItemState) -> Vec<Fp254> {
     vec![
         Fp254::from(item.id.0 as u64),
-        Fp254::from(item.position.x as u64),
-        Fp254::from(item.position.y as u64),
+        encode_coord(item.position.x),
+        encode_coord(item.position.y),
         Fp254::from(item.handle.0 as u64),
         Fp254::from(item.quantity as u64),
     ]
@@ -317,8 +347,11 @@ pub fn compute_state_root(state: &GameState) -> Result<Fp254, ProofError> {
 #[cfg(feature = "arkworks")]
 mod game_state_tests {
     use super::*;
-    use game_core::{ActorState, CoreStats, EntitiesState, EntityId, InventoryState, Position, TurnState, WorldState};
     use bounded_vector::BoundedVec;
+    use game_core::{
+        ActorState, CoreStats, EntitiesState, EntityId, InventoryState, Position, TurnState,
+        WorldState,
+    };
 
     #[test]
     fn test_serialize_actor() {
@@ -381,11 +414,7 @@ mod game_state_tests {
             BoundedVec::new(),
         );
 
-        let state = GameState::new(
-            TurnState::default(),
-            entities,
-            WorldState::default(),
-        );
+        let state = GameState::new(TurnState::default(), entities, WorldState::default());
 
         let tree = build_entity_tree(&state).unwrap();
 
@@ -415,11 +444,7 @@ mod game_state_tests {
             BoundedVec::new(),
         );
 
-        let state = GameState::new(
-            TurnState::default(),
-            entities,
-            WorldState::default(),
-        );
+        let state = GameState::new(TurnState::default(), entities, WorldState::default());
 
         let tree = build_entity_tree(&state).unwrap();
 
@@ -444,11 +469,7 @@ mod game_state_tests {
             BoundedVec::new(),
         );
 
-        let state = GameState::new(
-            TurnState::default(),
-            entities,
-            WorldState::default(),
-        );
+        let state = GameState::new(TurnState::default(), entities, WorldState::default());
 
         let root = compute_state_root(&state).unwrap();
 
