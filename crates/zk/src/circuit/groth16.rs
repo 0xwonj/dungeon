@@ -20,7 +20,7 @@ use ark_std::rand::RngCore;
 ///
 /// Contains the cryptographic keys needed for proof generation and verification.
 /// Generated during a trusted setup ceremony.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Groth16Keys {
     /// Proving key (secret, used by prover)
     pub proving_key: ProvingKey<Bn254>,

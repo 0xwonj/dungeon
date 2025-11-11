@@ -115,13 +115,16 @@ pub fn verify_merkle_path_gadget(
 
     // Walk up the tree, hashing with siblings
     for (sibling, direction) in path {
-        // If direction is true (1), current is left child: hash(current, sibling)
-        // If direction is false (0), current is right child: hash(sibling, current)
-        let hash_result = poseidon_hash_two_conditional_gadget(
-            &current,
-            sibling,
-            direction,
-        )?;
+        // direction indicates if current node is a RIGHT child (true) or LEFT child (false)
+        // If direction is false (0), current is left child: hash(current, sibling)
+        // If direction is true (1), current is right child: hash(sibling, current)
+        //
+        // This matches the tree building: parent = hash(left_child, right_child)
+        //
+        // Use conditional select to avoid calling .value() during constraint generation
+        let left = FpVar::conditionally_select(direction, sibling, &current)?;
+        let right = FpVar::conditionally_select(direction, &current, sibling)?;
+        let hash_result = poseidon_hash_two_gadget(&left, &right)?;
         current = hash_result;
     }
 

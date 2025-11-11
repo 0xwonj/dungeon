@@ -34,21 +34,21 @@ echo ""
 echo -e "${GREEN}✓${NC} RISC0 baseline saved"
 echo ""
 
-# Step 2: Run Stub benchmarks for comparison
-echo -e "${BLUE}Step 2/3:${NC} Running Stub benchmarks (comparing to baseline)..."
+# Step 2: Run Arkworks benchmarks for comparison
+echo -e "${BLUE}Step 2/3:${NC} Running Arkworks (R1CS) benchmarks (comparing to baseline)..."
 echo ""
-cargo bench --no-default-features --features stub \
+cargo bench --no-default-features --features arkworks \
     --bench backend_comparison -- --baseline risc0 2>&1 | grep -E "Benchmarking|time:|change:|📊"
 
 echo ""
-echo -e "${GREEN}✓${NC} Stub comparison complete"
+echo -e "${GREEN}✓${NC} Arkworks comparison complete"
 echo ""
 
 # Step 3: Summary
 echo -e "${BLUE}Step 3/3:${NC} Generating summary..."
 echo ""
-cargo bench --no-default-features --features stub \
-    --bench backend_comparison -- --save-baseline stub 2>&1 | grep -E "Benchmarking|time:|📊"
+cargo bench --no-default-features --features arkworks \
+    --bench backend_comparison -- --save-baseline arkworks 2>&1 | grep -E "Benchmarking|time:|📊"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -57,14 +57,14 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 echo "View detailed HTML reports:"
 echo "  • RISC0:     target/criterion/backend_comparison/risc0/report/index.html"
-echo "  • Stub:      target/criterion/backend_comparison/stub/report/index.html"
+echo "  • Arkworks:  target/criterion/backend_comparison/arkworks/report/index.html"
 echo ""
 echo "Comparison report:"
 echo "  • open target/criterion/backend_comparison/report/index.html"
 echo ""
-echo -e "${YELLOW}Note:${NC} Arkworks backend requires Poseidon R1CS constraint implementation"
-echo "For arkworks component benchmarks, run:"
-echo "  cargo bench --no-default-features --features arkworks --bench arkworks_benchmarks"
+echo -e "${YELLOW}Key Comparison: zkVM (RISC0) vs R1CS (Arkworks)${NC}"
+echo "  • RISC0: General-purpose zkVM, easier development, slower proving"
+echo "  • Arkworks: Hand-crafted R1CS circuits, faster proving, more complex development"
 echo ""
 echo -e "${GREEN}✓ Comparison complete!${NC}"
 echo ""

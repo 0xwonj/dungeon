@@ -1,7 +1,7 @@
-//! Cross-backend comparison benchmark for RISC0 vs Stub.
+//! Cross-backend comparison benchmark for RISC0 vs Arkworks.
 //!
 //! This benchmark provides an apples-to-apples comparison of proof generation
-//! and verification performance between backends.
+//! and verification performance between zkVM (RISC0) and R1CS (Arkworks) backends.
 //!
 //! ## Usage
 //!
@@ -11,9 +11,9 @@
 //!      --bench backend_comparison -- --save-baseline risc0
 //!    ```
 //!
-//! 2. Run with Stub and compare:
+//! 2. Run with Arkworks and compare:
 //!    ```bash
-//!    cargo bench --package zk --no-default-features --features stub \
+//!    cargo bench --package zk --no-default-features --features arkworks \
 //!      --bench backend_comparison -- --baseline risc0
 //!    ```
 //!
@@ -22,13 +22,10 @@
 //!    open target/criterion/backend_comparison/report/index.html
 //!    ```
 //!
-//! ## Note on Arkworks
+//! ## Backend Comparison: zkVM vs R1CS
 //!
-//! Arkworks backend is currently excluded from this benchmark because the
-//! GameTransitionCircuit uses Poseidon hash gadgets that don't have full
-//! R1CS constraints implemented yet (they compute hashes natively for witness
-//! generation but don't add proper circuit constraints). Once the Poseidon
-//! constraint gadgets are fully implemented, arkworks can be added back.
+//! - **RISC0**: General-purpose zkVM, easier development, larger proofs, slower proving
+//! - **Arkworks**: Hand-crafted R1CS circuits, faster proving, smaller proofs, more complex development
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use game_core::{
@@ -41,6 +38,9 @@ use zk::{OracleSnapshot, Risc0Prover};
 
 #[cfg(feature = "stub")]
 use zk::StubProver;
+
+#[cfg(feature = "arkworks")]
+use zk::ArkworksProver;
 
 use zk::Prover;
 
@@ -147,11 +147,22 @@ fn create_prover() -> StubProver {
     StubProver::new(create_oracle_snapshot())
 }
 
+#[cfg(feature = "arkworks")]
+fn create_prover() -> ArkworksProver {
+    // Use cached keys for accurate performance measurement
+    // This pre-generates keys once (~15-18 seconds) so we can measure
+    // the true proving time (~1-2 seconds) without key generation overhead
+    ArkworksProver::with_cached_keys()
+        .expect("Failed to generate cached keys for benchmark")
+}
+
 fn bench_proof_generation(c: &mut Criterion) {
     let backend_name = if cfg!(feature = "risc0") {
         "risc0"
     } else if cfg!(feature = "stub") {
         "stub"
+    } else if cfg!(feature = "arkworks") {
+        "arkworks"
     } else {
         "unknown"
     };
@@ -197,6 +208,8 @@ fn bench_proof_verification(c: &mut Criterion) {
         "risc0"
     } else if cfg!(feature = "stub") {
         "stub"
+    } else if cfg!(feature = "arkworks") {
+        "arkworks"
     } else {
         "unknown"
     };
@@ -234,6 +247,8 @@ fn bench_proof_size(c: &mut Criterion) {
         "risc0"
     } else if cfg!(feature = "stub") {
         "stub"
+    } else if cfg!(feature = "arkworks") {
+        "arkworks"
     } else {
         "unknown"
     };

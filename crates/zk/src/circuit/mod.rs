@@ -179,16 +179,58 @@ impl StateTransition {
 }
 
 /// Arkworks circuit prover using Groth16 (Phase 2+).
+#[cfg(feature = "arkworks")]
+#[derive(Debug, Clone)]
+pub struct ArkworksProver {
+    /// Cached Groth16 keys (optional - generates on first use if not provided)
+    cached_keys: Option<groth16::Groth16Keys>,
+}
+
+#[cfg(not(feature = "arkworks"))]
 #[derive(Debug, Clone, Default)]
 pub struct ArkworksProver;
 
+#[cfg(feature = "arkworks")]
+impl ArkworksProver {
+    /// Create a new prover without cached keys.
+    /// Keys will be generated on each proof (slower, but simple).
+    pub fn new() -> Self {
+        tracing::info!("ArkworksProver initialized with GameTransitionCircuit (no key caching)");
+        Self { cached_keys: None }
+    }
+
+    /// Create a new prover with pre-generated cached keys.
+    /// This performs the expensive trusted setup once during initialization.
+    /// Recommended for benchmarks and production use.
+    ///
+    /// # Performance
+    /// - Key generation: ~15-18 seconds (one-time cost)
+    /// - Subsequent proofs: ~1-2 seconds each
+    pub fn with_cached_keys() -> Result<Self, ProofError> {
+        use ark_std::test_rng;
+
+        tracing::info!("ArkworksProver: Pre-generating Groth16 keys (this may take 15-20 seconds)...");
+
+        let mut rng = test_rng();
+        let dummy_circuit = game_transition::GameTransitionCircuit::dummy();
+        let keys = groth16::Groth16Keys::generate(dummy_circuit, &mut rng)?;
+
+        tracing::info!("ArkworksProver: Keys cached successfully");
+
+        Ok(Self {
+            cached_keys: Some(keys),
+        })
+    }
+}
+
+#[cfg(not(feature = "arkworks"))]
 impl ArkworksProver {
     pub fn new() -> Self {
-        tracing::info!("ArkworksProver initialized with GameTransitionCircuit");
         Self
     }
 
     /// Legacy method for StateDelta-based proving (will be used in Phase 2).
+    #[allow(dead_code)]
     pub fn prove_delta(
         &self,
         _delta: &StateDelta,
@@ -279,9 +321,13 @@ impl crate::Prover for ArkworksProver {
         // Generate StateDelta
         let delta = game_core::StateDelta::from_states(action.clone(), before_state, after_state);
 
-        // Compute state roots
-        let before_root = merkle::compute_state_root(before_state)?;
-        let after_root = merkle::compute_state_root(after_state)?;
+        // Compute entity tree roots (simplified for MVP - no turn state in circuit yet)
+        // TODO Phase 2: Include turn state in circuit constraints
+        let mut before_entity_tree = merkle::build_entity_tree(before_state)?;
+        let before_root = before_entity_tree.root()?;
+
+        let mut after_entity_tree = merkle::build_entity_tree(after_state)?;
+        let after_root = after_entity_tree.root()?;
 
         // Generate witnesses
         let witnesses = witness::generate_witnesses(&delta, before_state, after_state)?;
@@ -298,12 +344,28 @@ impl crate::Prover for ArkworksProver {
             position_delta,
         );
 
-        // Generate proving keys (in production, these would be cached or loaded)
+        // Use cached keys if available, otherwise generate them (slower path)
         let mut rng = test_rng();
-        let dummy_circuit = game_transition::GameTransitionCircuit::dummy();
-        let keys = groth16::Groth16Keys::generate(dummy_circuit, &mut rng)?;
 
-        // Generate Groth16 proof
+        #[cfg(feature = "arkworks")]
+        let keys = if let Some(ref cached) = self.cached_keys {
+            // Fast path: use pre-generated keys (~0ms overhead)
+            tracing::debug!("Using cached Groth16 keys");
+            cached.clone()
+        } else {
+            // Slow path: generate keys on-demand (~15-18 seconds)
+            tracing::warn!("Generating Groth16 keys on-demand (slow - consider using with_cached_keys())");
+            let dummy_circuit = game_transition::GameTransitionCircuit::dummy();
+            groth16::Groth16Keys::generate(dummy_circuit, &mut rng)?
+        };
+
+        #[cfg(not(feature = "arkworks"))]
+        let keys = {
+            let dummy_circuit = game_transition::GameTransitionCircuit::dummy();
+            groth16::Groth16Keys::generate(dummy_circuit, &mut rng)?
+        };
+
+        // Generate Groth16 proof (~1-2 seconds with cached keys)
         let proof = groth16::prove(circuit, &keys, &mut rng)?;
 
         // Serialize proof

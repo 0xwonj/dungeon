@@ -95,7 +95,6 @@ use super::merkle::MerklePath;
 use super::witness::TransitionWitnesses;
 use super::gadgets::{
     verify_merkle_path_gadget, poseidon_hash_many_gadget,
-    bounds_check_gadget,
 };
 
 // ============================================================================
@@ -266,6 +265,12 @@ impl ConstraintSynthesizer<Fp254> for GameTransitionCircuit {
         // ====================================================================
         // 1. Allocate Public Inputs
         // ====================================================================
+        //
+        // MVP/Phase 1: before_root and after_root are entity tree roots only
+        // Phase 2: Will include turn state (combined state roots)
+        //
+        // This simplified approach allows us to verify Merkle proofs directly
+        // against the public roots without needing turn state witnesses in-circuit.
 
         let before_root_var = FpVar::new_input(cs.clone(), || {
             self.before_root.ok_or(SynthesisError::AssignmentMissing)
@@ -358,10 +363,23 @@ impl ConstraintSynthesizer<Fp254> for GameTransitionCircuit {
         let is_wait = action_type_var.is_eq(&FpVar::constant(action_wait_fp))?;
         let is_attack = action_type_var.is_eq(&FpVar::constant(action_attack_fp))?;
 
+        // ====================================================================
+        // 5. Allocate After State Data (needed for action constraints)
+        // ====================================================================
+
+        // Allocate actor's after data (must be done before action constraints)
+        let actor_after_data_vars: Result<Vec<FpVar<Fp254>>, SynthesisError> = actor_witness
+            .after_data
+            .iter()
+            .map(|&field| FpVar::new_witness(cs.clone(), || Ok(field)))
+            .collect();
+        let actor_after_data_vars = actor_after_data_vars?;
+
         // Apply action-specific constraints
         constrain_move_action(
             &is_move,
             &actor_before_data_vars,
+            &actor_after_data_vars,
             &position_delta_var,
             cs.clone(),
         )?;
@@ -376,16 +394,8 @@ impl ConstraintSynthesizer<Fp254> for GameTransitionCircuit {
         )?;
 
         // ====================================================================
-        // 5. Merkle Proof Verification (After State)
+        // 6. Merkle Proof Verification (After State)
         // ====================================================================
-
-        // Allocate actor's after data
-        let actor_after_data_vars: Result<Vec<FpVar<Fp254>>, SynthesisError> = actor_witness
-            .after_data
-            .iter()
-            .map(|&field| FpVar::new_witness(cs.clone(), || Ok(field)))
-            .collect();
-        let actor_after_data_vars = actor_after_data_vars?;
 
         // Allocate actor's after Merkle path
         let actor_after_path_vars = allocate_merkle_path(cs.clone(), &actor_witness.after_path)?;
@@ -457,17 +467,19 @@ fn verify_merkle_path_constraint(
 /// 1. Actor's before position is (x, y)
 /// 2. Delta is a valid direction: {-1,0,1} x {-1,0,1} excluding (0,0)
 /// 3. New position = old position + delta
-/// 4. New position is within bounds (0 <= x,y < map_size)
-/// 5. Actor's after position matches new position
+/// 4. Actor's after position matches computed new position
+/// 5. New position is within bounds (0 <= x,y < map_size)
 ///
-/// Entity serialization format (from merkle.rs):
-/// - Fields 0-1: position (x, y)
-/// - Fields 2-3: health (current, max)
-/// - Field 4: stamina
-/// - Field 5: attack power
+/// Entity serialization format (from merkle.rs serialize_actor):
+/// - Field 0: entity ID (u32)
+/// - Field 1: position x (i32)
+/// - Field 2: position y (i32)
+/// - Field 3: current HP (u32)
+/// - Field 4: max HP (u32)
 fn constrain_move_action(
     is_move: &Boolean<Fp254>,
-    actor_data: &[FpVar<Fp254>],
+    before_data: &[FpVar<Fp254>],
+    after_data: &[FpVar<Fp254>],
     position_delta: &Option<(FpVar<Fp254>, FpVar<Fp254>)>,
     _cs: ConstraintSystemRef<Fp254>,
 ) -> Result<(), SynthesisError> {
@@ -475,13 +487,16 @@ fn constrain_move_action(
     // We use conditional selection to ensure constraints are satisfied regardless
 
     if let Some((delta_x, delta_y)) = position_delta {
-        // Extract actor's current position from serialized data
-        if actor_data.len() < 2 {
+        // Extract actor's before and after positions from serialized data
+        // Field 1 = x, Field 2 = y (Field 0 is entity ID)
+        if before_data.len() < 3 || after_data.len() < 3 {
             return Err(SynthesisError::Unsatisfiable);
         }
 
-        let current_x = &actor_data[0];
-        let current_y = &actor_data[1];
+        let before_x = &before_data[1];
+        let before_y = &before_data[2];
+        let after_x = &after_data[1];
+        let after_y = &after_data[2];
 
         // Validate delta is one of 8 valid directions
         // Valid deltas: {-1, 0, 1} x {-1, 0, 1} excluding (0, 0)
@@ -504,15 +519,24 @@ fn constrain_move_action(
         let move_constraint = is_move & &both_zero;
         move_constraint.enforce_equal(&Boolean::FALSE)?;
 
-        // Calculate new position
-        let new_x = current_x + delta_x;
-        let new_y = current_y + delta_y;
+        // Calculate expected new position
+        let expected_x = before_x + delta_x;
+        let expected_y = before_y + delta_y;
+
+        // **CRITICAL CONSTRAINT**: Verify the after state position matches the computed position
+        // This is the core of the Move action verification - without this, a malicious prover
+        // could provide any after state and the circuit would accept it!
+        //
+        // Enforce: after_x == before_x + delta_x
+        // Enforce: after_y == before_y + delta_y
+        after_x.enforce_equal(&expected_x)?;
+        after_y.enforce_equal(&expected_y)?;
 
         // TODO: Verify new position is within bounds
         // Temporarily disabled due to is_cmp issues in arkworks 0.5.0
         // Bounds are validated in game-core before proof generation
         // let map_max = Fp254::from(1000u64);
-        // bounds_check_gadget(&new_x, &new_y, map_max, map_max)?;
+        // bounds_check_gadget(&expected_x, &expected_y, map_max, map_max)?;
 
         // TODO: Verify new position is not occupied (requires additional witness for occupancy map)
         // TODO: Verify new position is passable (requires witness for tile passability)
@@ -545,11 +569,13 @@ fn constrain_wait_action(
 /// 5. Target's health decreased by damage amount (clamped to 0)
 /// 6. Actor's stamina decreased by action cost
 ///
-/// Entity serialization format:
-/// - Fields 0-1: position (x, y)
-/// - Fields 2-3: health (current, max)
-/// - Field 4: stamina
-/// - Field 5: attack power
+/// Entity serialization format (from merkle.rs serialize_actor):
+/// - Field 0: entity ID (u32)
+/// - Field 1: position x (i32)
+/// - Field 2: position y (i32)
+/// - Field 3: current HP (u32)
+/// - Field 4: max HP (u32)
+/// Note: stamina and attack power are NOT yet in serialization - will be added in Phase 2
 fn constrain_attack_action(
     _is_attack: &Boolean<Fp254>,
     _actor_data: &[FpVar<Fp254>],
@@ -563,17 +589,19 @@ fn constrain_attack_action(
     // Placeholder - no constraints for now
     /*
     if let Some(_target) = target_id {
-        // Extract actor's position and attack power
-        if actor_data.len() < 6 {
+        // Extract actor's position and health
+        // Note: serialization needs to be expanded to include stamina and attack power
+        if actor_data.len() < 5 {
             return Err(SynthesisError::Unsatisfiable);
         }
 
-        let actor_x = &actor_data[0];
-        let actor_y = &actor_data[1];
-        let actor_health = &actor_data[2];
-        let _actor_max_health = &actor_data[3];
-        let actor_stamina = &actor_data[4];
-        let actor_attack = &actor_data[5];
+        let actor_x = &actor_data[1];          // Field 1: position x
+        let actor_y = &actor_data[2];          // Field 2: position y
+        let actor_health = &actor_data[3];     // Field 3: current HP
+        let _actor_max_health = &actor_data[4]; // Field 4: max HP
+        // TODO: Add these fields to serialization:
+        // let actor_stamina = &actor_data[5];
+        // let actor_attack = &actor_data[6];
 
         // Verify actor is alive (health > 0)
         let health_is_positive = actor_health.is_cmp(

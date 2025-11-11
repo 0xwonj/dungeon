@@ -52,9 +52,10 @@ impl SparseMerkleTree {
             return Ok(());
         }
 
+        // Level 0 uses leaves directly (they're already hashed by build_entity_tree)
         let mut current_level = BTreeMap::new();
         for (&index, &value) in &self.leaves {
-            current_level.insert(index, hash_one(value)?);
+            current_level.insert(index, value);
         }
         self.tree_cache.insert(0, current_level.clone());
 
@@ -147,7 +148,9 @@ impl SparseMerkleTree {
             ));
         }
 
-        let mut current = hash_one(leaf)?;
+        // Leaf is already hashed (by build_entity_tree using hash_many)
+        // Don't hash again - just use it directly
+        let mut current = leaf;
         for (sibling, &is_right) in path.siblings.iter().zip(&path.path_bits) {
             current = if is_right {
                 hash_two(*sibling, current)?
@@ -177,17 +180,25 @@ pub fn hash_many(inputs: &[Fp254]) -> Result<Fp254, ProofError> {
         return Ok(Fp254::from(0u64));
     }
 
-    if inputs.len() == 1 {
-        return hash_one(inputs[0]);
+    // Use Poseidon sponge to hash multiple inputs (same as circuit)
+    use super::commitment::get_poseidon_config;
+    use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
+
+    let config = get_poseidon_config();
+    let mut sponge = PoseidonSponge::<Fp254>::new(&config);
+
+    // Absorb all inputs
+    for &input in inputs {
+        let input_vec = vec![input];
+        sponge.absorb(&input_vec.as_slice());
     }
 
-    // Combine multiple inputs by repeatedly hashing pairs
-    let mut result = inputs[0];
-    for &input in &inputs[1..] {
-        result = hash_two(result, input)?;
-    }
+    // Squeeze output
+    let result = sponge.squeeze_field_elements::<Fp254>(1);
 
-    Ok(result)
+    result.first()
+        .copied()
+        .ok_or_else(|| ProofError::CircuitProofError("Poseidon squeeze failed".to_string()))
 }
 
 #[cfg(feature = "arkworks")]
