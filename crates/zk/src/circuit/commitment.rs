@@ -25,7 +25,7 @@ use crate::ProofError;
 /// - Alpha (S-box): 5
 /// - Rate: 2
 /// - Capacity: 1
-fn get_poseidon_config() -> PoseidonConfig<Fp254> {
+pub fn get_poseidon_config() -> PoseidonConfig<Fp254> {
     // Standard Poseidon parameters for 128-bit security on BN254
     let full_rounds_u64 = 8u64;
     let partial_rounds_u64 = 57u64;

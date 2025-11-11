@@ -1,0 +1,24 @@
+[package]
+name = "game-verifier-sp1"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+# This is necessary to prevent the guest from being built with workspace settings
+
+[dependencies]
+sp1-zkvm = { version = "5.2", default-features = false }
+game-core = { path = "../../../game/core", features = ["serde", "zkvm"] }
+serde = { version = "1.0", default-features = false, features = [
+    "derive",
+    "alloc",
+] }
+
+[profile.dev]
+opt-level = 3
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+

@@ -112,15 +112,36 @@ impl StateTransition {
     ///
     /// See: docs/state-delta-architecture.md Section 5.4
     pub fn from_delta(
-        _delta: StateDelta,
-        _before_state: &GameState,
-        _after_state: &GameState,
+        delta: StateDelta,
+        before_state: &GameState,
+        after_state: &GameState,
     ) -> Result<Self, ProofError> {
-        // Phase 2: Implement Poseidon-based Merkle tree building and witness generation
-        // For now, this is a placeholder for future StateDelta-based witness generation
-        Err(ProofError::CircuitProofError(
-            "StateDelta-based witness generation not yet implemented - use StateTransition::new()".to_string(),
-        ))
+        // Compute Merkle roots for before and after states
+        let before_root = merkle::compute_state_root(before_state)?;
+        let _after_root = merkle::compute_state_root(after_state)?;
+
+        // Generate witnesses for all changed entities
+        let _witnesses = witness::generate_witnesses(&delta, before_state, after_state)?;
+
+        // For hello world compatibility, use a simple transition
+        // TODO: Phase 3 will use full GameTransitionCircuit with all witnesses
+        let mut before_tree = merkle::build_entity_tree(before_state)?;
+
+        // Get first actor's leaf for demonstration
+        let first_actor = before_state.entities.actors.first()
+            .ok_or_else(|| ProofError::StateInconsistency("No actors in state".to_string()))?;
+        let leaf_index = first_actor.id.0;
+        let leaf_data = merkle::serialize_actor(first_actor);
+        let leaf_hash = merkle::hash_many(&leaf_data)?;
+
+        // Generate proof for this leaf
+        let path = before_tree.prove(leaf_index)?;
+
+        Ok(Self {
+            root: before_root,
+            leaf: leaf_hash,
+            path,
+        })
     }
 
     /// Generate a Groth16 proof from this transition.
@@ -260,3 +281,15 @@ pub mod constraints;
 ///
 /// Proving key generation, proof creation, and verification.
 pub mod groth16;
+
+#[cfg(feature = "arkworks")]
+/// Game transition circuit - main ZK circuit for proving game actions.
+///
+/// Complete circuit implementation with action-specific constraints.
+pub mod game_transition;
+
+#[cfg(feature = "arkworks")]
+/// R1CS gadgets for state verification.
+///
+/// Reusable constraint gadgets for Poseidon hashing, Merkle proofs, and validations.
+pub mod gadgets;

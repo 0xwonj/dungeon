@@ -17,6 +17,8 @@ use std::collections::BTreeMap;
 pub struct MerklePath {
     pub siblings: Vec<Fp254>,
     pub path_bits: Vec<bool>,
+    // Alias for backward compatibility
+    pub directions: Vec<bool>,
 }
 
 #[cfg(feature = "arkworks")]
@@ -129,6 +131,7 @@ impl SparseMerkleTree {
 
         Ok(MerklePath {
             siblings,
+            directions: path_bits.clone(),
             path_bits,
         })
     }
