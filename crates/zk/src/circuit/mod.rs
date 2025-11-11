@@ -179,18 +179,13 @@ impl StateTransition {
 }
 
 /// Arkworks circuit prover using Groth16 (Phase 2+).
-#[derive(Debug, Clone)]
-pub struct ArkworksProver {
-    #[allow(dead_code)]
-    oracle_snapshot: crate::OracleSnapshot,
-}
+#[derive(Debug, Clone, Default)]
+pub struct ArkworksProver;
 
 impl ArkworksProver {
-    pub fn new(oracle_snapshot: crate::OracleSnapshot) -> Self {
-        tracing::warn!(
-            "ArkworksProver is a stub implementation - proofs have no cryptographic guarantees"
-        );
-        Self { oracle_snapshot }
+    pub fn new() -> Self {
+        tracing::info!("ArkworksProver initialized with GameTransitionCircuit");
+        Self
     }
 
     /// Legacy method for StateDelta-based proving (will be used in Phase 2).
