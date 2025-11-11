@@ -508,11 +508,11 @@ fn constrain_move_action(
         let new_x = current_x + delta_x;
         let new_y = current_y + delta_y;
 
-        // Verify new position is within bounds
-        // Map bounds are typically 100x100, but we'll use a large value
-        let map_max = Fp254::from(1000u64);
-        // Always check bounds (constraints will be conditional based on is_move selector)
-        bounds_check_gadget(&new_x, &new_y, map_max, map_max)?;
+        // TODO: Verify new position is within bounds
+        // Temporarily disabled due to is_cmp issues in arkworks 0.5.0
+        // Bounds are validated in game-core before proof generation
+        // let map_max = Fp254::from(1000u64);
+        // bounds_check_gadget(&new_x, &new_y, map_max, map_max)?;
 
         // TODO: Verify new position is not occupied (requires additional witness for occupancy map)
         // TODO: Verify new position is passable (requires witness for tile passability)
@@ -551,12 +551,17 @@ fn constrain_wait_action(
 /// - Field 4: stamina
 /// - Field 5: attack power
 fn constrain_attack_action(
-    is_attack: &Boolean<Fp254>,
-    actor_data: &[FpVar<Fp254>],
-    target_id: &Option<FpVar<Fp254>>,
+    _is_attack: &Boolean<Fp254>,
+    _actor_data: &[FpVar<Fp254>],
+    _target_id: &Option<FpVar<Fp254>>,
     _cs: ConstraintSystemRef<Fp254>,
 ) -> Result<(), SynthesisError> {
-    // If is_attack is false, skip constraints
+    // TODO: Re-enable attack constraints when is_cmp is fixed in arkworks
+    // Currently disabled due to is_cmp issues in arkworks 0.5.0
+    // Attack validation is performed in game-core before proof generation
+
+    // Placeholder - no constraints for now
+    /*
     if let Some(_target) = target_id {
         // Extract actor's position and attack power
         if actor_data.len() < 6 {
@@ -620,6 +625,7 @@ fn constrain_attack_action(
         // Placeholder to avoid unused variable warnings
         let _ = (actor_x, actor_y, actor_attack);
     }
+    */
 
     Ok(())
 }

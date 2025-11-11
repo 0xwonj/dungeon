@@ -110,7 +110,7 @@ ark-ec = { workspace = true, optional = true }
 ark-bn254 = { workspace = true, optional = true }
 ark-groth16 = { workspace = true, optional = true }
 ark-relations = { workspace = true, optional = true }
-ark-crypto-primitives = { workspace = true, optional = true, features = ["crh", "sponge"] }
+ark-crypto-primitives = { workspace = true, optional = true, features = ["crh", "sponge", "r1cs"] }
 ark-serialize = { workspace = true, optional = true }
 ark-std = { workspace = true, optional = true }
 ark-r1cs-std = { workspace = true, optional = true }

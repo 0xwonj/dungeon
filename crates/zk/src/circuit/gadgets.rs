@@ -15,9 +15,8 @@ use ark_r1cs_std::boolean::Boolean;
 use ark_r1cs_std::eq::EqGadget;
 use ark_r1cs_std::select::CondSelectGadget;
 use ark_r1cs_std::R1CSVar;
-use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
-use ark_crypto_primitives::sponge::CryptographicSponge;
-use ark_r1cs_std::alloc::AllocVar;
+use ark_crypto_primitives::sponge::poseidon::constraints::PoseidonSpongeVar;
+use ark_crypto_primitives::sponge::constraints::CryptographicSpongeVar;
 
 use super::commitment::get_poseidon_config;
 
@@ -29,57 +28,45 @@ use super::commitment::get_poseidon_config;
 ///
 /// This is the R1CS constraint version of `commitment::hash_one()`.
 /// Uses the same parameters to ensure consistency between native and circuit hashing.
+/// Adds proper R1CS constraints for the Poseidon permutation.
 pub fn poseidon_hash_one_gadget(
     input: &FpVar<Fp254>,
 ) -> Result<FpVar<Fp254>, SynthesisError> {
     let params = get_poseidon_config();
-    let mut sponge = PoseidonSponge::new(&params);
+    let mut sponge = PoseidonSpongeVar::new(input.cs(), &params);
 
-    // Absorb input
-    let input_value = input.value()?;
-    sponge.absorb(&vec![input_value]);
+    // Absorb input (adds R1CS constraints for Poseidon S-boxes and MDS matrix)
+    sponge.absorb(input)?;
 
-    // Squeeze output
-    let output_value = sponge.squeeze_field_elements::<Fp254>(1)[0];
+    // Squeeze output (adds constraints for final permutation)
+    let output = sponge.squeeze_field_elements(1)?;
 
-    // Create output variable (witness)
-    let output_var = FpVar::new_witness(input.cs(), || Ok(output_value))?;
-
-    // TODO: Add R1CS constraints for Poseidon permutation
-    // This requires implementing the full Poseidon gadget with S-boxes and MDS matrix
-    // For now, we trust the witness value (insecure for production)
-
-    Ok(output_var)
+    Ok(output[0].clone())
 }
 
 /// Compute Poseidon hash of two field elements (circuit version).
 ///
 /// This is the R1CS constraint version of `commitment::hash_two()`.
+/// Adds proper R1CS constraints for the Poseidon permutation.
 pub fn poseidon_hash_two_gadget(
     left: &FpVar<Fp254>,
     right: &FpVar<Fp254>,
 ) -> Result<FpVar<Fp254>, SynthesisError> {
     let params = get_poseidon_config();
-    let mut sponge = PoseidonSponge::new(&params);
+    let mut sponge = PoseidonSpongeVar::new(left.cs(), &params);
 
-    // Absorb inputs
-    let left_value = left.value()?;
-    let right_value = right.value()?;
-    sponge.absorb(&vec![left_value, right_value]);
+    // Absorb both inputs (adds R1CS constraints)
+    sponge.absorb(left)?;
+    sponge.absorb(right)?;
 
-    // Squeeze output
-    let output_value = sponge.squeeze_field_elements::<Fp254>(1)[0];
+    // Squeeze output (adds constraints for final permutation)
+    let output = sponge.squeeze_field_elements(1)?;
 
-    // Create output variable (witness)
-    let output_var = FpVar::new_witness(left.cs(), || Ok(output_value))?;
-
-    // TODO: Add R1CS constraints for Poseidon permutation
-    // This is critical for security but complex to implement
-
-    Ok(output_var)
+    Ok(output[0].clone())
 }
 
 /// Compute Poseidon hash of a variable-length input (circuit version).
+/// Adds proper R1CS constraints for the Poseidon permutation.
 pub fn poseidon_hash_many_gadget(
     inputs: &[FpVar<Fp254>],
 ) -> Result<FpVar<Fp254>, SynthesisError> {
@@ -88,25 +75,17 @@ pub fn poseidon_hash_many_gadget(
     }
 
     let params = get_poseidon_config();
-    let mut sponge = PoseidonSponge::new(&params);
+    let mut sponge = PoseidonSpongeVar::new(inputs[0].cs(), &params);
 
-    // Collect all input values
-    let input_values: Result<Vec<Fp254>, SynthesisError> =
-        inputs.iter().map(|input| input.value()).collect();
-    let input_values = input_values?;
+    // Absorb all inputs (adds R1CS constraints for each absorption)
+    for input in inputs {
+        sponge.absorb(input)?;
+    }
 
-    // Absorb all inputs
-    sponge.absorb(&input_values);
+    // Squeeze output (adds constraints for final permutation)
+    let output = sponge.squeeze_field_elements(1)?;
 
-    // Squeeze output
-    let output_value = sponge.squeeze_field_elements::<Fp254>(1)[0];
-
-    // Create output variable (witness)
-    let output_var = FpVar::new_witness(inputs[0].cs(), || Ok(output_value))?;
-
-    // TODO: Add R1CS constraints for Poseidon permutation
-
-    Ok(output_var)
+    Ok(output[0].clone())
 }
 
 // ============================================================================
@@ -357,6 +336,7 @@ pub fn clamp_gadget(
 mod tests {
     use super::*;
     use ark_relations::r1cs::ConstraintSystem;
+    use ark_r1cs_std::alloc::AllocVar;
 
     #[test]
     #[ignore] // FIXME: is_cmp has issues with arkworks 0.5.0 - use bounds_check_gadget instead
