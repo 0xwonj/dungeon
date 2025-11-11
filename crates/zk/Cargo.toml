@@ -117,6 +117,7 @@ ark-r1cs-std = { workspace = true, optional = true }
 
 [dev-dependencies]
 bounded-vector = { workspace = true }
+criterion = { version = "0.5", features = ["html_reports"] }
 
 # NOTE: Unused backend dependencies are intentionally omitted
 # Add these when implementing SP1 backend:
@@ -124,3 +125,8 @@ bounded-vector = { workspace = true }
 
 [package.metadata.risc0]
 methods = ["methods/guest"]
+
+[[bench]]
+name = "arkworks_benchmarks"
+harness = false
+required-features = ["arkworks"]

@@ -20,13 +20,13 @@ fn create_test_state() -> GameState {
 
     // Create default core stats for testing
     let default_stats = CoreStats {
-        max_health: 100,
-        strength: 10,
-        dexterity: 10,
-        intelligence: 10,
-        vitality: 10,
-        armor: 5,
-        evasion: 10,
+        str: 10,
+        con: 10,
+        dex: 10,
+        int: 10,
+        wil: 10,
+        ego: 10,
+        level: 1,
     };
 
     // Add player actor at (5, 5)
@@ -36,7 +36,7 @@ fn create_test_state() -> GameState {
         default_stats.clone(),
         InventoryState::empty(),
     );
-    entities.actors.push(player);
+    let _ = entities.actors.push(player);
 
     // Add enemy actor at (6, 6)
     let enemy = ActorState::new(
@@ -45,13 +45,17 @@ fn create_test_state() -> GameState {
         default_stats,
         InventoryState::empty(),
     );
-    entities.actors.push(enemy);
+    let _ = entities.actors.push(enemy);
+
+    let mut active_actors = std::collections::BTreeSet::new();
+    active_actors.insert(EntityId::PLAYER);
+    active_actors.insert(EntityId(1));
 
     let turn = TurnState {
         current_actor: EntityId::PLAYER,
         clock: 0,
         nonce: 0,
-        active_entities: vec![EntityId::PLAYER, EntityId(1)],
+        active_actors,
     };
 
     GameState::with_seed(12345, turn, entities, WorldState::default())
@@ -137,7 +141,7 @@ fn test_game_transition_circuit_construction() {
     let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
 
     // Create circuit
-    let circuit = GameTransitionCircuit::new(
+    let _circuit = GameTransitionCircuit::new(
         before_root,
         after_root,
         ActionType::Move.to_field(),
@@ -159,7 +163,12 @@ fn test_move_action_full_proof() {
     let mut after_state = before_state.clone();
     after_state.entities.actors[0].position = Position::new(5, 6);
 
-    let delta = game_core::StateDelta::from_states(&before_state, &after_state);
+    let move_action = Action::Character(CharacterAction {
+        actor: EntityId::PLAYER,
+        kind: ActionKind::Move,
+        input: ActionInput::Direction(CardinalDirection::North),
+    });
+    let delta = game_core::StateDelta::from_states(move_action, &before_state, &after_state);
     let before_root = merkle::compute_state_root(&before_state).unwrap();
     let after_root = merkle::compute_state_root(&after_state).unwrap();
     let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
@@ -177,7 +186,8 @@ fn test_move_action_full_proof() {
 
     // Generate proving and verifying keys
     let mut rng = test_rng();
-    let keys_result = groth16::Groth16Keys::generate(&mut rng);
+    let dummy_circuit = GameTransitionCircuit::dummy();
+    let keys_result = groth16::Groth16Keys::generate(dummy_circuit, &mut rng);
 
     if let Ok(keys) = keys_result {
         // Generate proof

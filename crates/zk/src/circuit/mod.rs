@@ -155,7 +155,8 @@ impl StateTransition {
         let mut rng = test_rng();
 
         // Generate keys for this circuit
-        let keys = groth16::Groth16Keys::generate(&mut rng)?;
+        let dummy_circuit = constraints::HelloWorldCircuit::dummy();
+        let keys = groth16::Groth16Keys::generate(dummy_circuit, &mut rng)?;
 
         // Create circuit with witness
         let circuit = constraints::HelloWorldCircuit::new(

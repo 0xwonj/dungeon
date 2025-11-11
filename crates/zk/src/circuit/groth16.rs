@@ -9,6 +9,8 @@ use ark_bn254::{Bn254, Fr as Fp254};
 #[cfg(feature = "arkworks")]
 use ark_groth16::{Groth16, Proof, ProvingKey, VerifyingKey};
 #[cfg(feature = "arkworks")]
+use ark_relations::r1cs::ConstraintSynthesizer;
+#[cfg(feature = "arkworks")]
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 #[cfg(feature = "arkworks")]
 use ark_std::rand::RngCore;
@@ -39,10 +41,13 @@ impl Groth16Keys {
     /// computation ceremony or universal setup.
     ///
     /// # Arguments
+    /// * `circuit` - The circuit to generate keys for (should be a dummy/template instance)
     /// * `rng` - Random number generator for the setup
-    pub fn generate<R: RngCore>(rng: &mut R) -> Result<Self, ProofError> {
-        let circuit = HelloWorldCircuit::dummy();
-
+    pub fn generate<C, R>(circuit: C, rng: &mut R) -> Result<Self, ProofError>
+    where
+        C: ConstraintSynthesizer<Fp254>,
+        R: RngCore,
+    {
         // Use Groth16::generate_random_parameters_with_reduction for key generation
         let params = Groth16::<Bn254>::generate_random_parameters_with_reduction(circuit, rng)
             .map_err(|e| {
@@ -142,11 +147,15 @@ impl Groth16Keys {
 ///
 /// # Returns
 /// A Groth16 proof that can be verified
-pub fn prove<R: RngCore>(
-    circuit: HelloWorldCircuit,
+pub fn prove<C, R>(
+    circuit: C,
     keys: &Groth16Keys,
     rng: &mut R,
-) -> Result<Proof<Bn254>, ProofError> {
+) -> Result<Proof<Bn254>, ProofError>
+where
+    C: ConstraintSynthesizer<Fp254>,
+    R: RngCore,
+{
     Groth16::<Bn254>::create_random_proof_with_reduction(circuit, &keys.proving_key, rng)
         .map_err(|e| ProofError::CircuitProofError(format!("Groth16 proving failed: {:?}", e)))
 }
