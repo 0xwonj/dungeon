@@ -122,8 +122,7 @@ impl ViewModelUpdater {
     /// # Arguments
     ///
     /// * `view_model` - The ViewModel to update (mutated in place)
-    /// * `event` - The Event from runtime
-    /// * `state` - The current GameState (fallback for full rebuild)
+    /// * `event` - The Event from runtime (contains GameState for state changes)
     /// * `map_oracle` - Map oracle for terrain data
     ///
     /// # Returns
@@ -132,12 +131,11 @@ impl ViewModelUpdater {
     pub fn update<M: MapOracle + ?Sized>(
         view_model: &mut ViewModel,
         event: &Event,
-        state: &GameState,
         map_oracle: &M,
     ) -> UpdateScope {
         match event {
             Event::GameState(game_event) => {
-                Self::update_from_game_event(view_model, game_event, state, map_oracle)
+                Self::update_from_game_event(view_model, game_event, map_oracle)
             }
             Event::Proof(_) => {
                 // Proof events don't affect ViewModel
@@ -151,21 +149,22 @@ impl ViewModelUpdater {
     }
 
     /// Handle GameStateEvent updates with delta-based optimization.
+    ///
+    /// Extracts the current GameState from the event itself (after_state for ActionExecuted).
     fn update_from_game_event<M: MapOracle + ?Sized>(
         view_model: &mut ViewModel,
         event: &GameStateEvent,
-        state: &GameState,
         map_oracle: &M,
     ) -> UpdateScope {
         match event {
-            GameStateEvent::ActionExecuted { delta, .. } => {
-                Self::apply_delta(view_model, delta, state, map_oracle)
-            }
+            GameStateEvent::ActionExecuted {
+                delta, after_state, ..
+            } => Self::apply_delta(view_model, delta, after_state, map_oracle),
 
             GameStateEvent::ActionFailed { .. } => {
-                // Action failed - usually no state change, but refresh turn info
-                view_model.turn.update_from_state(state);
-                UpdateScope::TURN
+                // Action failed - no state change occurred
+                // No need to update ViewModel since state didn't change
+                UpdateScope::empty()
             }
         }
     }

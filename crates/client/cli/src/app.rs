@@ -106,7 +106,6 @@ impl CliApp {
             CliEventConsumer::new(messages, client_config.messages.effect_visibility.clone());
 
         let event_loop = EventLoop::new(
-            handle.clone(),
             subscriptions,
             tx_action,
             initial_state.entities.player().id,

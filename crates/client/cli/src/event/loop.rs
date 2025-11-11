@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use game_core::{Action, EntityId, GameState};
-use runtime::{Event as RuntimeEvent, RuntimeHandle, Topic};
+use runtime::{Event as RuntimeEvent, Topic};
 use tokio::{
     sync::{broadcast, broadcast::error::RecvError, mpsc},
     time::{self, Duration},
@@ -36,7 +36,6 @@ pub struct EventLoop<C>
 where
     C: EventConsumer,
 {
-    pub(crate) handle: RuntimeHandle,
     pub(crate) subscriptions: HashMap<Topic, broadcast::Receiver<RuntimeEvent>>,
     pub(crate) tx_action: mpsc::Sender<Action>,
     pub(crate) input: InputHandler,
@@ -58,7 +57,6 @@ where
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        handle: RuntimeHandle,
         subscriptions: HashMap<Topic, broadcast::Receiver<RuntimeEvent>>,
         tx_action: mpsc::Sender<Action>,
         player_entity: EntityId,
@@ -71,7 +69,6 @@ where
         let view_model = ViewModel::from_initial_state(initial_state, oracles.map.as_ref());
 
         Self {
-            handle,
             subscriptions,
             tx_action,
             input: InputHandler::new(player_entity),
@@ -129,11 +126,9 @@ where
 
                 // Update ViewModel incrementally using ViewModelUpdater service
                 if impact.requires_redraw {
-                    let state = self.handle.query_state().await?;
                     let scope = ViewModelUpdater::update(
                         &mut self.view_model,
                         &event,
-                        &state,
                         self.oracles.map.as_ref(),
                     );
 
