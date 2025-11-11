@@ -16,9 +16,6 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::RngCore;
 
 #[cfg(feature = "arkworks")]
-use super::constraints::HelloWorldCircuit;
-
-#[cfg(feature = "arkworks")]
 /// Groth16 proving and verifying keys
 ///
 /// Contains the cryptographic keys needed for proof generation and verification.

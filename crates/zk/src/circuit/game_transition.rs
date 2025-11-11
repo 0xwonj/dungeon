@@ -89,8 +89,7 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisE
 use ark_r1cs_std::fields::{fp::FpVar, FieldVar};
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::eq::EqGadget;
-use ark_r1cs_std::boolean::{Boolean, AllocatedBool};
-use ark_r1cs_std::R1CSVar;
+use ark_r1cs_std::boolean::Boolean;
 
 use super::merkle::MerklePath;
 use super::witness::TransitionWitnesses;
@@ -123,7 +122,7 @@ impl ActionType {
     /// Parse from field element (for testing/debugging).
     pub fn from_field(field: Fp254) -> Option<Self> {
         // Convert field element to u64 (if it fits)
-        use ark_ff::{PrimeField, BigInteger};
+        use ark_ff::PrimeField;
         let bigint = field.into_bigint();
         let limbs = bigint.as_ref();
 

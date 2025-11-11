@@ -13,7 +13,6 @@ use ark_relations::r1cs::SynthesisError;
 use ark_r1cs_std::fields::{fp::FpVar, FieldVar};
 use ark_r1cs_std::boolean::Boolean;
 use ark_r1cs_std::eq::EqGadget;
-use ark_r1cs_std::cmp::CmpGadget;
 use ark_r1cs_std::select::CondSelectGadget;
 use ark_r1cs_std::R1CSVar;
 use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
