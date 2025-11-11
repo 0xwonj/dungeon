@@ -218,15 +218,38 @@ impl GameTransitionCircuit {
     /// All inputs are None, which causes assignment errors during constraint
     /// synthesis. This is used to generate the proving/verifying keys.
     pub fn dummy() -> Self {
+        use super::merkle::MerklePath;
+        use super::witness::EntityWitness;
+        use game_core::EntityId;
+
+        // Create minimal valid witnesses for key generation
+        let empty_path = MerklePath {
+            siblings: vec![Fp254::from(0u64); 4],
+            path_bits: vec![false; 4],
+            directions: vec![false; 4],
+        };
+
+        let entity_witness = EntityWitness {
+            id: EntityId(0),
+            before_data: vec![Fp254::from(0u64); 16],
+            before_path: empty_path.clone(),
+            after_data: vec![Fp254::from(0u64); 16],
+            after_path: empty_path,
+        };
+
+        let witnesses = TransitionWitnesses {
+            entities: vec![entity_witness],
+        };
+
         Self {
-            before_root: None,
-            after_root: None,
-            action_type: None,
-            actor_id: None,
-            witnesses: None,
-            target_id: None,
-            direction: None,
-            position_delta: None,
+            before_root: Some(Fp254::from(0u64)),
+            after_root: Some(Fp254::from(0u64)),
+            action_type: Some(Fp254::from(0u64)),
+            actor_id: Some(Fp254::from(0u64)),
+            witnesses: Some(witnesses),
+            target_id: Some(Fp254::from(0u64)),
+            direction: Some(Fp254::from(0u64)),
+            position_delta: Some((Fp254::from(0u64), Fp254::from(0u64))),
         }
     }
 }
@@ -618,8 +641,14 @@ mod tests {
     #[test]
     fn test_dummy_circuit_creation() {
         let circuit = GameTransitionCircuit::dummy();
-        assert!(circuit.before_root.is_none());
-        assert!(circuit.after_root.is_none());
-        assert!(circuit.witnesses.is_none());
+        // Dummy circuit now has zero values for Groth16 key generation
+        assert!(circuit.before_root.is_some());
+        assert!(circuit.after_root.is_some());
+        assert!(circuit.witnesses.is_some());
+
+        // Verify all values are zero/default
+        assert_eq!(circuit.before_root.unwrap(), Fp254::from(0u64));
+        assert_eq!(circuit.after_root.unwrap(), Fp254::from(0u64));
+        assert_eq!(circuit.witnesses.unwrap().entities.len(), 1);
     }
 }

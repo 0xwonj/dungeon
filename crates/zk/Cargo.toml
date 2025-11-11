@@ -130,3 +130,7 @@ methods = ["methods/guest"]
 name = "arkworks_benchmarks"
 harness = false
 required-features = ["arkworks"]
+
+[[bench]]
+name = "backend_comparison"
+harness = false

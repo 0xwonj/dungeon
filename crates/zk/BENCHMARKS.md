@@ -1,6 +1,33 @@
-# Arkworks Benchmark Guide
+# ZK Benchmark Guide
 
-## Running Benchmarks
+## Quick Start: Backend Comparison
+
+To compare RISC0 vs Stub performance:
+
+```bash
+# Automated comparison (recommended)
+cd crates/zk
+./compare-backends.sh
+
+# Or manual comparison:
+# 1. Run RISC0 and save baseline
+RISC0_SKIP_BUILD=1 cargo bench --package zk --no-default-features --features risc0 \
+  --bench backend_comparison -- --save-baseline risc0
+
+# 2. Run Stub and compare
+cargo bench --package zk --no-default-features --features stub \
+  --bench backend_comparison -- --baseline risc0
+
+# 3. View HTML report
+open target/criterion/backend_comparison/report/index.html
+```
+
+**Note:** Arkworks backend is currently excluded from backend_comparison because the
+GameTransitionCircuit uses Poseidon hash gadgets that don't have full R1CS constraints
+implemented yet. Use the arkworks-specific benchmarks (`cargo bench --features arkworks --bench arkworks_benchmarks`)
+to measure individual component performance (Merkle trees, state roots, witness generation).
+
+## Running Arkworks-Specific Benchmarks
 
 ### Basic Usage
 ```bash
@@ -120,3 +147,48 @@ merkle_tree/5_actors    time:   [245.23 µs 248.91 µs 253.12 µs]
 - **time**: Mean is 248.91 µs, confidence interval [245.23, 253.12]
 - **change**: Performance is within ±2.89% of previous run
 - **p > 0.05**: No significant performance change detected
+
+## Backend Comparison Results
+
+When comparing backends, you'll see output like:
+
+```
+backend_comparison/arkworks/prove_move_5_actors
+                        time:   [1.2450 s 1.2789 s 1.3156 s]
+                        change: [-95.234% -94.891% -94.523%] (p = 0.00 < 0.05)
+                        Performance has improved.
+```
+
+### Key Metrics to Compare
+
+1. **Proof Generation Time**
+   - RISC0: Typically 20-60 seconds (zkVM proves entire guest program)
+   - Stub: <1ms (no actual proving)
+
+2. **Proof Size**
+   - RISC0: ~200-300 KB (Groth16 proof + execution trace)
+   - Stub: 4 bytes (dummy data)
+
+3. **Verification Time**
+   - RISC0: ~10-50ms (verify zkVM proof)
+   - Stub: <1µs (no verification)
+
+### Understanding the Backends
+
+**RISC0 (zkVM)**
+- ✅ Pros: Proves arbitrary Rust code, flexible, easy to program
+- ❌ Cons: Slower proving, larger proofs, requires guest program build
+- 🎯 Best for: Complex logic, frequent changes, rapid development
+
+**Stub (Development)**
+- ✅ Pros: Instant "proofs", no build overhead, testing-friendly
+- ❌ Cons: No cryptographic security, development/testing only
+- 🎯 Best for: Fast iteration, unit tests, development workflows
+
+**Arkworks (R1CS) - In Development**
+- Note: Arkworks backend is under development. Once the Poseidon R1CS constraints
+  are fully implemented, it will provide:
+  - Fast proving (1-5 seconds per proof)
+  - Tiny proofs (~1-2 KB)
+  - EVM-compatible verification
+  - Production-ready cryptographic security
