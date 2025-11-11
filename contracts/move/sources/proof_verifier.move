@@ -44,7 +44,7 @@ module dungeon::proof_verifier {
     /// These values are committed by the ZK proof and verified on-chain.
     /// The schema must match the RISC0 guest program's public outputs.
     ///
-    /// CRITICAL: actions_root fields are included to cryptographically bind
+    /// CRITICAL: actions_root is the Walrus blob_id, cryptographically binding
     /// the action sequence to the state transition. Without this, a player could
     /// submit fake actions to ActionLog while using different (cheating) actions
     /// in actual gameplay.
@@ -55,14 +55,11 @@ module dungeon::proof_verifier {
         seed_commitment: vector<u8>,
         /// Previous state root (32 bytes)
         prev_state_root: vector<u8>,
-        /// Previous actions root (32 bytes)
-        prev_actions_root: vector<u8>,
-        /// Previous nonce (8 bytes, u64)
-        prev_nonce: u64,
+        /// Actions root for this proof (blob_id as 32 bytes)
+        /// This is the Walrus blob_id, which serves as the commitment to actions
+        actions_root: vector<u8>,
         /// New state root (32 bytes)
         new_state_root: vector<u8>,
-        /// New actions root (32 bytes)
-        new_actions_root: vector<u8>,
         /// New nonce (8 bytes, u64)
         new_nonce: u64,
     }
@@ -146,11 +143,9 @@ module dungeon::proof_verifier {
     /// 1. oracle_root (32 bytes)
     /// 2. seed_commitment (32 bytes)
     /// 3. prev_state_root (32 bytes)
-    /// 4. prev_actions_root (32 bytes)
-    /// 5. prev_nonce (32 bytes, u64 padded)
-    /// 6. new_state_root (32 bytes)
-    /// 7. new_actions_root (32 bytes)
-    /// 8. new_nonce (32 bytes, u64 padded)
+    /// 4. actions_root (32 bytes) - Walrus blob_id
+    /// 5. new_state_root (32 bytes)
+    /// 6. new_nonce (32 bytes, u64 padded)
     fun serialize_public_inputs(inputs: &PublicInputs): vector<u8> {
         let mut result = vector::empty<u8>();
 
@@ -163,17 +158,11 @@ module dungeon::proof_verifier {
         // Previous state root (32 bytes)
         vector::append(&mut result, inputs.prev_state_root);
 
-        // Previous actions root (32 bytes)
-        vector::append(&mut result, inputs.prev_actions_root);
-
-        // Previous nonce (u64 → 32 bytes, little-endian)
-        vector::append(&mut result, u64_to_32_bytes(inputs.prev_nonce));
+        // Actions root (32 bytes) - Walrus blob_id
+        vector::append(&mut result, inputs.actions_root);
 
         // New state root (32 bytes)
         vector::append(&mut result, inputs.new_state_root);
-
-        // New actions root (32 bytes)
-        vector::append(&mut result, inputs.new_actions_root);
 
         // New nonce (u64 → 32 bytes, little-endian)
         vector::append(&mut result, u64_to_32_bytes(inputs.new_nonce));
@@ -215,20 +204,16 @@ module dungeon::proof_verifier {
         oracle_root: vector<u8>,
         seed_commitment: vector<u8>,
         prev_state_root: vector<u8>,
-        prev_actions_root: vector<u8>,
-        prev_nonce: u64,
+        actions_root: vector<u8>,
         new_state_root: vector<u8>,
-        new_actions_root: vector<u8>,
         new_nonce: u64,
     ): PublicInputs {
         PublicInputs {
             oracle_root,
             seed_commitment,
             prev_state_root,
-            prev_actions_root,
-            prev_nonce,
+            actions_root,
             new_state_root,
-            new_actions_root,
             new_nonce,
         }
     }
@@ -248,24 +233,14 @@ module dungeon::proof_verifier {
         &inputs.prev_state_root
     }
 
-    /// Borrow previous actions root from public inputs
-    public fun prev_actions_root(inputs: &PublicInputs): &vector<u8> {
-        &inputs.prev_actions_root
-    }
-
-    /// Get previous nonce from public inputs
-    public fun prev_nonce(inputs: &PublicInputs): u64 {
-        inputs.prev_nonce
+    /// Borrow actions root from public inputs (Walrus blob_id)
+    public fun actions_root(inputs: &PublicInputs): &vector<u8> {
+        &inputs.actions_root
     }
 
     /// Borrow new state root from public inputs
     public fun new_state_root(inputs: &PublicInputs): &vector<u8> {
         &inputs.new_state_root
-    }
-
-    /// Borrow new actions root from public inputs
-    public fun new_actions_root(inputs: &PublicInputs): &vector<u8> {
-        &inputs.new_actions_root
     }
 
     /// Get new nonce from public inputs

@@ -5,6 +5,7 @@ authors = ["Wonjae Choi (wonjae@snu.ac.kr)"]
 
 [dependencies]
 # Sui framework dependencies (Sui, MoveStdlib, etc.) are auto-added by default
+Walrus = { git = "https://github.com/MystenLabs/walrus.git", rev = "main", subdir = "contracts/walrus" }
 
 [addresses]
 dungeon = "0x0"
