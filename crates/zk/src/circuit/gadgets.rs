@@ -7,6 +7,13 @@
 //! - Arithmetic operations with overflow protection
 //!
 //! OPTIMIZATION: All Poseidon operations use cached config singleton.
+//!
+//! # Security Note
+//!
+//! Poseidon gadgets use `ark-r1cs-std`'s `PoseidonSpongeVar` which generates proper
+//! R1CS constraints for the Poseidon permutation. However, circuit completeness depends
+//! on correct constraint generation throughout the entire circuit. Always verify constraint
+//! counts and test with malicious inputs before production use.
 
 use ark_bn254::Fr as Fp254;
 use ark_crypto_primitives::sponge::constraints::CryptographicSpongeVar;

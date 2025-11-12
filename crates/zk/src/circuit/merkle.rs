@@ -5,7 +5,9 @@
 use crate::ProofError;
 
 #[cfg(feature = "arkworks")]
-use super::commitment::{hash_one, hash_two};
+use super::commitment::hash_two;
+#[cfg(all(test, feature = "arkworks"))]
+use super::commitment::hash_one;
 #[cfg(feature = "arkworks")]
 use ark_bn254::Fr as Fp254;
 #[cfg(feature = "arkworks")]
@@ -237,22 +239,38 @@ pub fn hash_many(inputs: &[Fp254]) -> Result<Fp254, ProofError> {
 ///
 /// Serializes essential actor fields:
 /// - Entity ID (u32)
-/// - Position (x: i32, y: i32)
+/// - Position (x: i32, y: i32) - uses offset encoding for negative values
 /// - Current HP (u32)
 /// - Max HP (u32)
+///
+/// # Signed Integer Encoding
+///
+/// Coordinates use offset encoding: `field_value = (i32_value + COORD_OFFSET) as u64`
+/// where COORD_OFFSET = 2^30 = 1,073,741,824. This allows coordinates in range
+/// [-1,073,741,824, 1,073,741,823] to be represented as field elements [0, 2^31-1].
+///
+/// Examples:
+/// - x = -5  => field_value = 1,073,741,819
+/// - x = 0   => field_value = 1,073,741,824
+/// - x = 10  => field_value = 1,073,741,834
 ///
 /// Additional fields (equipment, stats, abilities) will be added in future iterations.
 ///
 /// OPTIMIZATION: Returns fixed-size array (5 elements) - no heap allocation.
 #[inline]
 pub fn serialize_actor(actor: &ActorState) -> [Fp254; 5] {
+    // Offset for signed integer encoding (2^30)
+    // Allows coordinates in range [-2^30, 2^30-1]
+    const COORD_OFFSET: i64 = 1 << 30;
+
     [
         Fp254::from(actor.id.0 as u64),
-        Fp254::from(actor.position.x as u64),
-        Fp254::from(actor.position.y as u64),
+        // Encode signed coordinates with offset to avoid negative field element issues
+        Fp254::from((actor.position.x as i64 + COORD_OFFSET) as u64),
+        Fp254::from((actor.position.y as i64 + COORD_OFFSET) as u64),
         Fp254::from(actor.resources.hp as u64),
-        // For max HP, we need to compute it from stats snapshot
-        // For simplicity, use current HP as placeholder (will be fixed in full implementation)
+        // TODO: Compute max HP from stats snapshot instead of duplicating current HP
+        // For now, use current HP as placeholder (Issue #XX)
         Fp254::from(actor.resources.hp as u64),
     ]
 }
@@ -262,14 +280,18 @@ pub fn serialize_actor(actor: &ActorState) -> [Fp254; 5] {
 ///
 /// Serializes essential prop fields:
 /// - Entity ID (u32)
-/// - Position (x: i32, y: i32)
+/// - Position (x: i32, y: i32) - uses offset encoding for negative values
 /// - Kind (u8 representation)
 /// - Active status (0 or 1)
+///
+/// See `serialize_actor()` for signed integer encoding details.
 ///
 /// OPTIMIZATION: Returns fixed-size array (5 elements) - no heap allocation.
 #[inline]
 pub fn serialize_prop(prop: &PropState) -> [Fp254; 5] {
     use game_core::PropKind;
+
+    const COORD_OFFSET: i64 = 1 << 30;
 
     let kind_value = match prop.kind {
         PropKind::Door => 0u64,
@@ -280,8 +302,8 @@ pub fn serialize_prop(prop: &PropState) -> [Fp254; 5] {
 
     [
         Fp254::from(prop.id.0 as u64),
-        Fp254::from(prop.position.x as u64),
-        Fp254::from(prop.position.y as u64),
+        Fp254::from((prop.position.x as i64 + COORD_OFFSET) as u64),
+        Fp254::from((prop.position.y as i64 + COORD_OFFSET) as u64),
         Fp254::from(kind_value),
         Fp254::from(if prop.is_active { 1u64 } else { 0u64 }),
     ]
@@ -292,17 +314,21 @@ pub fn serialize_prop(prop: &PropState) -> [Fp254; 5] {
 ///
 /// Serializes essential item fields:
 /// - Entity ID (u32)
-/// - Position (x: i32, y: i32)
+/// - Position (x: i32, y: i32) - uses offset encoding for negative values
 /// - Item handle (u32)
 /// - Quantity (u16)
+///
+/// See `serialize_actor()` for signed integer encoding details.
 ///
 /// OPTIMIZATION: Returns fixed-size array (5 elements) - no heap allocation.
 #[inline]
 pub fn serialize_item(item: &ItemState) -> [Fp254; 5] {
+    const COORD_OFFSET: i64 = 1 << 30;
+
     [
         Fp254::from(item.id.0 as u64),
-        Fp254::from(item.position.x as u64),
-        Fp254::from(item.position.y as u64),
+        Fp254::from((item.position.x as i64 + COORD_OFFSET) as u64),
+        Fp254::from((item.position.y as i64 + COORD_OFFSET) as u64),
         Fp254::from(item.handle.0 as u64),
         Fp254::from(item.quantity as u64),
     ]
@@ -423,9 +449,16 @@ mod game_state_tests {
         // Should have 5 field elements: id, x, y, hp, max_hp
         assert_eq!(serialized.len(), 5);
         assert_eq!(serialized[0], Fp254::from(EntityId::PLAYER.0 as u64));
-        // Coordinates are cast directly: i32 -> u64 -> Fp254
-        assert_eq!(serialized[1], Fp254::from(5i32 as u64));
-        assert_eq!(serialized[2], Fp254::from(10i32 as u64));
+        // Coordinates use offset encoding: (coord + 2^30) to handle signed values
+        const COORD_OFFSET: i64 = 1 << 30;
+        assert_eq!(
+            serialized[1],
+            Fp254::from((5i64 + COORD_OFFSET) as u64)
+        );
+        assert_eq!(
+            serialized[2],
+            Fp254::from((10i64 + COORD_OFFSET) as u64)
+        );
     }
 
     #[test]

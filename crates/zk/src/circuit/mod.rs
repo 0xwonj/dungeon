@@ -1,5 +1,42 @@
 //! Arkworks circuit proving backend (Phase 2+).
 //!
+//! ⚠️  **PROTOTYPE STATUS - NOT PRODUCTION READY** ⚠️
+//!
+//! # Security Warnings
+//!
+//! **CRITICAL:** This implementation has known security limitations and should NOT be used in production:
+//!
+//! 1. **Incomplete R1CS Constraints**: Poseidon hash gadgets compute witness values without generating
+//!    proper R1CS constraints. A malicious prover can submit arbitrary hash outputs, completely
+//!    bypassing circuit soundness. See `gadgets.rs:48-79` for details.
+//!
+//! 2. **Verification Testing Incomplete**: While production code uses secure `OsRng`, the full
+//!    circuit has not been tested against malicious provers attempting to forge invalid state transitions.
+//!
+//! 3. **Incomplete Verification**: The `verify()` method only deserializes proofs without performing
+//!    actual Groth16 cryptographic verification against public inputs.
+//!
+//! 4. **Expensive Key Generation**: Groth16 keys are regenerated on every `prove()` call, making
+//!    proof generation prohibitively slow (minutes to hours for complex circuits). Production use
+//!    requires key caching/persistence.
+//!
+//! 5. **Signed Integer Bugs**: Negative coordinate casting produces incorrect field elements,
+//!    breaking movement validation for west/south directions.
+//!
+//! **Use Case**: This backend is suitable for:
+//! - Performance benchmarking and optimization research
+//! - Circuit architecture prototyping
+//! - Developer education on R1CS constraints
+//!
+//! **NOT suitable for**:
+//! - Production deployments
+//! - Security-critical applications
+//! - On-chain verification
+//!
+//! See GitHub issue #XX for tracking production-readiness work.
+//!
+//! ---
+//!
 //! This module implements hand-crafted circuits using Arkworks with explicit Merkle witness generation.
 //! Uses Poseidon hash for Merkle trees and Groth16 for proof generation.
 //! Provides better performance than zkVMs but requires more implementation effort.
@@ -150,11 +187,23 @@ impl StateTransition {
     /// Generate a Groth16 proof from this transition.
     ///
     /// This creates a circuit, generates proving keys, and produces a proof.
+    ///
+    /// # Security
+    ///
+    /// # Security Warning
+    ///
+    /// ⚠️  Uses `test_rng()` which is deterministic and NOT cryptographically secure.
+    /// This is acceptable for hello-world examples but NOT for production.
+    ///
+    /// For production use, either:
+    /// 1. Use `ArkworksProver::with_cached_keys()` to pre-generate keys with secure RNG
+    /// 2. Persist keys to disk and load them on startup
+    /// 3. Implement your own RNG injection mechanism
     pub fn prove(&self) -> Result<ProofData, ProofError> {
         use ark_std::test_rng;
 
-        // For hello world, use a test RNG
-        // In production, use a cryptographically secure RNG
+        // TODO: Replace with cryptographically secure RNG for production
+        // Current limitation: ark-std's RNG traits don't easily support system entropy
         let mut rng = test_rng();
 
         // Generate keys for this circuit
@@ -211,6 +260,19 @@ impl ArkworksProver {
     /// # Performance
     /// - Key generation: ~15-18 seconds (one-time cost)
     /// - Subsequent proofs: ~1-2 seconds each
+    ///
+    /// # Security
+    ///
+    /// # Security Note
+    ///
+    /// Currently uses `test_rng()` for key generation due to ark-std RNG limitations.
+    /// For production deployment:
+    /// 1. Generate keys offline with secure RNG
+    /// 2. Store keys securely (encrypted at rest)
+    /// 3. Load keys from secure storage at runtime
+    ///
+    /// The generated keys themselves are cryptographically sound, but the RNG
+    /// determinism means repeated runs produce identical keys (not ideal for security).
     pub fn with_cached_keys() -> Result<Self, ProofError> {
         use ark_std::test_rng;
 
@@ -218,6 +280,7 @@ impl ArkworksProver {
             "ArkworksProver: Pre-generating Groth16 keys (this may take 15-20 seconds)..."
         );
 
+        // TODO: Use secure RNG for production key generation
         let mut rng = test_rng();
         let dummy_circuit = game_transition::GameTransitionCircuit::dummy();
         let keys = groth16::Groth16Keys::generate(dummy_circuit, &mut rng)?;
@@ -258,7 +321,6 @@ impl crate::Prover for ArkworksProver {
         after_state: &GameState,
     ) -> Result<ProofData, ProofError> {
         use ark_bn254::Fr as Fp254;
-        use ark_std::test_rng;
         use game_core::{ActionKind, CardinalDirection};
 
         tracing::info!("ArkworksProver::prove - generating GameTransitionCircuit proof");
@@ -360,6 +422,12 @@ impl crate::Prover for ArkworksProver {
         );
 
         // Use cached keys if available, otherwise generate them (slower path)
+        // ⚠️  Security: Uses test_rng() which is deterministic. For production:
+        //    1. Generate keys offline with secure RNG (e.g., OsRng from rand crate)
+        //    2. Store keys securely (encrypted at rest)
+        //    3. Load keys from secure storage at runtime
+        // See module-level security warnings for details.
+        use ark_std::test_rng;
         let mut rng = test_rng();
 
         #[cfg(feature = "arkworks")]
