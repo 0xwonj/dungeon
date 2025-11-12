@@ -12,10 +12,9 @@ use std::sync::{Arc, RwLock};
 use memmap2::Mmap;
 use tracing::debug;
 
-use crate::api::Result;
-use crate::repository::RepositoryError;
 use crate::repository::traits::ActionLogReader;
 use crate::repository::types::ActionLogEntry;
+use crate::repository::{RepositoryError, Result};
 
 /// Memory-mapped action log reader optimized for sequential access.
 ///

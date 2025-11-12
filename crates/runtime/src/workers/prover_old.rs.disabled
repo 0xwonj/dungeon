@@ -1,5 +1,16 @@
 //! ZK proof generation worker.
 //!
+//! ⚠️ **THIS FILE NEEDS MAJOR REFACTORING** ⚠️
+//!
+//! This file is using the old ProofIndex system and needs to be refactored
+//! to use the new ActionBatch system. See the conversation summary for details.
+//!
+//! TODO (high priority):
+//! - Replace ProofIndex with ActionBatch
+//! - Switch from MmapActionLogReader (for tailing files) to BufActionLogReader (for completed files)
+//! - Process action logs by checkpoint batches, not continuous tailing
+//! - Update ActionLogEntry field access (removed clock, before_state, delta; renamed after_state to result_state)
+//!
 //! This worker reads from the action log and generates zero-knowledge proofs
 //! for executed actions. It maintains a cursor into the action log and processes
 //! entries sequentially using the [`ActionLogReader`] trait.
@@ -22,9 +33,82 @@ use zk::{ProofData, ProofError, Prover, ZkProver};
 use crate::events::{Event, EventBus, ProofEvent};
 use crate::oracle::OracleManager;
 use crate::repository::{
-    ActionLogEntry, ActionLogReader, ProofEntry, ProofIndex, ProofIndexRepository,
+    ActionLogEntry, ActionLogReader,
+    // TODO: Refactor to use ActionBatch instead of ProofIndex
+    // ProofEntry, ProofIndex, ProofIndexRepository,
 };
 use crate::workers::ProofMetrics;
+
+// ============================================================================
+// TEMPORARY STUBS FOR COMPILATION
+// ============================================================================
+// These types are being removed and replaced with ActionBatch.
+// This code is present only to allow compilation during the transition period.
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct ProofIndex {
+    session_id: String,
+    proofs: Vec<ProofEntry>,
+}
+
+impl ProofIndex {
+    fn new(session_id: String) -> Self {
+        Self {
+            session_id,
+            proofs: Vec::new(),
+        }
+    }
+
+    fn add_proof(&mut self, _entry: ProofEntry) {}
+    fn last_proven_nonce(&self) -> Option<u64> {
+        None
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct ProofEntry {
+    nonce: u64,
+    generation_time_ms: u64,
+    proof_file: Option<String>,
+}
+
+impl ProofEntry {
+    fn new(nonce: u64, generation_time_ms: u64) -> Self {
+        Self {
+            nonce,
+            generation_time_ms,
+            proof_file: None,
+        }
+    }
+
+    fn with_proof_file(mut self, path: String) -> Self {
+        self.proof_file = Some(path);
+        self
+    }
+}
+
+trait ProofIndexRepository: Send + Sync {
+    fn save(&self, _index: &ProofIndex) -> Result<(), crate::api::errors::RuntimeError> {
+        Ok(())
+    }
+    fn load(&self, _session_id: &str) -> Result<Option<ProofIndex>, crate::api::errors::RuntimeError> {
+        Ok(None)
+    }
+}
+
+struct FileProofIndexRepository;
+
+impl FileProofIndexRepository {
+    fn new(_path: &PathBuf) -> Result<Self, String> {
+        Ok(Self)
+    }
+}
+
+impl ProofIndexRepository for FileProofIndexRepository {}
+
+// ============================================================================
+// END TEMPORARY STUBS
+// ============================================================================
 
 /// Proof persistence layer (disk I/O).
 struct ProofStorage {
@@ -255,15 +339,20 @@ impl ProverWorker {
     /// 3. Broadcast ProofGenerated or ProofFailed event
     /// 4. Update proof index
     async fn handle_action_entry(&mut self, entry: ActionLogEntry) {
+        // TODO: Update this method for new ActionLogEntry format
+        // Old fields removed: clock, before_state, delta
+        // New field: result_state (renamed from after_state)
+        // Need to implement state chaining logic here
+
         let nonce = entry.nonce;
-        let clock = entry.clock;
+        let clock = 0u64; // FIXME: removed from ActionLogEntry, temporarily hardcoded
         let action = entry.action.clone();
-        let before_state = &*entry.before_state;
-        let after_state = &*entry.after_state;
+        let before_state: &GameState = &entry.result_state; // FIXME: need state chaining
+        let after_state = &*entry.result_state;
 
         debug!(
-            "ProverWorker processing action nonce={} tick={}",
-            nonce, clock
+            "ProverWorker processing action nonce={}",
+            nonce
         );
 
         // Update queue depth metric (incremented when starting) - lock-free
@@ -274,7 +363,7 @@ impl ProverWorker {
         self.event_bus
             .publish(Event::Proof(ProofEvent::ProofStarted {
                 action: action.clone(),
-                clock,
+                clock, // FIXME: clock removed from ActionLogEntry, temporarily hardcoded to 0
             }));
 
         // Generate proof
@@ -287,13 +376,12 @@ impl ProverWorker {
 
                 // Compute state hashes for logging
                 use crate::utils::hash::hash_game_state;
-                let before_hash = hash_game_state(before_state);
+                let before_hash = hash_game_state(_before_state);
                 let after_hash = hash_game_state(after_state);
 
                 info!(
-                    "Proof generated for nonce={} tick={} (proving: {}ms) | before={} after={}",
+                    "Proof generated for nonce={} (proving: {}ms) | before={} after={}",
                     nonce,
-                    clock,
                     generation_time_ms,
                     &before_hash[..8],
                     &after_hash[..8]
@@ -513,7 +601,9 @@ impl ProverWorkerBuilder {
     /// - Repository creation fails
     /// - File I/O errors occur
     pub fn build(self) -> Result<ProverWorker, String> {
-        use crate::repository::{FileProofIndexRepository, MmapActionLogReader};
+        use crate::repository::MmapActionLogReader;
+        // TODO: Refactor to use ActionBatchRepository instead
+        // use crate::repository::FileProofIndexRepository;
 
         // Validate required fields
         let session_id = self

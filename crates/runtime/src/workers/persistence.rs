@@ -253,14 +253,11 @@ impl PersistenceWorker {
                 } = game_event
                 {
                     // Save to action log (for proof generation)
-                    let entry = ActionLogEntry {
-                        nonce: *nonce,
-                        clock: *clock,
-                        action: action.clone(),
-                        before_state: before_state.clone(),
-                        after_state: after_state.clone(),
-                        delta: Some(delta.clone()),
-                    };
+                    let entry = ActionLogEntry::new(
+                        *nonce,
+                        action.clone(),
+                        after_state.clone(),
+                    );
 
                     // Log state hashes for debugging chain consistency
                     use crate::utils::hash::hash_game_state;

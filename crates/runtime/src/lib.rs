@@ -43,11 +43,10 @@ pub use oracle::{
 pub use providers::ai::{AiContext, GoalBasedAiProvider};
 pub use providers::{SystemActionHandler, SystemActionProvider};
 pub use repository::{
-    ActionLogEntry, ActionLogReader, ActionLogWriter, Checkpoint, CheckpointRepository,
-    EventRepository, FileActionLog, FileCheckpointRepository, FileEventLog,
-    FileProofIndexRepository, FileStateRepository, InMemoryActionLogReader, InMemoryStateRepo,
-    MmapActionLogReader, ProofEntry, ProofIndex, ProofIndexRepository, RepositoryError,
-    StateReference, StateRepository,
+    ActionBatch, ActionBatchRepository, ActionBatchStatus, ActionLogEntry, ActionLogReader,
+    ActionLogWriter, BufActionLogReader, EventRepository, FileActionBatchRepository, FileActionLog,
+    FileEventLog, FileStateRepository, InMemoryActionLogReader, InMemoryStateRepo,
+    MmapActionLogReader, RepositoryError, StateRepository,
 };
 pub use runtime::{PersistenceSettings, ProvingSettings, Runtime, RuntimeBuilder, RuntimeConfig};
 pub use scenario::{EntityKind, EntityPlacement, Scenario};

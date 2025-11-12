@@ -1,14 +1,14 @@
 //! File-based repository implementations.
 
+mod action_batch;
 mod action_reader;
-mod checkpoint;
+mod buf_action_reader;
 mod log;
-mod proof_index;
 mod state;
 
+pub use action_batch::FileActionBatchRepository;
 pub use action_reader::MmapActionLogReader;
-pub use checkpoint::FileCheckpointRepository;
-pub use proof_index::FileProofIndexRepository;
+pub use buf_action_reader::BufActionLogReader;
 pub use state::FileStateRepository;
 
 // Append-only log repository (generic implementation)

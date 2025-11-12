@@ -43,11 +43,6 @@ module dungeon::proof_verifier {
     ///
     /// These values are committed by the ZK proof and verified on-chain.
     /// The schema must match the RISC0 guest program's public outputs.
-    ///
-    /// CRITICAL: actions_root is the Walrus blob_id, cryptographically binding
-    /// the action sequence to the state transition. Without this, a player could
-    /// submit fake actions to ActionLog while using different (cheating) actions
-    /// in actual gameplay.
     public struct PublicInputs has copy, drop, store {
         /// Oracle data commitment (32 bytes)
         oracle_root: vector<u8>,

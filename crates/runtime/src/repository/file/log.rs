@@ -11,11 +11,10 @@ use std::path::{Path, PathBuf};
 
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::api::Result;
 use crate::events::Event;
-use crate::repository::RepositoryError;
 use crate::repository::traits::{ActionLogWriter, EventRepository};
 use crate::repository::types::ActionLogEntry;
+use crate::repository::{RepositoryError, Result};
 
 // ============================================================================
 // Generic FileRepository

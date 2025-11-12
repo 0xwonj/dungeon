@@ -2,9 +2,8 @@
 
 use std::sync::RwLock;
 
-use crate::api::Result;
 use crate::events::Event;
-use crate::repository::{EventRepository, RepositoryError};
+use crate::repository::{EventRepository, RepositoryError, Result};
 
 /// In-memory event log for testing and development.
 ///

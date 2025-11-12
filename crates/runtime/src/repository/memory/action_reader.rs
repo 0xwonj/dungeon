@@ -6,7 +6,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::api::Result;
+use crate::repository::Result;
 use crate::repository::traits::ActionLogReader;
 use crate::repository::types::ActionLogEntry;
 
