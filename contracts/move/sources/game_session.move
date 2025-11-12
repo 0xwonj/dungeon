@@ -83,6 +83,8 @@ module dungeon::game_session {
         blob: Blob,
         /// Epoch when this action log was submitted
         submitted_at: u64,
+        /// State root at the beginning of this action batch (for fraud proof verification)
+        start_state_root: vector<u8>,
     }
 
     // ===== Events =====
@@ -226,6 +228,7 @@ module dungeon::game_session {
             id: object::new(ctx),
             blob: actions_blob,
             submitted_at: tx_context::epoch(ctx),
+            start_state_root: session.state_root,
         };
 
         // Store action log as Dynamic Object Field using nonce as key
@@ -308,7 +311,7 @@ module dungeon::game_session {
 
             // Remove and unwrap
             let action_log = dof::remove<u64, ActionLogBlob>(&mut session.id, nonce);
-            let ActionLogBlob { id, blob, submitted_at: _ } = action_log;
+            let ActionLogBlob { id, blob, submitted_at: _, start_state_root: _ } = action_log;
             object::delete(id);
 
             vector::push_back(&mut results, blob);
@@ -495,6 +498,11 @@ module dungeon::game_session {
     /// Get submission epoch from action log
     public fun action_log_submitted_at(action_log: &ActionLogBlob): u64 {
         action_log.submitted_at
+    }
+
+    /// Get the start state root from action log (for fraud proof verification)
+    public fun action_log_start_state_root(action_log: &ActionLogBlob): &vector<u8> {
+        &action_log.start_state_root
     }
 
     /// Get the initial state root (for replay verification)
