@@ -91,9 +91,20 @@ impl ProverWorker {
         proof_index_repo: Box<dyn ProofIndexRepository>,
         session_id: String,
     ) -> Result<Self, String> {
-        // Create prover
-        let oracle_snapshot = Self::create_oracle_snapshot(&oracle_manager);
-        let prover = ZkProver::new(oracle_snapshot);
+        // Create prover with backend-specific initialization
+        // RISC0 and Stub backends require OracleSnapshot
+        #[cfg(any(feature = "risc0", feature = "stub", feature = "sp1"))]
+        let prover = {
+            let oracle_snapshot = Self::create_oracle_snapshot(&oracle_manager);
+            ZkProver::new(oracle_snapshot)
+        };
+
+        // Arkworks backend doesn't use OracleSnapshot (uses game state directly)
+        #[cfg(feature = "arkworks")]
+        let prover = {
+            let _oracle_snapshot = Self::create_oracle_snapshot(&oracle_manager);
+            ZkProver::new()
+        };
 
         // Load or create proof index
         let proof_index = match proof_index_repo.load(&session_id) {
