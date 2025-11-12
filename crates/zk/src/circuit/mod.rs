@@ -540,3 +540,9 @@ pub mod game_transition;
 ///
 /// Reusable constraint gadgets for Poseidon hashing, Merkle proofs, and validations.
 pub mod gadgets;
+
+#[cfg(feature = "arkworks")]
+/// Shared test helpers for circuit testing.
+///
+/// Reusable test state builders to reduce code duplication across test files and benchmarks.
+pub mod test_helpers;

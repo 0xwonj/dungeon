@@ -571,78 +571,18 @@ fn constrain_attack_action(
     _target_id: &Option<FpVar<Fp254>>,
     _cs: ConstraintSystemRef<Fp254>,
 ) -> Result<(), SynthesisError> {
-    // TODO: Re-enable attack constraints when is_cmp is fixed in arkworks
-    // Currently disabled due to is_cmp issues in arkworks 0.5.0
-    // Attack validation is performed in game-core before proof generation
-
-    // Placeholder - no constraints for now
-    /*
-    if let Some(_target) = target_id {
-        // Extract actor's position and health
-        // Note: serialization needs to be expanded to include stamina and attack power
-        if actor_data.len() < 5 {
-            return Err(SynthesisError::Unsatisfiable);
-        }
-
-        let actor_x = &actor_data[1];          // Field 1: position x
-        let actor_y = &actor_data[2];          // Field 2: position y
-        let actor_health = &actor_data[3];     // Field 3: current HP
-        let _actor_max_health = &actor_data[4]; // Field 4: max HP
-        // TODO: Add these fields to serialization:
-        // let actor_stamina = &actor_data[5];
-        // let actor_attack = &actor_data[6];
-
-        // Verify actor is alive (health > 0)
-        let health_is_positive = actor_health.is_cmp(
-            &FpVar::constant(Fp254::from(0u64)),
-            std::cmp::Ordering::Greater,
-            false,
-        )?;
-
-        // If is_attack is true, actor must be alive
-        let attack_requires_alive = is_attack & &(!&health_is_positive);
-        attack_requires_alive.enforce_equal(&Boolean::FALSE)?;
-
-        // Verify actor has sufficient stamina (at least 10 for basic attack)
-        let min_stamina = Fp254::from(10u64);
-        let stamina_sufficient = {
-            let gt = actor_stamina.is_cmp(
-                &FpVar::constant(min_stamina),
-                std::cmp::Ordering::Greater,
-                false,
-            )?;
-            let eq = actor_stamina.is_eq(&FpVar::constant(min_stamina))?;
-            &gt | &eq
-        };
-
-        // If is_attack is true, stamina must be sufficient
-        let attack_requires_stamina = is_attack & &(!&stamina_sufficient);
-        attack_requires_stamina.enforce_equal(&Boolean::FALSE)?;
-
-        // TODO: Extract target data from witnesses
-        // TODO: Verify target is adjacent (Chebyshev distance <= 1)
-        // For now, we'll assume target witness is provided correctly
-
-        // Placeholder for target position (would come from target witness)
-        // let target_x = ...;
-        // let target_y = ...;
-        // adjacency_check_gadget(actor_x, actor_y, target_x, target_y)?;
-
-        // TODO: Verify damage calculation
-        // Basic formula: damage = actor_attack
-        // With defense: damage = max(1, actor_attack - target_defense)
-        // With resistances: damage = damage * (1 - resistance%)
-
-        // TODO: Verify target health decreased correctly
-        // target_after_health = max(0, target_before_health - damage)
-
-        // TODO: Verify actor stamina decreased by action cost
-        // actor_after_stamina = actor_before_stamina - action_cost
-
-        // Placeholder to avoid unused variable warnings
-        let _ = (actor_x, actor_y, actor_attack);
-    }
-    */
+    // TODO: Implement attack constraints when arkworks 0.5.0 is_cmp API is fixed
+    //
+    // Required constraints:
+    // - Verify actor is alive (health > 0)
+    // - Verify actor has sufficient stamina for attack
+    // - Verify target is adjacent (Chebyshev distance <= 1)
+    // - Verify damage calculation (attack - defense formula)
+    // - Verify target health updated correctly
+    // - Verify actor stamina decreased by action cost
+    //
+    // Currently attack validation is performed in game-core before proof generation.
+    // See: https://github.com/arkworks-rs/r1cs-std/issues/XXX
 
     Ok(())
 }

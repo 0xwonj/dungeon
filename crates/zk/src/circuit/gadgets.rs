@@ -143,24 +143,6 @@ pub fn verify_merkle_path_gadget(
     Ok(())
 }
 
-/// Conditionally hash two values based on a boolean selector.
-///
-/// If selector is true: hash(left, right)
-/// If selector is false: hash(right, left)
-fn poseidon_hash_two_conditional_gadget(
-    left: &FpVar<Fp254>,
-    right: &FpVar<Fp254>,
-    selector: &Boolean<Fp254>,
-) -> Result<FpVar<Fp254>, SynthesisError> {
-    // Use conditional select to swap arguments based on selector
-    // first = selector ? left : right
-    // second = selector ? right : left
-    let first = FpVar::conditionally_select(selector, left, right)?;
-    let second = FpVar::conditionally_select(selector, right, left)?;
-
-    poseidon_hash_two_gadget(&first, &second)
-}
-
 // ============================================================================
 // Range Check Gadgets
 // ============================================================================
@@ -361,5 +343,67 @@ mod tests {
 
         assert!(result.is_ok());
         assert!(cs.is_satisfied().unwrap());
+    }
+
+    #[test]
+    fn test_poseidon_gadgets_generate_constraints() {
+        // Test poseidon_hash_one_gadget generates constraints
+        {
+            let cs = ConstraintSystem::<Fp254>::new_ref();
+            let input = FpVar::new_witness(cs.clone(), || Ok(Fp254::from(42u64))).unwrap();
+
+            let initial_constraints = cs.num_constraints();
+            let _output = poseidon_hash_one_gadget(&input).unwrap();
+            let final_constraints = cs.num_constraints();
+
+            // Poseidon should generate constraints for S-boxes and MDS matrix
+            assert!(
+                final_constraints > initial_constraints,
+                "poseidon_hash_one_gadget must generate R1CS constraints (got {} constraints)",
+                final_constraints - initial_constraints
+            );
+            assert!(cs.is_satisfied().unwrap());
+        }
+
+        // Test poseidon_hash_two_gadget generates constraints
+        {
+            let cs = ConstraintSystem::<Fp254>::new_ref();
+            let left = FpVar::new_witness(cs.clone(), || Ok(Fp254::from(42u64))).unwrap();
+            let right = FpVar::new_witness(cs.clone(), || Ok(Fp254::from(123u64))).unwrap();
+
+            let initial_constraints = cs.num_constraints();
+            let _output = poseidon_hash_two_gadget(&left, &right).unwrap();
+            let final_constraints = cs.num_constraints();
+
+            // Poseidon should generate constraints for S-boxes and MDS matrix
+            assert!(
+                final_constraints > initial_constraints,
+                "poseidon_hash_two_gadget must generate R1CS constraints (got {} constraints)",
+                final_constraints - initial_constraints
+            );
+            assert!(cs.is_satisfied().unwrap());
+        }
+
+        // Test poseidon_hash_many_gadget generates constraints
+        {
+            let cs = ConstraintSystem::<Fp254>::new_ref();
+            let inputs = vec![
+                FpVar::new_witness(cs.clone(), || Ok(Fp254::from(1u64))).unwrap(),
+                FpVar::new_witness(cs.clone(), || Ok(Fp254::from(2u64))).unwrap(),
+                FpVar::new_witness(cs.clone(), || Ok(Fp254::from(3u64))).unwrap(),
+            ];
+
+            let initial_constraints = cs.num_constraints();
+            let _output = poseidon_hash_many_gadget(&inputs).unwrap();
+            let final_constraints = cs.num_constraints();
+
+            // Poseidon should generate constraints for S-boxes and MDS matrix
+            assert!(
+                final_constraints > initial_constraints,
+                "poseidon_hash_many_gadget must generate R1CS constraints (got {} constraints)",
+                final_constraints - initial_constraints
+            );
+            assert!(cs.is_satisfied().unwrap());
+        }
     }
 }

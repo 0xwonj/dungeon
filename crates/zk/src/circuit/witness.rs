@@ -236,32 +236,17 @@ mod tests {
     use bounded_vector::BoundedVec;
     use game_core::{
         Action, ActionInput, ActionKind, ActorState, CharacterAction, CoreStats, EntitiesState,
-        InventoryState, Position, TurnState, WorldState,
+        EntityId, InventoryState, Position, StateDelta, TurnState, WorldState,
     };
 
-    /// Helper to create a simple game state with one actor
-    fn create_test_state(actor_position: Position) -> GameState {
-        let actor = ActorState::new(
-            EntityId::PLAYER,
-            actor_position,
-            CoreStats::default(),
-            InventoryState::default(),
-        );
+    use crate::circuit::test_helpers::create_test_state_at_position;
 
-        let entities = EntitiesState::new(
-            unsafe { BoundedVec::from_vec_unchecked(vec![actor]) },
-            BoundedVec::new(),
-            BoundedVec::new(),
-        );
-
-        GameState::new(TurnState::default(), entities, WorldState::default())
-    }
 
     #[test]
     fn test_generate_witnesses_simple_movement() {
         // Create before and after states with actor movement
-        let before_state = create_test_state(Position::new(0, 0));
-        let after_state = create_test_state(Position::new(1, 0));
+        let before_state = create_test_state_at_position(Position::new(0, 0));
+        let after_state = create_test_state_at_position(Position::new(1, 0));
 
         // Create delta
         let action = Action::Character(CharacterAction::new(
@@ -307,8 +292,8 @@ mod tests {
     #[test]
     fn test_generate_witnesses_no_changes() {
         // Create identical before and after states
-        let before_state = create_test_state(Position::new(5, 5));
-        let after_state = create_test_state(Position::new(5, 5));
+        let before_state = create_test_state_at_position(Position::new(5, 5));
+        let after_state = create_test_state_at_position(Position::new(5, 5));
 
         let action = Action::Character(CharacterAction::new(
             EntityId::PLAYER,
@@ -396,8 +381,8 @@ mod tests {
     #[test]
     fn test_witness_verification_integrity() {
         // Create states with movement
-        let before_state = create_test_state(Position::new(2, 3));
-        let after_state = create_test_state(Position::new(2, 4));
+        let before_state = create_test_state_at_position(Position::new(2, 3));
+        let after_state = create_test_state_at_position(Position::new(2, 4));
 
         let action = Action::Character(CharacterAction::new(
             EntityId::PLAYER,

@@ -8,57 +8,30 @@
 use ark_bn254::Fr as Fp254;
 use ark_std::test_rng;
 use game_core::{
-    Action, ActionInput, ActionKind, ActorState, CardinalDirection, CharacterAction, CoreStats,
-    EntitiesState, EntityId, GameState, InventoryState, Position, TurnState, WorldState,
+    Action, ActionInput, ActionKind, CardinalDirection, CharacterAction, EntityId, GameState,
+    Position, TurnState,
 };
 use zk::circuit::game_transition::{ActionType, GameTransitionCircuit};
+use zk::circuit::test_helpers::create_test_state_with_enemy;
 use zk::circuit::{groth16, merkle, witness};
 
-/// Helper to create a minimal game state for testing.
+/// Helper to create a test state with player and enemy, plus active actors set.
 fn create_test_state() -> GameState {
-    let mut entities = EntitiesState::empty();
+    let mut state = create_test_state_with_enemy(true);
 
-    // Create default core stats for testing
-    let default_stats = CoreStats {
-        str: 10,
-        con: 10,
-        dex: 10,
-        int: 10,
-        wil: 10,
-        ego: 10,
-        level: 1,
-    };
-
-    // Add player actor at (5, 5)
-    let player = ActorState::new(
-        EntityId::PLAYER,
-        Position::new(5, 5),
-        default_stats.clone(),
-        InventoryState::empty(),
-    );
-    let _ = entities.actors.push(player);
-
-    // Add enemy actor at (6, 6)
-    let enemy = ActorState::new(
-        EntityId(1),
-        Position::new(6, 6),
-        default_stats,
-        InventoryState::empty(),
-    );
-    let _ = entities.actors.push(enemy);
-
+    // Set up turn state with active actors
     let mut active_actors = std::collections::BTreeSet::new();
     active_actors.insert(EntityId::PLAYER);
     active_actors.insert(EntityId(1));
 
-    let turn = TurnState {
+    state.turn = TurnState {
         current_actor: EntityId::PLAYER,
         clock: 0,
         nonce: 0,
         active_actors,
     };
 
-    GameState::with_seed(12345, turn, entities, WorldState::default())
+    state
 }
 
 #[test]

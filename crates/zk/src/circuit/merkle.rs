@@ -14,6 +14,13 @@ use ark_bn254::Fr as Fp254;
 use std::collections::BTreeMap;
 
 #[cfg(feature = "arkworks")]
+/// Offset for signed integer encoding in field elements.
+///
+/// Allows coordinates in range [-2^30, 2^30-1] by adding this offset before casting to u64.
+/// This prevents negative numbers from wrapping around the field modulus.
+const COORD_OFFSET: i64 = 1 << 30; // 2^30 = 1,073,741,824
+
+#[cfg(feature = "arkworks")]
 /// Merkle proof path with sibling hashes and direction bits.
 ///
 /// OPTIMIZATION: Removed redundant `path_bits` field (now uses `directions` only).
@@ -259,13 +266,8 @@ pub fn hash_many(inputs: &[Fp254]) -> Result<Fp254, ProofError> {
 /// OPTIMIZATION: Returns fixed-size array (5 elements) - no heap allocation.
 #[inline]
 pub fn serialize_actor(actor: &ActorState) -> [Fp254; 5] {
-    // Offset for signed integer encoding (2^30)
-    // Allows coordinates in range [-2^30, 2^30-1]
-    const COORD_OFFSET: i64 = 1 << 30;
-
     [
         Fp254::from(actor.id.0 as u64),
-        // Encode signed coordinates with offset to avoid negative field element issues
         Fp254::from((actor.position.x as i64 + COORD_OFFSET) as u64),
         Fp254::from((actor.position.y as i64 + COORD_OFFSET) as u64),
         Fp254::from(actor.resources.hp as u64),
@@ -290,8 +292,6 @@ pub fn serialize_actor(actor: &ActorState) -> [Fp254; 5] {
 #[inline]
 pub fn serialize_prop(prop: &PropState) -> [Fp254; 5] {
     use game_core::PropKind;
-
-    const COORD_OFFSET: i64 = 1 << 30;
 
     let kind_value = match prop.kind {
         PropKind::Door => 0u64,
@@ -323,8 +323,6 @@ pub fn serialize_prop(prop: &PropState) -> [Fp254; 5] {
 /// OPTIMIZATION: Returns fixed-size array (5 elements) - no heap allocation.
 #[inline]
 pub fn serialize_item(item: &ItemState) -> [Fp254; 5] {
-    const COORD_OFFSET: i64 = 1 << 30;
-
     [
         Fp254::from(item.id.0 as u64),
         Fp254::from((item.position.x as i64 + COORD_OFFSET) as u64),
@@ -450,7 +448,6 @@ mod game_state_tests {
         assert_eq!(serialized.len(), 5);
         assert_eq!(serialized[0], Fp254::from(EntityId::PLAYER.0 as u64));
         // Coordinates use offset encoding: (coord + 2^30) to handle signed values
-        const COORD_OFFSET: i64 = 1 << 30;
         assert_eq!(
             serialized[1],
             Fp254::from((5i64 + COORD_OFFSET) as u64)

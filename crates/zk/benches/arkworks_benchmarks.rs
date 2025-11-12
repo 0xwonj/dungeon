@@ -6,58 +6,31 @@
 
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use game_core::{
-    Action, ActionInput, ActionKind, ActorState, CardinalDirection, CharacterAction, CoreStats,
-    EntitiesState, EntityId, GameState, InventoryState, Position, TurnState, WorldState,
+    Action, ActionInput, ActionKind, CardinalDirection, CharacterAction, EntityId, GameState,
+    Position, TurnState,
 };
 
 #[cfg(feature = "arkworks")]
+use zk::circuit::test_helpers::create_test_state_with_actors;
+#[cfg(feature = "arkworks")]
 use zk::circuit::{merkle, witness};
 
-/// Create a test game state with a given number of actors.
+/// Create a test game state with a given number of actors, plus active_actors set.
 fn create_test_state(num_actors: usize) -> GameState {
-    let mut entities = EntitiesState::empty();
+    let mut state = create_test_state_with_actors(num_actors);
 
-    let default_stats = CoreStats {
-        str: 10,
-        con: 10,
-        dex: 10,
-        int: 10,
-        wil: 10,
-        ego: 10,
-        level: 1,
-    };
-
-    // Add player
-    let player = ActorState::new(
-        EntityId::PLAYER,
-        Position::new(5, 5),
-        default_stats.clone(),
-        InventoryState::empty(),
-    );
-    let _ = entities.actors.push(player);
-
-    // Add additional actors
-    for i in 1..num_actors {
-        let actor = ActorState::new(
-            EntityId(i as u32),
-            Position::new((5 + i as i32) % 50, (5 + i as i32) % 50),
-            default_stats.clone(),
-            InventoryState::empty(),
-        );
-        let _ = entities.actors.push(actor);
-    }
-
+    // Set up turn state with active actors (just player for benchmarks)
     let mut active_actors = std::collections::BTreeSet::new();
     active_actors.insert(EntityId::PLAYER);
 
-    let turn = TurnState {
+    state.turn = TurnState {
         current_actor: EntityId::PLAYER,
         clock: 0,
         nonce: 0,
         active_actors,
     };
 
-    GameState::with_seed(12345, turn, entities, WorldState::default())
+    state
 }
 
 #[cfg(feature = "arkworks")]

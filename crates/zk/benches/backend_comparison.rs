@@ -29,8 +29,8 @@
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use game_core::{
-    Action, ActionInput, ActionKind, ActorState, CardinalDirection, CharacterAction, CoreStats,
-    EntitiesState, EntityId, GameState, InventoryState, Position, TurnState, WorldState,
+    Action, ActionInput, ActionKind, CardinalDirection, CharacterAction, EntityId, GameState,
+    Position, TurnState,
 };
 
 #[cfg(feature = "risc0")]
@@ -40,12 +40,36 @@ use zk::Risc0Prover;
 use zk::StubProver;
 
 #[cfg(feature = "arkworks")]
+use zk::circuit::test_helpers::create_test_state_with_actors;
+#[cfg(feature = "arkworks")]
 use zk::ArkworksProver;
 
 use zk::Prover;
 
-/// Create a test game state with a given number of actors.
+/// Create a test game state with a given number of actors, plus active_actors set.
+#[cfg(feature = "arkworks")]
 fn create_test_state(num_actors: usize) -> GameState {
+    let mut state = create_test_state_with_actors(num_actors);
+
+    // Set up turn state with active actors (just player for benchmarks)
+    let mut active_actors = std::collections::BTreeSet::new();
+    active_actors.insert(EntityId::PLAYER);
+
+    state.turn = TurnState {
+        current_actor: EntityId::PLAYER,
+        clock: 0,
+        nonce: 0,
+        active_actors,
+    };
+
+    state
+}
+
+/// Create a test game state with a given number of actors (non-arkworks backends).
+#[cfg(not(feature = "arkworks"))]
+fn create_test_state(num_actors: usize) -> GameState {
+    use game_core::{ActorState, CoreStats, EntitiesState, InventoryState, WorldState};
+
     let mut entities = EntitiesState::empty();
 
     let default_stats = CoreStats {
