@@ -233,9 +233,8 @@ pub fn hash_many(inputs: &[Fp254]) -> Result<Fp254, ProofError> {
     }
 
     // Squeeze output
-    let result = sponge.squeeze_field_elements::<Fp254>(1);
-
-    result
+    sponge
+        .squeeze_field_elements::<Fp254>(1)
         .first()
         .copied()
         .ok_or_else(|| ProofError::CircuitProofError("Poseidon squeeze failed".to_string()))

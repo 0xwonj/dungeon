@@ -295,7 +295,7 @@ impl ArkworksProver {
 
 #[cfg(not(feature = "arkworks"))]
 impl ArkworksProver {
-    pub fn new() -> Self {
+    pub fn new(_oracle_snapshot: crate::OracleSnapshot) -> Self {
         Self
     }
 
@@ -313,6 +313,80 @@ impl ArkworksProver {
     }
 }
 
+// ============================================================================
+// Action Parameter Extraction Helpers
+// ============================================================================
+
+/// Convert ActionKind to circuit ActionType.
+#[inline]
+fn to_action_type(kind: &game_core::ActionKind) -> game_transition::ActionType {
+    use game_core::ActionKind;
+    match kind {
+        ActionKind::Move => game_transition::ActionType::Move,
+        ActionKind::MeleeAttack => game_transition::ActionType::MeleeAttack,
+        ActionKind::Wait => game_transition::ActionType::Wait,
+    }
+}
+
+/// Extract target entity ID from action input as field element.
+#[inline]
+fn extract_target_id(input: &game_core::ActionInput) -> Option<ark_bn254::Fr> {
+    match input {
+        game_core::ActionInput::Entity(id) => Some(ark_bn254::Fr::from(id.0 as u64)),
+        _ => None,
+    }
+}
+
+/// Convert cardinal direction to field element (0-7).
+#[inline]
+fn direction_to_field(dir: &game_core::CardinalDirection) -> ark_bn254::Fr {
+    use game_core::CardinalDirection;
+    ark_bn254::Fr::from(match dir {
+        CardinalDirection::North => 0u64,
+        CardinalDirection::NorthEast => 1u64,
+        CardinalDirection::East => 2u64,
+        CardinalDirection::SouthEast => 3u64,
+        CardinalDirection::South => 4u64,
+        CardinalDirection::SouthWest => 5u64,
+        CardinalDirection::West => 6u64,
+        CardinalDirection::NorthWest => 7u64,
+    })
+}
+
+/// Extract direction from action input as field element.
+#[inline]
+fn extract_direction(input: &game_core::ActionInput) -> Option<ark_bn254::Fr> {
+    match input {
+        game_core::ActionInput::Direction(dir) => Some(direction_to_field(dir)),
+        _ => None,
+    }
+}
+
+/// Calculate position delta (dx, dy) for move actions.
+#[inline]
+fn calculate_position_delta(
+    char_action: &game_core::CharacterAction,
+    before_state: &GameState,
+    after_state: &GameState,
+) -> Option<(ark_bn254::Fr, ark_bn254::Fr)> {
+    use game_core::ActionKind;
+
+    if !matches!(char_action.kind, ActionKind::Move) {
+        return None;
+    }
+
+    let before_actor = before_state.entities.actors.iter().find(|a| a.id == char_action.actor)?;
+    let after_actor = after_state.entities.actors.iter().find(|a| a.id == char_action.actor)?;
+
+    let dx = after_actor.position.x - before_actor.position.x;
+    let dy = after_actor.position.y - before_actor.position.y;
+    Some((ark_bn254::Fr::from(dx as i64), ark_bn254::Fr::from(dy as i64)))
+}
+
+// ============================================================================
+// Prover Implementation
+// ============================================================================
+
 impl crate::Prover for ArkworksProver {
     fn prove(
         &self,
@@ -321,79 +395,25 @@ impl crate::Prover for ArkworksProver {
         after_state: &GameState,
     ) -> Result<ProofData, ProofError> {
         use ark_bn254::Fr as Fp254;
-        use game_core::{ActionKind, CardinalDirection};
 
         tracing::info!("ArkworksProver::prove - generating GameTransitionCircuit proof");
 
-        // Extract action details based on action kind
-        let (action_type, actor_id, target_id, direction, position_delta) = match action {
-            game_core::Action::Character(char_action) => {
-                let action_type = match char_action.kind {
-                    ActionKind::Move => game_transition::ActionType::Move,
-                    ActionKind::MeleeAttack => game_transition::ActionType::MeleeAttack,
-                    ActionKind::Wait => game_transition::ActionType::Wait,
-                    // Note: All other ActionKind variants are currently commented out in game-core
-                    // When new variants are added, they should be handled here
-                };
-
-                let actor_id = Fp254::from(char_action.actor.0 as u64);
-
-                // Extract target ID if present
-                let target_id = match &char_action.input {
-                    game_core::ActionInput::Entity(entity_id) => {
-                        Some(Fp254::from(entity_id.0 as u64))
-                    }
-                    _ => None,
-                };
-
-                // Extract direction if present
-                let direction = match &char_action.input {
-                    game_core::ActionInput::Direction(dir) => Some(Fp254::from(match dir {
-                        CardinalDirection::North => 0u64,
-                        CardinalDirection::NorthEast => 1u64,
-                        CardinalDirection::East => 2u64,
-                        CardinalDirection::SouthEast => 3u64,
-                        CardinalDirection::South => 4u64,
-                        CardinalDirection::SouthWest => 5u64,
-                        CardinalDirection::West => 6u64,
-                        CardinalDirection::NorthWest => 7u64,
-                    })),
-                    _ => None,
-                };
-
-                // Calculate position delta for move actions
-                let position_delta = if matches!(char_action.kind, ActionKind::Move) {
-                    // Find actor in before and after states
-                    let before_actor = before_state
-                        .entities
-                        .actors
-                        .iter()
-                        .find(|a| a.id == char_action.actor);
-                    let after_actor = after_state
-                        .entities
-                        .actors
-                        .iter()
-                        .find(|a| a.id == char_action.actor);
-
-                    if let (Some(before), Some(after)) = (before_actor, after_actor) {
-                        let dx = after.position.x - before.position.x;
-                        let dy = after.position.y - before.position.y;
-                        Some((Fp254::from(dx as i64), Fp254::from(dy as i64)))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                (action_type, actor_id, target_id, direction, position_delta)
-            }
+        // Extract character action or return error
+        let char_action = match action {
+            game_core::Action::Character(char_action) => char_action,
             _ => {
                 return Err(ProofError::CircuitProofError(
                     "Only CharacterAction is currently supported".to_string(),
                 ));
             }
         };
+
+        // Extract action parameters using helper functions
+        let action_type = to_action_type(&char_action.kind);
+        let actor_id = Fp254::from(char_action.actor.0 as u64);
+        let target_id = extract_target_id(&char_action.input);
+        let direction = extract_direction(&char_action.input);
+        let position_delta = calculate_position_delta(char_action, before_state, after_state);
 
         // Generate StateDelta
         let delta = game_core::StateDelta::from_states(action.clone(), before_state, after_state);

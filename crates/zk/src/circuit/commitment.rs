@@ -73,6 +73,19 @@ pub fn get_poseidon_config() -> &'static PoseidonConfig<Fp254> {
 }
 
 #[cfg(feature = "arkworks")]
+/// Helper: Squeeze single element from Poseidon sponge.
+///
+/// Extracts one field element from the sponge state with proper error handling.
+#[inline]
+fn squeeze_single_element(sponge: &mut PoseidonSponge<Fp254>) -> Result<Fp254, ProofError> {
+    sponge
+        .squeeze_field_elements::<Fp254>(1)
+        .first()
+        .copied()
+        .ok_or_else(|| ProofError::CircuitProofError("Poseidon squeeze failed".to_string()))
+}
+
+#[cfg(feature = "arkworks")]
 /// Hash a single field element using Poseidon sponge.
 ///
 /// # Arguments
@@ -92,12 +105,7 @@ pub fn hash_one(input: Fp254) -> Result<Fp254, ProofError> {
     sponge.absorb(&inputs.as_slice());
 
     // Squeeze one field element
-    let result = sponge.squeeze_field_elements::<Fp254>(1);
-
-    result
-        .first()
-        .copied()
-        .ok_or_else(|| ProofError::CircuitProofError("Poseidon squeeze failed".to_string()))
+    squeeze_single_element(&mut sponge)
 }
 
 #[cfg(feature = "arkworks")]
@@ -121,12 +129,7 @@ pub fn hash_two(left: Fp254, right: Fp254) -> Result<Fp254, ProofError> {
     sponge.absorb(&inputs.as_slice());
 
     // Squeeze one field element
-    let result = sponge.squeeze_field_elements::<Fp254>(1);
-
-    result
-        .first()
-        .copied()
-        .ok_or_else(|| ProofError::CircuitProofError("Poseidon squeeze failed".to_string()))
+    squeeze_single_element(&mut sponge)
 }
 
 #[cfg(feature = "arkworks")]
