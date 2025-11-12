@@ -15,6 +15,40 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 #[cfg(feature = "arkworks")]
 use ark_std::rand::RngCore;
 
+// ============================================================================
+// Serialization Helper Trait Extensions
+// ============================================================================
+
+#[cfg(feature = "arkworks")]
+/// Extension trait for convenient compressed serialization with error mapping.
+trait SerializeCompressedExt: CanonicalSerialize {
+    /// Serialize to compressed bytes with automatic error mapping.
+    fn to_compressed_bytes(&self) -> Result<Vec<u8>, ProofError> {
+        let mut bytes = Vec::new();
+        self.serialize_compressed(&mut bytes)
+            .map_err(|e| ProofError::SerializationError(e.to_string()))?;
+        Ok(bytes)
+    }
+}
+
+#[cfg(feature = "arkworks")]
+/// Blanket implementation for all types that implement CanonicalSerialize.
+impl<T: CanonicalSerialize> SerializeCompressedExt for T {}
+
+#[cfg(feature = "arkworks")]
+/// Extension trait for convenient compressed deserialization with error mapping.
+trait DeserializeCompressedExt: CanonicalDeserialize {
+    /// Deserialize from compressed bytes with automatic error mapping.
+    fn from_compressed_bytes(bytes: &[u8]) -> Result<Self, ProofError> {
+        Self::deserialize_compressed(bytes)
+            .map_err(|e| ProofError::SerializationError(e.to_string()))
+    }
+}
+
+#[cfg(feature = "arkworks")]
+/// Blanket implementation for all types that implement CanonicalDeserialize.
+impl<T: CanonicalDeserialize> DeserializeCompressedExt for T {}
+
 #[cfg(feature = "arkworks")]
 /// Groth16 proving and verifying keys
 ///
@@ -61,34 +95,24 @@ impl Groth16Keys {
     ///
     /// Uses compressed serialization for smaller size.
     pub fn serialize_proving_key(&self) -> Result<Vec<u8>, ProofError> {
-        let mut bytes = Vec::new();
-        self.proving_key
-            .serialize_compressed(&mut bytes)
-            .map_err(|e| ProofError::SerializationError(e.to_string()))?;
-        Ok(bytes)
+        self.proving_key.to_compressed_bytes()
     }
 
     /// Deserialize proving key from bytes
     pub fn deserialize_proving_key(bytes: &[u8]) -> Result<ProvingKey<Bn254>, ProofError> {
-        ProvingKey::<Bn254>::deserialize_compressed(bytes)
-            .map_err(|e| ProofError::SerializationError(e.to_string()))
+        ProvingKey::<Bn254>::from_compressed_bytes(bytes)
     }
 
     /// Serialize verifying key to bytes
     ///
     /// Uses compressed serialization for smaller size.
     pub fn serialize_verifying_key(&self) -> Result<Vec<u8>, ProofError> {
-        let mut bytes = Vec::new();
-        self.verifying_key
-            .serialize_compressed(&mut bytes)
-            .map_err(|e| ProofError::SerializationError(e.to_string()))?;
-        Ok(bytes)
+        self.verifying_key.to_compressed_bytes()
     }
 
     /// Deserialize verifying key from bytes
     pub fn deserialize_verifying_key(bytes: &[u8]) -> Result<VerifyingKey<Bn254>, ProofError> {
-        VerifyingKey::<Bn254>::deserialize_compressed(bytes)
-            .map_err(|e| ProofError::SerializationError(e.to_string()))
+        VerifyingKey::<Bn254>::from_compressed_bytes(bytes)
     }
 
     /// Serialize both keys to bytes
@@ -176,18 +200,13 @@ pub fn verify(
 #[cfg(feature = "arkworks")]
 /// Serialize a proof to bytes
 pub fn serialize_proof(proof: &Proof<Bn254>) -> Result<Vec<u8>, ProofError> {
-    let mut bytes = Vec::new();
-    proof
-        .serialize_compressed(&mut bytes)
-        .map_err(|e| ProofError::SerializationError(e.to_string()))?;
-    Ok(bytes)
+    proof.to_compressed_bytes()
 }
 
 #[cfg(feature = "arkworks")]
 /// Deserialize a proof from bytes
 pub fn deserialize_proof(bytes: &[u8]) -> Result<Proof<Bn254>, ProofError> {
-    Proof::<Bn254>::deserialize_compressed(bytes)
-        .map_err(|e| ProofError::SerializationError(e.to_string()))
+    Proof::<Bn254>::from_compressed_bytes(bytes)
 }
 
 #[cfg(feature = "arkworks")]

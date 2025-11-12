@@ -292,23 +292,14 @@ impl ConstraintSynthesizer<Fp254> for GameTransitionCircuit {
         let witnesses = self.witnesses.ok_or(SynthesisError::AssignmentMissing)?;
 
         // Allocate target_id (may be None for non-targeted actions)
-        let target_id_var = match self.target_id {
-            Some(target) => Some(FpVar::new_witness(cs.clone(), || Ok(target))?),
-            None => None,
-        };
+        let target_id_var = alloc_witness_fp_optional(cs.clone(), self.target_id)?;
 
         // Allocate direction (may be None for non-movement actions)
-        let _direction_var = match self.direction {
-            Some(dir) => Some(FpVar::new_witness(cs.clone(), || Ok(dir))?),
-            None => None,
-        };
+        let _direction_var = alloc_witness_fp_optional(cs.clone(), self.direction)?;
 
         // Allocate position delta (may be None for non-movement actions)
         let position_delta_var = match self.position_delta {
-            Some((dx, dy)) => Some((
-                FpVar::new_witness(cs.clone(), || Ok(dx))?,
-                FpVar::new_witness(cs.clone(), || Ok(dy))?,
-            )),
+            Some((dx, dy)) => Some((alloc_witness_fp(cs.clone(), dx)?, alloc_witness_fp(cs.clone(), dy)?)),
             None => None,
         };
 
@@ -329,12 +320,7 @@ impl ConstraintSynthesizer<Fp254> for GameTransitionCircuit {
         let actor_witness = &witnesses.entities[0];
 
         // Allocate actor's before data
-        let actor_before_data_vars: Result<Vec<FpVar<Fp254>>, SynthesisError> = actor_witness
-            .before_data
-            .iter()
-            .map(|&field| FpVar::new_witness(cs.clone(), || Ok(field)))
-            .collect();
-        let actor_before_data_vars = actor_before_data_vars?;
+        let actor_before_data_vars = alloc_witness_fp_vec(cs.clone(), &actor_witness.before_data)?;
 
         // Allocate actor's before Merkle path
         let actor_before_path_vars = allocate_merkle_path(cs.clone(), &actor_witness.before_path)?;
@@ -361,12 +347,7 @@ impl ConstraintSynthesizer<Fp254> for GameTransitionCircuit {
         // ====================================================================
 
         // Allocate actor's after data (must be done before action constraints)
-        let actor_after_data_vars: Result<Vec<FpVar<Fp254>>, SynthesisError> = actor_witness
-            .after_data
-            .iter()
-            .map(|&field| FpVar::new_witness(cs.clone(), || Ok(field)))
-            .collect();
-        let actor_after_data_vars = actor_after_data_vars?;
+        let actor_after_data_vars = alloc_witness_fp_vec(cs.clone(), &actor_witness.after_data)?;
 
         // Apply action-specific constraints
         constrain_move_action(
@@ -417,6 +398,36 @@ impl ConstraintSynthesizer<Fp254> for GameTransitionCircuit {
 // Helper Functions for Constraint Generation
 // ============================================================================
 
+/// Allocate a single field element as witness variable.
+#[inline]
+fn alloc_witness_fp(
+    cs: ConstraintSystemRef<Fp254>,
+    value: Fp254,
+) -> Result<FpVar<Fp254>, SynthesisError> {
+    FpVar::new_witness(cs, || Ok(value))
+}
+
+/// Allocate an optional field element as witness variable.
+#[inline]
+fn alloc_witness_fp_optional(
+    cs: ConstraintSystemRef<Fp254>,
+    value: Option<Fp254>,
+) -> Result<Option<FpVar<Fp254>>, SynthesisError> {
+    match value {
+        Some(v) => Ok(Some(alloc_witness_fp(cs, v)?)),
+        None => Ok(None),
+    }
+}
+
+/// Allocate a vector of field elements as witness variables.
+#[inline]
+fn alloc_witness_fp_vec(
+    cs: ConstraintSystemRef<Fp254>,
+    values: &[Fp254],
+) -> Result<Vec<FpVar<Fp254>>, SynthesisError> {
+    values.iter().map(|&field| alloc_witness_fp(cs.clone(), field)).collect()
+}
+
 /// Allocate a Merkle path as circuit variables.
 fn allocate_merkle_path(
     cs: ConstraintSystemRef<Fp254>,
@@ -426,7 +437,7 @@ fn allocate_merkle_path(
         .iter()
         .zip(path.directions.iter())
         .map(|(sibling, &direction)| {
-            let sibling_var = FpVar::new_witness(cs.clone(), || Ok(*sibling))?;
+            let sibling_var = alloc_witness_fp(cs.clone(), *sibling)?;
             let direction_var = Boolean::new_witness(cs.clone(), || Ok(direction))?;
             Ok((sibling_var, direction_var))
         })

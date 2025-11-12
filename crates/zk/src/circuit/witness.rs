@@ -12,12 +12,124 @@
 //! See: docs/state-delta-architecture.md Section 5.4
 
 use ark_bn254::Fr as Fp254;
-use game_core::{EntityId, GameState, StateDelta};
+use game_core::{ActorState, EntityId, GameState, ItemState, PropState, StateDelta};
 
 use super::merkle::{
-    MerklePath, build_entity_tree, serialize_actor, serialize_item, serialize_prop,
+    MerklePath, SparseMerkleTree, build_entity_tree, serialize_actor, serialize_item,
+    serialize_prop,
 };
 use crate::ProofError;
+
+// ============================================================================
+// Entity ID Trait for Generic Witness Generation
+// ============================================================================
+
+/// Trait for entities that have an EntityId.
+///
+/// This enables generic witness generation across different entity types.
+trait HasEntityId {
+    fn entity_id(&self) -> EntityId;
+}
+
+impl HasEntityId for ActorState {
+    fn entity_id(&self) -> EntityId {
+        self.id
+    }
+}
+
+impl HasEntityId for PropState {
+    fn entity_id(&self) -> EntityId {
+        self.id
+    }
+}
+
+impl HasEntityId for ItemState {
+    fn entity_id(&self) -> EntityId {
+        self.id
+    }
+}
+
+// ============================================================================
+// Generic Witness Generation Helper
+// ============================================================================
+
+/// Generate witnesses for a collection of changed entities.
+///
+/// This generic helper eliminates code duplication across actor/prop/item witness generation.
+///
+/// # Type Parameters
+/// * `T` - Entity type (must implement HasEntityId)
+/// * `F` - Serialization function type
+///
+/// # Arguments
+/// * `changed_ids` - Iterator of changed entity IDs from delta
+/// * `before_entities` - Slice of entities in before state
+/// * `after_entities` - Slice of entities in after state
+/// * `before_tree` - Merkle tree for before state
+/// * `after_tree` - Merkle tree for after state
+/// * `serialize_fn` - Function to serialize entity to field elements
+/// * `entity_type` - Human-readable entity type name for error messages
+///
+/// # Returns
+/// Vector of EntityWitness structs for all changed entities
+#[inline]
+fn generate_entity_witnesses<'a, T, I, F>(
+    changed_ids: I,
+    before_entities: &'a [T],
+    after_entities: &'a [T],
+    before_tree: &mut SparseMerkleTree,
+    after_tree: &mut SparseMerkleTree,
+    serialize_fn: F,
+    entity_type: &str,
+) -> Result<Vec<EntityWitness>, ProofError>
+where
+    T: HasEntityId,
+    I: Iterator<Item = EntityId>,
+    F: Fn(&T) -> [Fp254; 5],
+{
+    changed_ids
+        .map(|id| {
+            // Find entity in before state
+            let before_entity = before_entities
+                .iter()
+                .find(|e| e.entity_id() == id)
+                .ok_or_else(|| {
+                    ProofError::StateInconsistency(format!(
+                        "{} {} not found in before state",
+                        entity_type, id.0
+                    ))
+                })?;
+
+            // Find entity in after state
+            let after_entity = after_entities
+                .iter()
+                .find(|e| e.entity_id() == id)
+                .ok_or_else(|| {
+                    ProofError::StateInconsistency(format!(
+                        "{} {} not found in after state",
+                        entity_type, id.0
+                    ))
+                })?;
+
+            // Serialize entity data
+            let before_data = serialize_fn(before_entity).to_vec();
+            let after_data = serialize_fn(after_entity).to_vec();
+
+            // Generate Merkle paths
+            let before_path = before_tree.prove(id.0)?;
+            let after_path = after_tree.prove(id.0)?;
+
+            // Package as witness
+            Ok(EntityWitness {
+                id,
+                before_data,
+                before_path,
+                after_data,
+                after_path,
+            })
+        })
+        .collect()
+}
 
 /// Witness for a single entity change.
 ///
@@ -106,120 +218,38 @@ pub fn generate_witnesses(
     let mut after_tree = build_entity_tree(after_state)?;
 
     // Generate witnesses for changed actors
-    for actor_change in &delta.entities.actors.updated {
-        let id = actor_change.id;
-
-        // Find actor in before state
-        let before_actor = before_state
-            .entities
-            .actors
-            .iter()
-            .find(|a| a.id == id)
-            .ok_or_else(|| {
-                ProofError::StateInconsistency(format!("Actor {} not found in before state", id.0))
-            })?;
-
-        // Find actor in after state
-        let after_actor = after_state
-            .entities
-            .actors
-            .iter()
-            .find(|a| a.id == id)
-            .ok_or_else(|| {
-                ProofError::StateInconsistency(format!("Actor {} not found in after state", id.0))
-            })?;
-
-        // Serialize actor data to field elements
-        let before_data = serialize_actor(before_actor).to_vec();
-        let after_data = serialize_actor(after_actor).to_vec();
-
-        // Generate Merkle paths in both trees
-        let before_path = before_tree.prove(id.0)?;
-        let after_path = after_tree.prove(id.0)?;
-
-        // Package as witness
-        entity_witnesses.push(EntityWitness {
-            id,
-            before_data,
-            before_path,
-            after_data,
-            after_path,
-        });
-    }
+    entity_witnesses.extend(generate_entity_witnesses(
+        delta.entities.actors.updated.iter().map(|c| c.id),
+        &before_state.entities.actors,
+        &after_state.entities.actors,
+        &mut before_tree,
+        &mut after_tree,
+        serialize_actor,
+        "Actor",
+    )?);
 
     // Generate witnesses for changed props
-    for prop_change in &delta.entities.props.updated {
-        let id = prop_change.id;
-
-        let before_prop = before_state
-            .entities
-            .props
-            .iter()
-            .find(|p| p.id == id)
-            .ok_or_else(|| {
-                ProofError::StateInconsistency(format!("Prop {} not found in before state", id.0))
-            })?;
-
-        let after_prop = after_state
-            .entities
-            .props
-            .iter()
-            .find(|p| p.id == id)
-            .ok_or_else(|| {
-                ProofError::StateInconsistency(format!("Prop {} not found in after state", id.0))
-            })?;
-
-        let before_data = serialize_prop(before_prop).to_vec();
-        let after_data = serialize_prop(after_prop).to_vec();
-
-        let before_path = before_tree.prove(id.0)?;
-        let after_path = after_tree.prove(id.0)?;
-
-        entity_witnesses.push(EntityWitness {
-            id,
-            before_data,
-            before_path,
-            after_data,
-            after_path,
-        });
-    }
+    entity_witnesses.extend(generate_entity_witnesses(
+        delta.entities.props.updated.iter().map(|c| c.id),
+        &before_state.entities.props,
+        &after_state.entities.props,
+        &mut before_tree,
+        &mut after_tree,
+        serialize_prop,
+        "Prop",
+    )?);
 
     // Generate witnesses for changed items
-    for item_change in &delta.entities.items.updated {
-        let id = item_change.id;
+    entity_witnesses.extend(generate_entity_witnesses(
+        delta.entities.items.updated.iter().map(|c| c.id),
+        &before_state.entities.items,
+        &after_state.entities.items,
+        &mut before_tree,
+        &mut after_tree,
+        serialize_item,
+        "Item",
+    )?);
 
-        let before_item = before_state
-            .entities
-            .items
-            .iter()
-            .find(|i| i.id == id)
-            .ok_or_else(|| {
-                ProofError::StateInconsistency(format!("Item {} not found in before state", id.0))
-            })?;
-
-        let after_item = after_state
-            .entities
-            .items
-            .iter()
-            .find(|i| i.id == id)
-            .ok_or_else(|| {
-                ProofError::StateInconsistency(format!("Item {} not found in after state", id.0))
-            })?;
-
-        let before_data = serialize_item(before_item).to_vec();
-        let after_data = serialize_item(after_item).to_vec();
-
-        let before_path = before_tree.prove(id.0)?;
-        let after_path = after_tree.prove(id.0)?;
-
-        entity_witnesses.push(EntityWitness {
-            id,
-            before_data,
-            before_path,
-            after_data,
-            after_path,
-        });
-    }
 
     // Sort witnesses by entity ID for deterministic circuit layout
     entity_witnesses.sort_by_key(|w| w.id.0);
