@@ -181,6 +181,69 @@ fn test_move_action_full_proof() {
 }
 
 #[test]
+#[ignore] // Expensive test - requires key generation and proof verification (~20-30 seconds)
+fn test_move_action_proof_verification() {
+    // Setup: Create before and after states with a Move action
+    let before_state = create_test_state();
+    let mut after_state = before_state.clone();
+    after_state.entities.actors[0].position = Position::new(5, 6);
+    after_state.turn.nonce = 1;
+
+    let move_action = Action::Character(CharacterAction {
+        actor: EntityId::PLAYER,
+        kind: ActionKind::Move,
+        input: ActionInput::Direction(CardinalDirection::North),
+    });
+
+    // Generate witnesses and state roots
+    let delta = game_core::StateDelta::from_states(move_action, &before_state, &after_state);
+    let before_root = merkle::compute_state_root(&before_state).unwrap();
+    let after_root = merkle::compute_state_root(&after_state).unwrap();
+    let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
+
+    // Create circuit with all witnesses
+    let circuit = GameTransitionCircuit::new(
+        before_root,
+        after_root,
+        ActionType::Move.to_field(),
+        Fp254::from(EntityId::PLAYER.0 as u64),
+        witnesses,
+        None,                                         // No target for move
+        Some(Fp254::from(0u64)),                      // Direction: North = 0
+        Some((Fp254::from(0i64), Fp254::from(1i64))), // Delta: (0, 1) for north
+    );
+
+    // Generate proving and verifying keys
+    println!("Generating Groth16 keys (this may take 15-20 seconds)...");
+    let mut rng = test_rng();
+    let dummy_circuit = GameTransitionCircuit::dummy();
+    let keys = groth16::Groth16Keys::generate(dummy_circuit, &mut rng)
+        .expect("Key generation failed");
+
+    println!("✓ Keys generated");
+
+    // Generate proof
+    println!("Generating proof...");
+    let proof = groth16::prove(circuit, &keys, &mut rng).expect("Proof generation failed");
+
+    println!("✓ Proof generated ({} bytes)", {
+        let bytes = groth16::serialize_proof(&proof).unwrap();
+        bytes.len()
+    });
+
+    // Verify proof cryptographically
+    println!("Verifying proof...");
+    let public_inputs = vec![before_root, after_root, ActionType::Move.to_field(), Fp254::from(EntityId::PLAYER.0 as u64)];
+
+    let is_valid = groth16::verify(&proof, &public_inputs, &keys.verifying_key)
+        .expect("Verification failed");
+
+    assert!(is_valid, "Proof verification returned false - proof is invalid!");
+
+    println!("✓ Proof verified successfully - GameTransitionCircuit proof is cryptographically valid");
+}
+
+#[test]
 fn test_wait_action_witnesses() {
     let before_state = create_test_state();
     let after_state = before_state.clone(); // Wait doesn't change entity state
