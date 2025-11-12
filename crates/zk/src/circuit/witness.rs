@@ -3,13 +3,13 @@
 //! Converts game state deltas into ZK circuit witnesses with Merkle proofs.
 //!
 //! This module implements the core algorithm for generating Merkle witnesses from StateDelta:
-//! 1. Build Merkle trees from before and after states
+//! 1. Build Merkle trees from before and after states using batch operations
 //! 2. For each changed entity in the delta, generate before/after witnesses
 //! 3. Package witnesses for circuit consumption
 //!
+//! OPTIMIZATION: Uses batch tree building and pre-allocated vectors.
+//!
 //! See: docs/state-delta-architecture.md Section 5.4
-
-#![allow(dead_code)] // Allow during initial development
 
 use ark_bn254::Fr as Fp254;
 use game_core::{EntityId, GameState, StateDelta};
@@ -136,8 +136,8 @@ pub fn generate_witnesses(
             })?;
 
         // Serialize actor data to field elements
-        let before_data = serialize_actor(before_actor);
-        let after_data = serialize_actor(after_actor);
+        let before_data = serialize_actor(before_actor).to_vec();
+        let after_data = serialize_actor(after_actor).to_vec();
 
         // Generate Merkle paths in both trees
         let before_path = before_tree.prove(id.0)?;
@@ -181,8 +181,8 @@ pub fn generate_witnesses(
                 ))
             })?;
 
-        let before_data = serialize_prop(before_prop);
-        let after_data = serialize_prop(after_prop);
+        let before_data = serialize_prop(before_prop).to_vec();
+        let after_data = serialize_prop(after_prop).to_vec();
 
         let before_path = before_tree.prove(id.0)?;
         let after_path = after_tree.prove(id.0)?;
@@ -224,8 +224,8 @@ pub fn generate_witnesses(
                 ))
             })?;
 
-        let before_data = serialize_item(before_item);
-        let after_data = serialize_item(after_item);
+        let before_data = serialize_item(before_item).to_vec();
+        let after_data = serialize_item(after_item).to_vec();
 
         let before_path = before_tree.prove(id.0)?;
         let after_path = after_tree.prove(id.0)?;
