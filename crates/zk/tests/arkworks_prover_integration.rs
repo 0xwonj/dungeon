@@ -5,8 +5,8 @@
 #![cfg(feature = "arkworks")]
 
 use game_core::{
-    ActorState, Action, ActionInput, ActionKind, CardinalDirection, CharacterAction, CoreStats,
-    EntityId, EntitiesState, GameState, InventoryState, Position, TurnState, WorldState,
+    Action, ActionInput, ActionKind, ActorState, CardinalDirection, CharacterAction, CoreStats,
+    EntitiesState, EntityId, GameState, InventoryState, Position, TurnState, WorldState,
 };
 use zk::{ArkworksProver, Prover};
 
@@ -74,7 +74,7 @@ fn test_arkworks_prover_move_action_end_to_end() {
     });
 
     // Create prover with empty oracle snapshot (not needed for Arkworks)
-    
+
     let prover = ArkworksProver::new();
 
     // Generate proof
@@ -88,7 +88,10 @@ fn test_arkworks_prover_move_action_end_to_end() {
     );
 
     let proof = proof_result.unwrap();
-    println!("✓ Proof generated successfully: {} bytes", proof.bytes.len());
+    println!(
+        "✓ Proof generated successfully: {} bytes",
+        proof.bytes.len()
+    );
 
     // Verify proof
     println!("Verifying proof...");
@@ -99,10 +102,7 @@ fn test_arkworks_prover_move_action_end_to_end() {
         "Proof verification failed: {:?}",
         verify_result.err()
     );
-    assert!(
-        verify_result.unwrap(),
-        "Proof verification returned false"
-    );
+    assert!(verify_result.unwrap(), "Proof verification returned false");
 
     println!("✓ Proof verified successfully");
 }
@@ -126,7 +126,6 @@ fn test_arkworks_prover_melee_attack_end_to_end() {
         input: ActionInput::Entity(EntityId(1)),
     });
 
-    
     let prover = ArkworksProver::new();
 
     // Generate proof
@@ -160,7 +159,6 @@ fn test_arkworks_prover_wait_action_end_to_end() {
         input: ActionInput::None,
     });
 
-    
     let prover = ArkworksProver::new();
 
     // Generate proof
@@ -180,9 +178,8 @@ fn test_arkworks_prover_wait_action_end_to_end() {
 
 #[test]
 fn test_arkworks_prover_wrong_backend_rejection() {
-    use zk::{ProofBackend, ProofData};
+    use zk::ProofData;
 
-    
     let prover = ArkworksProver::new();
 
     // Create a fake proof with wrong backend (using Stub as an example)

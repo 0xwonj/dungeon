@@ -85,17 +85,15 @@
 //! - Complex formulas (crits, scaling)
 
 use ark_bn254::Fr as Fp254;
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use ark_r1cs_std::fields::{fp::FpVar, FieldVar};
 use ark_r1cs_std::alloc::AllocVar;
-use ark_r1cs_std::eq::EqGadget;
 use ark_r1cs_std::boolean::Boolean;
+use ark_r1cs_std::eq::EqGadget;
+use ark_r1cs_std::fields::{FieldVar, fp::FpVar};
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 
+use super::gadgets::{poseidon_hash_many_gadget, verify_merkle_path_gadget};
 use super::merkle::MerklePath;
 use super::witness::TransitionWitnesses;
-use super::gadgets::{
-    verify_merkle_path_gadget, poseidon_hash_many_gadget,
-};
 
 // ============================================================================
 // Action Type Encoding
@@ -260,10 +258,7 @@ impl GameTransitionCircuit {
 // ============================================================================
 
 impl ConstraintSynthesizer<Fp254> for GameTransitionCircuit {
-    fn generate_constraints(
-        self,
-        cs: ConstraintSystemRef<Fp254>,
-    ) -> Result<(), SynthesisError> {
+    fn generate_constraints(self, cs: ConstraintSystemRef<Fp254>) -> Result<(), SynthesisError> {
         // ====================================================================
         // 1. Allocate Public Inputs
         // ====================================================================
@@ -346,11 +341,7 @@ impl ConstraintSynthesizer<Fp254> for GameTransitionCircuit {
 
         // Verify actor's before Merkle proof
         let actor_leaf_hash = compute_leaf_hash(&actor_before_data_vars)?;
-        verify_merkle_path_constraint(
-            &actor_leaf_hash,
-            &actor_before_path_vars,
-            &before_root_var,
-        )?;
+        verify_merkle_path_constraint(&actor_leaf_hash, &actor_before_path_vars, &before_root_var)?;
 
         // ====================================================================
         // 4. Action-Specific Constraints
@@ -503,11 +494,7 @@ fn constrain_move_action(
         // Validate delta is one of 8 valid directions
         // Valid deltas: {-1, 0, 1} x {-1, 0, 1} excluding (0, 0)
         use super::gadgets::one_of_gadget;
-        let valid_delta_values = vec![
-            Fp254::from(-1i64),
-            Fp254::from(0u64),
-            Fp254::from(1u64),
-        ];
+        let valid_delta_values = vec![Fp254::from(-1i64), Fp254::from(0u64), Fp254::from(1u64)];
         one_of_gadget(delta_x, &valid_delta_values)?;
         one_of_gadget(delta_y, &valid_delta_values)?;
 

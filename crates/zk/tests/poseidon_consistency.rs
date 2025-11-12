@@ -3,11 +3,10 @@
 #![cfg(feature = "arkworks")]
 
 use ark_bn254::Fr as Fp254;
-use ark_ff::PrimeField;
-use ark_relations::r1cs::ConstraintSystem;
+use ark_r1cs_std::R1CSVar;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
-use ark_r1cs_std::R1CSVar;
+use ark_relations::r1cs::ConstraintSystem;
 
 use zk::circuit::commitment::{get_poseidon_config, hash_one, hash_two};
 use zk::circuit::gadgets::{poseidon_hash_one_gadget, poseidon_hash_two_gadget};
@@ -25,14 +24,19 @@ fn test_poseidon_hash_one_consistency() {
     let cs = ConstraintSystem::<Fp254>::new_ref();
     let input_var = FpVar::new_witness(cs.clone(), || Ok(input)).unwrap();
     let circuit_hash_var = poseidon_hash_one_gadget(&input_var).expect("Circuit hash failed");
-    let circuit_hash = circuit_hash_var.value().expect("Failed to get circuit hash value");
+    let circuit_hash = circuit_hash_var
+        .value()
+        .expect("Failed to get circuit hash value");
 
     println!("Circuit hash of 42: {:?}", circuit_hash);
     println!("Hashes match: {}", native_hash == circuit_hash);
     println!("Constraints satisfied: {}", cs.is_satisfied().unwrap());
     println!("Number of constraints: {}", cs.num_constraints());
 
-    assert_eq!(native_hash, circuit_hash, "Native and circuit hashes must match!");
+    assert_eq!(
+        native_hash, circuit_hash,
+        "Native and circuit hashes must match!"
+    );
 }
 
 #[test]
@@ -49,15 +53,21 @@ fn test_poseidon_hash_two_consistency() {
     let cs = ConstraintSystem::<Fp254>::new_ref();
     let left_var = FpVar::new_witness(cs.clone(), || Ok(left)).unwrap();
     let right_var = FpVar::new_witness(cs.clone(), || Ok(right)).unwrap();
-    let circuit_hash_var = poseidon_hash_two_gadget(&left_var, &right_var).expect("Circuit hash failed");
-    let circuit_hash = circuit_hash_var.value().expect("Failed to get circuit hash value");
+    let circuit_hash_var =
+        poseidon_hash_two_gadget(&left_var, &right_var).expect("Circuit hash failed");
+    let circuit_hash = circuit_hash_var
+        .value()
+        .expect("Failed to get circuit hash value");
 
     println!("Circuit hash of (10, 20): {:?}", circuit_hash);
     println!("Hashes match: {}", native_hash == circuit_hash);
     println!("Constraints satisfied: {}", cs.is_satisfied().unwrap());
     println!("Number of constraints: {}", cs.num_constraints());
 
-    assert_eq!(native_hash, circuit_hash, "Native and circuit hashes must match!");
+    assert_eq!(
+        native_hash, circuit_hash,
+        "Native and circuit hashes must match!"
+    );
 }
 
 #[test]

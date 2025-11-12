@@ -3,13 +3,13 @@
 #![cfg(feature = "arkworks")]
 
 use ark_bn254::Fr as Fp254;
-use ark_relations::r1cs::ConstraintSystem;
+use ark_r1cs_std::R1CSVar;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
-use ark_r1cs_std::R1CSVar;
+use ark_relations::r1cs::ConstraintSystem;
 
-use zk::circuit::merkle::hash_many;
 use zk::circuit::gadgets::poseidon_hash_many_gadget;
+use zk::circuit::merkle::hash_many;
 
 #[test]
 fn test_hash_five_elements_consistency() {
@@ -39,5 +39,8 @@ fn test_hash_five_elements_consistency() {
     println!("Match: {}", native == circuit);
     println!("Constraints satisfied: {}", cs.is_satisfied().unwrap());
 
-    assert_eq!(native, circuit, "hash_many results for 5 elements must match!");
+    assert_eq!(
+        native, circuit,
+        "hash_many results for 5 elements must match!"
+    );
 }

@@ -3,10 +3,10 @@
 #![cfg(feature = "arkworks")]
 
 use ark_bn254::Fr as Fp254;
-use ark_relations::r1cs::ConstraintSystem;
+use ark_r1cs_std::R1CSVar;
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::fields::fp::FpVar;
-use ark_r1cs_std::R1CSVar;
+use ark_relations::r1cs::ConstraintSystem;
 
 use zk::circuit::commitment::hash_two;
 use zk::circuit::gadgets::poseidon_hash_two_gadget;
@@ -14,7 +14,7 @@ use zk::circuit::gadgets::poseidon_hash_two_gadget;
 #[test]
 fn test_hash_two_same_order() {
     let left = Fp254::from(100u64);
-    let right = Fp254::from(0u64);  // Empty sibling
+    let right = Fp254::from(0u64); // Empty sibling
 
     // Native hash
     let native = hash_two(left, right).expect("Native hash failed");
@@ -35,7 +35,7 @@ fn test_hash_two_same_order() {
 
 #[test]
 fn test_hash_two_reversed_order() {
-    let left = Fp254::from(0u64);  // Empty sibling
+    let left = Fp254::from(0u64); // Empty sibling
     let right = Fp254::from(100u64);
 
     // Native hash

@@ -8,8 +8,8 @@
 use ark_bn254::Fr as Fp254;
 use ark_std::test_rng;
 use game_core::{
-    ActorState, Action, ActionInput, ActionKind, CardinalDirection, CharacterAction, CoreStats,
-    EntityId, EntitiesState, GameState, InventoryState, Position, TurnState, WorldState,
+    Action, ActionInput, ActionKind, ActorState, CardinalDirection, CharacterAction, CoreStats,
+    EntitiesState, EntityId, GameState, InventoryState, Position, TurnState, WorldState,
 };
 use zk::circuit::game_transition::{ActionType, GameTransitionCircuit};
 use zk::circuit::{groth16, merkle, witness};
@@ -147,8 +147,8 @@ fn test_game_transition_circuit_construction() {
         ActionType::Move.to_field(),
         Fp254::from(EntityId::PLAYER.0 as u64),
         witnesses,
-        None,                                    // No target for move
-        Some(Fp254::from(0u64)),                 // Direction: North = 0
+        None,                                         // No target for move
+        Some(Fp254::from(0u64)),                      // Direction: North = 0
         Some((Fp254::from(0i64), Fp254::from(1i64))), // Delta: (0, 1)
     );
 
@@ -222,7 +222,10 @@ fn test_wait_action_witnesses() {
     // Wait action should generate minimal witnesses
     let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
 
-    println!("✓ Wait action witness generation: {} witnesses", witnesses.entities.len());
+    println!(
+        "✓ Wait action witness generation: {} witnesses",
+        witnesses.entities.len()
+    );
 }
 
 #[test]

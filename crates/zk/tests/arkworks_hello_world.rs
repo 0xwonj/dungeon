@@ -16,14 +16,14 @@ fn test_arkworks_hello_world_proof() {
     // Create a dummy Merkle path (not actually used in the trivial circuit)
     let path = merkle::MerklePath {
         siblings: vec![Fp254::from(0u64); 4],
-        path_bits: vec![false; 4],
         directions: vec![false; 4],
     };
 
     // Generate Groth16 keys and proof
     let mut rng = test_rng();
     let dummy_circuit = constraints::HelloWorldCircuit::dummy();
-    let keys = groth16::Groth16Keys::generate(dummy_circuit, &mut rng).expect("Failed to generate keys");
+    let keys =
+        groth16::Groth16Keys::generate(dummy_circuit, &mut rng).expect("Failed to generate keys");
     let circuit = constraints::HelloWorldCircuit::new(root, leaf, path);
     let proof = groth16::prove(circuit, &keys, &mut rng).expect("Failed to prove");
 

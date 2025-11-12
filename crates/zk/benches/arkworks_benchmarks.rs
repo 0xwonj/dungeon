@@ -4,10 +4,10 @@
 //!
 //! This will generate HTML reports in target/criterion/
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use game_core::{
-    ActorState, Action, ActionInput, ActionKind, CardinalDirection, CharacterAction, CoreStats,
-    EntityId, EntitiesState, GameState, InventoryState, Position, TurnState, WorldState,
+    Action, ActionInput, ActionKind, ActorState, CardinalDirection, CharacterAction, CoreStats,
+    EntitiesState, EntityId, GameState, InventoryState, Position, TurnState, WorldState,
 };
 
 #[cfg(feature = "arkworks")]

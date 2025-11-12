@@ -5,8 +5,8 @@
 use ark_bn254::Fr as Fp254;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use game_core::{
-    ActorState, Action, ActionInput, ActionKind, CardinalDirection, CharacterAction, CoreStats,
-    EntityId, EntitiesState, GameState, InventoryState, Position, StateDelta, TurnState,
+    Action, ActionInput, ActionKind, ActorState, CardinalDirection, CharacterAction, CoreStats,
+    EntitiesState, EntityId, GameState, InventoryState, Position, StateDelta, TurnState,
     WorldState,
 };
 use zk::circuit::{game_transition::GameTransitionCircuit, merkle, witness};
@@ -76,15 +76,23 @@ fn test_debug_move_action_witness_values() {
             println!("    Field {}: {:?}", i, field);
         }
 
-        println!("\n  Before path: {} siblings", witness.before_path.siblings.len());
-        println!("  After path: {} siblings", witness.after_path.siblings.len());
+        println!(
+            "\n  Before path: {} siblings",
+            witness.before_path.siblings.len()
+        );
+        println!(
+            "  After path: {} siblings",
+            witness.after_path.siblings.len()
+        );
     }
 
     // Compute entity tree roots (MVP: no turn state in circuit yet)
-    let mut before_tree = merkle::build_entity_tree(&before_state).expect("Failed to build before tree");
+    let mut before_tree =
+        merkle::build_entity_tree(&before_state).expect("Failed to build before tree");
     let before_root = before_tree.root().expect("Failed to compute before root");
 
-    let mut after_tree = merkle::build_entity_tree(&after_state).expect("Failed to build after tree");
+    let mut after_tree =
+        merkle::build_entity_tree(&after_state).expect("Failed to build after tree");
     let after_root = after_tree.root().expect("Failed to compute after root");
 
     println!("\n=== State Roots ===");
@@ -104,7 +112,10 @@ fn test_debug_move_action_witness_values() {
     println!("Action type (Move): {:?}", action_type);
     println!("Actor ID: {:?}", actor_id);
     println!("Position delta: dx={}, dy={}", dx, dy);
-    println!("Position delta as Fp254: ({:?}, {:?})", position_delta.0, position_delta.1);
+    println!(
+        "Position delta as Fp254: ({:?}, {:?})",
+        position_delta.0, position_delta.1
+    );
 
     // Create circuit
     let circuit = GameTransitionCircuit::new(

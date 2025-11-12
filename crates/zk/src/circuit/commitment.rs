@@ -9,8 +9,8 @@ use ark_bn254::Fr as Fp254;
 
 #[cfg(feature = "arkworks")]
 use ark_crypto_primitives::sponge::{
-    poseidon::{find_poseidon_ark_and_mds, PoseidonConfig, PoseidonSponge},
     CryptographicSponge,
+    poseidon::{PoseidonConfig, PoseidonSponge, find_poseidon_ark_and_mds},
 };
 
 #[cfg(feature = "arkworks")]
@@ -53,11 +53,11 @@ pub fn get_poseidon_config() -> &'static PoseidonConfig<Fp254> {
         // Generate round constants and MDS matrix using the standard procedure
         // This is expensive (~10-100ms) but only happens ONCE
         let (ark, mds) = find_poseidon_ark_and_mds::<Fp254>(
-            254,                   // BN254 field size in bits
+            254, // BN254 field size in bits
             rate_usize,
             full_rounds_u64,
             partial_rounds_u64,
-            0,                     // skip matrices (0 = don't skip any)
+            0, // skip matrices (0 = don't skip any)
         );
 
         PoseidonConfig::new(
@@ -94,7 +94,8 @@ pub fn hash_one(input: Fp254) -> Result<Fp254, ProofError> {
     // Squeeze one field element
     let result = sponge.squeeze_field_elements::<Fp254>(1);
 
-    result.first()
+    result
+        .first()
         .copied()
         .ok_or_else(|| ProofError::CircuitProofError("Poseidon squeeze failed".to_string()))
 }
@@ -122,7 +123,8 @@ pub fn hash_two(left: Fp254, right: Fp254) -> Result<Fp254, ProofError> {
     // Squeeze one field element
     let result = sponge.squeeze_field_elements::<Fp254>(1);
 
-    result.first()
+    result
+        .first()
         .copied()
         .ok_or_else(|| ProofError::CircuitProofError("Poseidon squeeze failed".to_string()))
 }
@@ -148,7 +150,10 @@ mod tests {
         let input2 = Fp254::from(42u64);
         let result1 = hash_one(input1).expect("hash_one should succeed");
         let result2 = hash_one(input2).expect("hash_one should succeed");
-        assert_ne!(result1, result2, "Different inputs must produce different hashes");
+        assert_ne!(
+            result1, result2,
+            "Different inputs must produce different hashes"
+        );
     }
 
     #[test]
@@ -164,11 +169,14 @@ mod tests {
     #[test]
     fn test_hash_two_different_inputs() {
         // Test that different inputs produce different outputs
-        let result1 = hash_two(Fp254::from(3u64), Fp254::from(4u64))
-            .expect("hash_two should succeed");
-        let result2 = hash_two(Fp254::from(5u64), Fp254::from(6u64))
-            .expect("hash_two should succeed");
-        assert_ne!(result1, result2, "Different inputs must produce different hashes");
+        let result1 =
+            hash_two(Fp254::from(3u64), Fp254::from(4u64)).expect("hash_two should succeed");
+        let result2 =
+            hash_two(Fp254::from(5u64), Fp254::from(6u64)).expect("hash_two should succeed");
+        assert_ne!(
+            result1, result2,
+            "Different inputs must produce different hashes"
+        );
     }
 
     #[test]
@@ -189,6 +197,9 @@ mod tests {
         let hash2 = hash_two(value, value).expect("hash_two should succeed");
         // These should be different since they use different arity
         // (one input vs two inputs, even if the inputs are the same value)
-        assert_ne!(hash1, hash2, "hash_one and hash_two should produce different outputs");
+        assert_ne!(
+            hash1, hash2,
+            "hash_one and hash_two should produce different outputs"
+        );
     }
 }

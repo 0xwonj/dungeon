@@ -5,7 +5,7 @@
 use crate::ProofError;
 
 #[cfg(feature = "arkworks")]
-use super::commitment::hash_two;
+use super::commitment::{hash_one, hash_two};
 #[cfg(feature = "arkworks")]
 use ark_bn254::Fr as Fp254;
 #[cfg(feature = "arkworks")]
@@ -212,10 +212,10 @@ pub fn hash_many(inputs: &[Fp254]) -> Result<Fp254, ProofError> {
 
     // Use Poseidon sponge to hash multiple inputs (same as circuit)
     use super::commitment::get_poseidon_config;
-    use ark_crypto_primitives::sponge::{poseidon::PoseidonSponge, CryptographicSponge};
+    use ark_crypto_primitives::sponge::{CryptographicSponge, poseidon::PoseidonSponge};
 
     let config = get_poseidon_config();
-    let mut sponge = PoseidonSponge::<Fp254>::new(&config);
+    let mut sponge = PoseidonSponge::<Fp254>::new(config);
 
     // Absorb all inputs
     for &input in inputs {
@@ -226,7 +226,8 @@ pub fn hash_many(inputs: &[Fp254]) -> Result<Fp254, ProofError> {
     // Squeeze output
     let result = sponge.squeeze_field_elements::<Fp254>(1);
 
-    result.first()
+    result
+        .first()
         .copied()
         .ok_or_else(|| ProofError::CircuitProofError("Poseidon squeeze failed".to_string()))
 }
@@ -328,9 +329,8 @@ pub fn build_entity_tree(state: &GameState) -> Result<SparseMerkleTree, ProofErr
     let mut tree = SparseMerkleTree::new(10); // depth 10 = up to 1024 entities
 
     // Collect all entity hashes into a vector for batch insert
-    let total_entities = state.entities.actors.len()
-        + state.entities.props.len()
-        + state.entities.items.len();
+    let total_entities =
+        state.entities.actors.len() + state.entities.props.len() + state.entities.items.len();
 
     let mut leaves = Vec::with_capacity(total_entities);
 
@@ -386,7 +386,7 @@ pub fn compute_state_root(state: &GameState) -> Result<Fp254, ProofError> {
 
     // Serialize turn state
     let turn_fields = vec![
-        Fp254::from(state.turn.clock as u64),
+        Fp254::from(state.turn.clock),
         Fp254::from(state.turn.current_actor.0 as u64),
         Fp254::from(state.turn.nonce),
     ];

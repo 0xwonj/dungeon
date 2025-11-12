@@ -9,14 +9,14 @@
 //! OPTIMIZATION: All Poseidon operations use cached config singleton.
 
 use ark_bn254::Fr as Fp254;
-use ark_relations::r1cs::SynthesisError;
-use ark_r1cs_std::fields::{fp::FpVar, FieldVar};
+use ark_crypto_primitives::sponge::constraints::CryptographicSpongeVar;
+use ark_crypto_primitives::sponge::poseidon::constraints::PoseidonSpongeVar;
+use ark_r1cs_std::R1CSVar;
 use ark_r1cs_std::boolean::Boolean;
 use ark_r1cs_std::eq::EqGadget;
+use ark_r1cs_std::fields::{FieldVar, fp::FpVar};
 use ark_r1cs_std::select::CondSelectGadget;
-use ark_r1cs_std::R1CSVar;
-use ark_crypto_primitives::sponge::poseidon::constraints::PoseidonSpongeVar;
-use ark_crypto_primitives::sponge::constraints::CryptographicSpongeVar;
+use ark_relations::r1cs::SynthesisError;
 
 use super::commitment::get_poseidon_config;
 
@@ -31,9 +31,7 @@ use super::commitment::get_poseidon_config;
 /// Adds proper R1CS constraints for the Poseidon permutation.
 ///
 /// OPTIMIZATION: Uses cached config singleton for ~100-1000x speedup.
-pub fn poseidon_hash_one_gadget(
-    input: &FpVar<Fp254>,
-) -> Result<FpVar<Fp254>, SynthesisError> {
+pub fn poseidon_hash_one_gadget(input: &FpVar<Fp254>) -> Result<FpVar<Fp254>, SynthesisError> {
     let params = get_poseidon_config();
     let mut sponge = PoseidonSpongeVar::new(input.cs(), params);
 
@@ -73,9 +71,7 @@ pub fn poseidon_hash_two_gadget(
 /// Adds proper R1CS constraints for the Poseidon permutation.
 ///
 /// OPTIMIZATION: Uses cached config singleton for ~100-1000x speedup.
-pub fn poseidon_hash_many_gadget(
-    inputs: &[FpVar<Fp254>],
-) -> Result<FpVar<Fp254>, SynthesisError> {
+pub fn poseidon_hash_many_gadget(inputs: &[FpVar<Fp254>]) -> Result<FpVar<Fp254>, SynthesisError> {
     if inputs.is_empty() {
         return Err(SynthesisError::Unsatisfiable);
     }
@@ -191,10 +187,7 @@ pub fn range_check_gadget(
 /// Verify that a value is one of a set of allowed values.
 ///
 /// Used for validating action types, directions, etc.
-pub fn one_of_gadget(
-    value: &FpVar<Fp254>,
-    allowed: &[Fp254],
-) -> Result<(), SynthesisError> {
+pub fn one_of_gadget(value: &FpVar<Fp254>, allowed: &[Fp254]) -> Result<(), SynthesisError> {
     if allowed.is_empty() {
         return Err(SynthesisError::Unsatisfiable);
     }
@@ -253,19 +246,11 @@ pub fn adjacency_check_gadget(
     let dy = y2 - y1;
 
     // Check |dx| <= 1: dx in {-1, 0, 1}
-    let valid_dx_values = vec![
-        Fp254::from(-1i64),
-        Fp254::from(0u64),
-        Fp254::from(1u64),
-    ];
+    let valid_dx_values = vec![Fp254::from(-1i64), Fp254::from(0u64), Fp254::from(1u64)];
     one_of_gadget(&dx, &valid_dx_values)?;
 
     // Check |dy| <= 1: dy in {-1, 0, 1}
-    let valid_dy_values = vec![
-        Fp254::from(-1i64),
-        Fp254::from(0u64),
-        Fp254::from(1u64),
-    ];
+    let valid_dy_values = vec![Fp254::from(-1i64), Fp254::from(0u64), Fp254::from(1u64)];
     one_of_gadget(&dy, &valid_dy_values)?;
 
     // Check not both zero (must actually move)
@@ -344,8 +329,8 @@ pub fn clamp_gadget(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_relations::r1cs::ConstraintSystem;
     use ark_r1cs_std::alloc::AllocVar;
+    use ark_relations::r1cs::ConstraintSystem;
 
     #[test]
     #[ignore] // FIXME: is_cmp has issues with arkworks 0.5.0 - use bounds_check_gadget instead

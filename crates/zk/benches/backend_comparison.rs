@@ -27,14 +27,14 @@
 //! - **RISC0**: General-purpose zkVM, easier development, larger proofs, slower proving
 //! - **Arkworks**: Hand-crafted R1CS circuits, faster proving, smaller proofs, more complex development
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use game_core::{
-    ActorState, Action, ActionInput, ActionKind, CardinalDirection, CharacterAction, CoreStats,
-    EntityId, EntitiesState, GameState, InventoryState, Position, TurnState, WorldState,
+    Action, ActionInput, ActionKind, ActorState, CardinalDirection, CharacterAction, CoreStats,
+    EntitiesState, EntityId, GameState, InventoryState, Position, TurnState, WorldState,
 };
 
 #[cfg(feature = "risc0")]
-use zk::{OracleSnapshot, Risc0Prover};
+use zk::Risc0Prover;
 
 #[cfg(feature = "stub")]
 use zk::StubProver;
@@ -95,11 +95,16 @@ fn create_test_state(num_actors: usize) -> GameState {
 #[cfg(any(feature = "risc0", feature = "stub"))]
 fn create_oracle_snapshot() -> zk::OracleSnapshot {
     use game_core::{GameConfig, MapDimensions};
-    use zk::{ActorsSnapshot, ConfigSnapshot, ItemsSnapshot, MapSnapshot, OracleSnapshot, TablesSnapshot};
+    use zk::{
+        ActorsSnapshot, ConfigSnapshot, ItemsSnapshot, MapSnapshot, OracleSnapshot, TablesSnapshot,
+    };
 
     OracleSnapshot::new(
         MapSnapshot {
-            dimensions: MapDimensions { width: 50, height: 50 },
+            dimensions: MapDimensions {
+                width: 50,
+                height: 50,
+            },
             tiles: vec![],
         },
         ItemsSnapshot::empty(),
@@ -152,8 +157,7 @@ fn create_prover() -> ArkworksProver {
     // Use cached keys for accurate performance measurement
     // This pre-generates keys once (~15-18 seconds) so we can measure
     // the true proving time (~1-2 seconds) without key generation overhead
-    ArkworksProver::with_cached_keys()
-        .expect("Failed to generate cached keys for benchmark")
+    ArkworksProver::with_cached_keys().expect("Failed to generate cached keys for benchmark")
 }
 
 fn bench_proof_generation(c: &mut Criterion) {
@@ -234,7 +238,9 @@ fn bench_proof_verification(c: &mut Criterion) {
 
     group.bench_function("verify_proof", |b| {
         b.iter(|| {
-            let result = prover.verify(black_box(&proof)).expect("Verification failed");
+            let result = prover
+                .verify(black_box(&proof))
+                .expect("Verification failed");
             black_box(result)
         });
     });

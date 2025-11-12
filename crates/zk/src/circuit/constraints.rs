@@ -5,13 +5,13 @@
 #[cfg(feature = "arkworks")]
 use ark_bn254::Fr as Fp254;
 #[cfg(feature = "arkworks")]
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-#[cfg(feature = "arkworks")]
-use ark_r1cs_std::fields::fp::FpVar;
-#[cfg(feature = "arkworks")]
 use ark_r1cs_std::alloc::AllocVar;
 #[cfg(feature = "arkworks")]
 use ark_r1cs_std::eq::EqGadget;
+#[cfg(feature = "arkworks")]
+use ark_r1cs_std::fields::fp::FpVar;
+#[cfg(feature = "arkworks")]
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 
 #[cfg(feature = "arkworks")]
 use super::merkle::MerklePath;
@@ -47,17 +47,13 @@ impl HelloWorldCircuit {
 
 #[cfg(feature = "arkworks")]
 impl ConstraintSynthesizer<Fp254> for HelloWorldCircuit {
-    fn generate_constraints(
-        self,
-        cs: ConstraintSystemRef<Fp254>,
-    ) -> Result<(), SynthesisError> {
+    fn generate_constraints(self, cs: ConstraintSystemRef<Fp254>) -> Result<(), SynthesisError> {
         let root_var = FpVar::new_input(cs.clone(), || {
             self.root.ok_or(SynthesisError::AssignmentMissing)
         })?;
 
-        let leaf_var = FpVar::new_witness(cs, || {
-            self.leaf.ok_or(SynthesisError::AssignmentMissing)
-        })?;
+        let leaf_var =
+            FpVar::new_witness(cs, || self.leaf.ok_or(SynthesisError::AssignmentMissing))?;
 
         // Trivial constraint: leaf == root
         leaf_var.enforce_equal(&root_var)?;

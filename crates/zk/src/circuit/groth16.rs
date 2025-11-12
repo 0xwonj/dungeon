@@ -144,11 +144,7 @@ impl Groth16Keys {
 ///
 /// # Returns
 /// A Groth16 proof that can be verified
-pub fn prove<C, R>(
-    circuit: C,
-    keys: &Groth16Keys,
-    rng: &mut R,
-) -> Result<Proof<Bn254>, ProofError>
+pub fn prove<C, R>(circuit: C, keys: &Groth16Keys, rng: &mut R) -> Result<Proof<Bn254>, ProofError>
 where
     C: ConstraintSynthesizer<Fp254>,
     R: RngCore,

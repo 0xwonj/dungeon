@@ -128,7 +128,10 @@ impl StateTransition {
         let mut before_tree = merkle::build_entity_tree(before_state)?;
 
         // Get first actor's leaf for demonstration
-        let first_actor = before_state.entities.actors.first()
+        let first_actor = before_state
+            .entities
+            .actors
+            .first()
             .ok_or_else(|| ProofError::StateInconsistency("No actors in state".to_string()))?;
         let leaf_index = first_actor.id.0;
         let leaf_data = merkle::serialize_actor(first_actor);
@@ -159,11 +162,7 @@ impl StateTransition {
         let keys = groth16::Groth16Keys::generate(dummy_circuit, &mut rng)?;
 
         // Create circuit with witness
-        let circuit = constraints::HelloWorldCircuit::new(
-            self.root,
-            self.leaf,
-            self.path.clone(),
-        );
+        let circuit = constraints::HelloWorldCircuit::new(self.root, self.leaf, self.path.clone());
 
         // Generate proof
         let proof = groth16::prove(circuit, &keys, &mut rng)?;
@@ -191,6 +190,12 @@ pub struct ArkworksProver {
 pub struct ArkworksProver;
 
 #[cfg(feature = "arkworks")]
+impl Default for ArkworksProver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ArkworksProver {
     /// Create a new prover without cached keys.
     /// Keys will be generated on each proof (slower, but simple).
@@ -209,7 +214,9 @@ impl ArkworksProver {
     pub fn with_cached_keys() -> Result<Self, ProofError> {
         use ark_std::test_rng;
 
-        tracing::info!("ArkworksProver: Pre-generating Groth16 keys (this may take 15-20 seconds)...");
+        tracing::info!(
+            "ArkworksProver: Pre-generating Groth16 keys (this may take 15-20 seconds)..."
+        );
 
         let mut rng = test_rng();
         let dummy_circuit = game_transition::GameTransitionCircuit::dummy();
@@ -271,7 +278,9 @@ impl crate::Prover for ArkworksProver {
 
                 // Extract target ID if present
                 let target_id = match &char_action.input {
-                    game_core::ActionInput::Entity(entity_id) => Some(Fp254::from(entity_id.0 as u64)),
+                    game_core::ActionInput::Entity(entity_id) => {
+                        Some(Fp254::from(entity_id.0 as u64))
+                    }
                     _ => None,
                 };
 
@@ -293,9 +302,15 @@ impl crate::Prover for ArkworksProver {
                 // Calculate position delta for move actions
                 let position_delta = if matches!(char_action.kind, ActionKind::Move) {
                     // Find actor in before and after states
-                    let before_actor = before_state.entities.actors.iter()
+                    let before_actor = before_state
+                        .entities
+                        .actors
+                        .iter()
                         .find(|a| a.id == char_action.actor);
-                    let after_actor = after_state.entities.actors.iter()
+                    let after_actor = after_state
+                        .entities
+                        .actors
+                        .iter()
                         .find(|a| a.id == char_action.actor);
 
                     if let (Some(before), Some(after)) = (before_actor, after_actor) {
@@ -314,7 +329,7 @@ impl crate::Prover for ArkworksProver {
             _ => {
                 return Err(ProofError::CircuitProofError(
                     "Only CharacterAction is currently supported".to_string(),
-                ))
+                ));
             }
         };
 
@@ -354,7 +369,9 @@ impl crate::Prover for ArkworksProver {
             cached.clone()
         } else {
             // Slow path: generate keys on-demand (~15-18 seconds)
-            tracing::warn!("Generating Groth16 keys on-demand (slow - consider using with_cached_keys())");
+            tracing::warn!(
+                "Generating Groth16 keys on-demand (slow - consider using with_cached_keys())"
+            );
             let dummy_circuit = game_transition::GameTransitionCircuit::dummy();
             groth16::Groth16Keys::generate(dummy_circuit, &mut rng)?
         };
@@ -371,7 +388,10 @@ impl crate::Prover for ArkworksProver {
         // Serialize proof
         let proof_bytes = groth16::serialize_proof(&proof)?;
 
-        tracing::info!("ArkworksProver: Generated proof with {} bytes", proof_bytes.len());
+        tracing::info!(
+            "ArkworksProver: Generated proof with {} bytes",
+            proof_bytes.len()
+        );
 
         Ok(ProofData {
             bytes: proof_bytes,

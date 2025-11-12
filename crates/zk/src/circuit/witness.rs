@@ -15,7 +15,7 @@ use ark_bn254::Fr as Fp254;
 use game_core::{EntityId, GameState, StateDelta};
 
 use super::merkle::{
-    build_entity_tree, serialize_actor, serialize_item, serialize_prop, MerklePath,
+    MerklePath, build_entity_tree, serialize_actor, serialize_item, serialize_prop,
 };
 use crate::ProofError;
 
@@ -116,10 +116,7 @@ pub fn generate_witnesses(
             .iter()
             .find(|a| a.id == id)
             .ok_or_else(|| {
-                ProofError::StateInconsistency(format!(
-                    "Actor {} not found in before state",
-                    id.0
-                ))
+                ProofError::StateInconsistency(format!("Actor {} not found in before state", id.0))
             })?;
 
         // Find actor in after state
@@ -129,10 +126,7 @@ pub fn generate_witnesses(
             .iter()
             .find(|a| a.id == id)
             .ok_or_else(|| {
-                ProofError::StateInconsistency(format!(
-                    "Actor {} not found in after state",
-                    id.0
-                ))
+                ProofError::StateInconsistency(format!("Actor {} not found in after state", id.0))
             })?;
 
         // Serialize actor data to field elements
@@ -163,10 +157,7 @@ pub fn generate_witnesses(
             .iter()
             .find(|p| p.id == id)
             .ok_or_else(|| {
-                ProofError::StateInconsistency(format!(
-                    "Prop {} not found in before state",
-                    id.0
-                ))
+                ProofError::StateInconsistency(format!("Prop {} not found in before state", id.0))
             })?;
 
         let after_prop = after_state
@@ -175,10 +166,7 @@ pub fn generate_witnesses(
             .iter()
             .find(|p| p.id == id)
             .ok_or_else(|| {
-                ProofError::StateInconsistency(format!(
-                    "Prop {} not found in after state",
-                    id.0
-                ))
+                ProofError::StateInconsistency(format!("Prop {} not found in after state", id.0))
             })?;
 
         let before_data = serialize_prop(before_prop).to_vec();
@@ -206,10 +194,7 @@ pub fn generate_witnesses(
             .iter()
             .find(|i| i.id == id)
             .ok_or_else(|| {
-                ProofError::StateInconsistency(format!(
-                    "Item {} not found in before state",
-                    id.0
-                ))
+                ProofError::StateInconsistency(format!("Item {} not found in before state", id.0))
             })?;
 
         let after_item = after_state
@@ -218,10 +203,7 @@ pub fn generate_witnesses(
             .iter()
             .find(|i| i.id == id)
             .ok_or_else(|| {
-                ProofError::StateInconsistency(format!(
-                    "Item {} not found in after state",
-                    id.0
-                ))
+                ProofError::StateInconsistency(format!("Item {} not found in after state", id.0))
             })?;
 
         let before_data = serialize_item(before_item).to_vec();
@@ -249,13 +231,13 @@ pub fn generate_witnesses(
 
 #[cfg(test)]
 mod tests {
+    use super::super::merkle::{SparseMerkleTree, hash_many};
     use super::*;
-    use super::super::merkle::{hash_many, SparseMerkleTree};
+    use bounded_vector::BoundedVec;
     use game_core::{
         Action, ActionInput, ActionKind, ActorState, CharacterAction, CoreStats, EntitiesState,
         InventoryState, Position, TurnState, WorldState,
     };
-    use bounded_vector::BoundedVec;
 
     /// Helper to create a simple game state with one actor
     fn create_test_state(actor_position: Position) -> GameState {
@@ -294,7 +276,11 @@ mod tests {
             .expect("Witness generation should succeed");
 
         // Verify we got a witness for the changed actor
-        assert_eq!(witnesses.entities.len(), 1, "Should have one entity witness");
+        assert_eq!(
+            witnesses.entities.len(),
+            1,
+            "Should have one entity witness"
+        );
 
         let witness = &witnesses.entities[0];
         assert_eq!(witness.id, EntityId::PLAYER, "Witness should be for player");
@@ -364,7 +350,8 @@ mod tests {
             BoundedVec::new(),
             BoundedVec::new(),
         );
-        let before_state = GameState::new(TurnState::default(), entities_before, WorldState::default());
+        let before_state =
+            GameState::new(TurnState::default(), entities_before, WorldState::default());
 
         // After state: only actor1 moves
         let actor1_moved = ActorState::new(
@@ -379,7 +366,8 @@ mod tests {
             BoundedVec::new(),
             BoundedVec::new(),
         );
-        let after_state = GameState::new(TurnState::default(), entities_after, WorldState::default());
+        let after_state =
+            GameState::new(TurnState::default(), entities_after, WorldState::default());
 
         let action = Action::Character(CharacterAction::new(
             EntityId::PLAYER,
@@ -434,22 +422,14 @@ mod tests {
 
         // Verify before path
         let before_leaf_hash = hash_many(&witness.before_data).unwrap();
-        let before_valid = SparseMerkleTree::verify(
-            before_leaf_hash,
-            &witness.before_path,
-            before_root,
-        )
-        .unwrap();
+        let before_valid =
+            SparseMerkleTree::verify(before_leaf_hash, &witness.before_path, before_root).unwrap();
         assert!(before_valid, "Before Merkle path should verify");
 
         // Verify after path
         let after_leaf_hash = hash_many(&witness.after_data).unwrap();
-        let after_valid = SparseMerkleTree::verify(
-            after_leaf_hash,
-            &witness.after_path,
-            after_root,
-        )
-        .unwrap();
+        let after_valid =
+            SparseMerkleTree::verify(after_leaf_hash, &witness.after_path, after_root).unwrap();
         assert!(after_valid, "After Merkle path should verify");
 
         // Roots should be different (state changed)
