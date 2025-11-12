@@ -92,8 +92,8 @@ impl ProverWorker {
         session_id: String,
     ) -> Result<Self, String> {
         // Create prover
-        let _oracle_snapshot = Self::create_oracle_snapshot(&oracle_manager);
-        let prover = ZkProver::new();
+        let oracle_snapshot = Self::create_oracle_snapshot(&oracle_manager);
+        let prover = ZkProver::new(oracle_snapshot);
 
         // Load or create proof index
         let proof_index = match proof_index_repo.load(&session_id) {
