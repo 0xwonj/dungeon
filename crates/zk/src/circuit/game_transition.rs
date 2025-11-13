@@ -212,43 +212,82 @@ impl GameTransitionCircuit {
 
     /// Create a dummy circuit for key generation.
     ///
-    /// OPTIMIZATION: Minimal witness structure with depth 4 tree (reduced from depth 10)
-    /// for faster key generation. This is sufficient since the circuit structure is the same.
+    /// IMPORTANT: Must use the same Merkle depth as real circuits (depth 10) to ensure
+    /// the circuit structure matches. Different depths = different constraint counts = invalid keys.
     pub fn dummy() -> Self {
         use super::merkle::MerklePath;
         use super::witness::EntityWitness;
         use game_core::EntityId;
 
-        // Create minimal valid witnesses for key generation (depth 4 instead of 10)
-        const DUMMY_DEPTH: usize = 4;
-        const DUMMY_DATA_SIZE: usize = 5; // Match actual serialization size
+        // Create minimal valid witnesses for key generation
+        // CRITICAL: Use depth 10 to match build_entity_tree() - circuit structure must be identical
+        const DUMMY_DEPTH: usize = 10;
 
-        let empty_path = MerklePath {
-            siblings: vec![Fp254::from(0u64); DUMMY_DEPTH],
-            directions: vec![false; DUMMY_DEPTH],
-        };
+        // CRITICAL: Witness data must be consistent with position_delta!
+        // For Move action with delta = (0, 1), we need:
+        // - before_data[2] = y (e.g., 0)
+        // - after_data[2] = y + 1 (e.g., 1)
+        // Entity serialization format: [id, x, y, hp, max_hp]
+        let before_data = vec![
+            Fp254::from(0u64), // id
+            Fp254::from(0u64), // x
+            Fp254::from(0u64), // y (before)
+            Fp254::from(0u64), // hp
+            Fp254::from(0u64), // max_hp
+        ];
 
+        let after_data = vec![
+            Fp254::from(0u64), // id
+            Fp254::from(0u64), // x
+            Fp254::from(1u64), // y (after) = before_y + delta_y = 0 + 1
+            Fp254::from(0u64), // hp
+            Fp254::from(0u64), // max_hp
+        ];
+
+        // CRITICAL: Compute correct Merkle roots AND paths for dummy witness data!
+        // Using incorrect paths causes Merkle verification constraints to fail.
+        use super::merkle::{hash_many, SparseMerkleTree};
+
+        // Hash witness data to get leaf hashes
+        let before_leaf = hash_many(&before_data).expect("Failed to hash before_data");
+        let after_leaf = hash_many(&after_data).expect("Failed to hash after_data");
+
+        // Build Merkle trees with the leaf at index 0 (Entity ID 0)
+        let mut before_tree = SparseMerkleTree::new(DUMMY_DEPTH);
+        before_tree.insert(0, before_leaf);
+        let before_root_value = before_tree.root().expect("Failed to compute before root");
+        let before_path = before_tree.prove(0).expect("Failed to generate before path");
+
+        let mut after_tree = SparseMerkleTree::new(DUMMY_DEPTH);
+        after_tree.insert(0, after_leaf);
+        let after_root_value = after_tree.root().expect("Failed to compute after root");
+        let after_path = after_tree.prove(0).expect("Failed to generate after path");
+
+        // Create entity witness with correct paths
         let entity_witness = EntityWitness {
             id: EntityId(0),
-            before_data: vec![Fp254::from(0u64); DUMMY_DATA_SIZE],
-            before_path: empty_path.clone(),
-            after_data: vec![Fp254::from(0u64); DUMMY_DATA_SIZE],
-            after_path: empty_path,
+            before_data,
+            before_path,
+            after_data,
+            after_path,
         };
 
         let witnesses = TransitionWitnesses {
             entities: vec![entity_witness],
         };
 
+        // For key generation, we need actual witness values that satisfy constraints
+        // Arkworks handles None/AssignmentMissing during key gen, but we use real values
+        // to ensure the dummy circuit can also be used for testing proof generation
         Self {
-            before_root: Some(Fp254::from(0u64)),
-            after_root: Some(Fp254::from(0u64)),
-            action_type: Some(Fp254::from(0u64)),
-            actor_id: Some(Fp254::from(0u64)),
+            before_root: Some(before_root_value),
+            after_root: Some(after_root_value),
+            action_type: Some(Fp254::from(0u64)),  // Move
+            actor_id: Some(Fp254::from(0u64)),     // Entity ID 0
             witnesses: Some(witnesses),
             target_id: Some(Fp254::from(0u64)),
-            direction: Some(Fp254::from(0u64)),
-            position_delta: Some((Fp254::from(0u64), Fp254::from(0u64))),
+            direction: Some(Fp254::from(0u64)),  // North
+            position_delta: Some((Fp254::from(0i64), Fp254::from(1i64))),
         }
     }
 }
@@ -615,14 +654,27 @@ mod tests {
     #[test]
     fn test_dummy_circuit_creation() {
         let circuit = GameTransitionCircuit::dummy();
-        // Dummy circuit now has zero values for Groth16 key generation
+        // Dummy circuit has computed witness values for constraint satisfaction
         assert!(circuit.before_root.is_some());
         assert!(circuit.after_root.is_some());
+        assert!(circuit.action_type.is_some());
+        assert!(circuit.actor_id.is_some());
         assert!(circuit.witnesses.is_some());
 
-        // Verify all values are zero/default
-        assert_eq!(circuit.before_root.unwrap(), Fp254::from(0u64));
-        assert_eq!(circuit.after_root.unwrap(), Fp254::from(0u64));
-        assert_eq!(circuit.witnesses.unwrap().entities.len(), 1);
+        // Extract witnesses once to avoid move-after-use
+        let witnesses = circuit.witnesses.unwrap();
+        assert_eq!(witnesses.entities.len(), 1);
+
+        // CRITICAL: Verify Merkle path depth matches real circuits (depth 10)
+        assert_eq!(
+            witnesses.entities[0].before_path.siblings.len(),
+            10,
+            "Dummy circuit must use depth 10 to match build_entity_tree()"
+        );
+        assert_eq!(
+            witnesses.entities[0].after_path.siblings.len(),
+            10,
+            "Dummy circuit must use depth 10 to match build_entity_tree()"
+        );
     }
 }

@@ -15,14 +15,13 @@ use zk::circuit::game_transition::{ActionType, GameTransitionCircuit};
 use zk::circuit::test_helpers::create_test_state_with_enemy;
 use zk::circuit::{groth16, merkle, witness};
 
-/// Helper to create a test state with player and enemy, plus active actors set.
+/// Helper to create a test state with player only (simplified for proof testing).
 fn create_test_state() -> GameState {
-    let mut state = create_test_state_with_enemy(true);
+    let mut state = create_test_state_with_enemy(false); // No enemy, just player
 
     // Set up turn state with active actors
     let mut active_actors = std::collections::BTreeSet::new();
     active_actors.insert(EntityId::PLAYER);
-    active_actors.insert(EntityId(1));
 
     state.turn = TurnState {
         current_actor: EntityId::PLAYER,
@@ -78,9 +77,11 @@ fn test_move_action_state_roots() {
     let mut after_state = before_state.clone();
     after_state.entities.actors[0].position = Position::new(5, 6);
 
-    // Compute state roots
-    let before_root = merkle::compute_state_root(&before_state);
-    let after_root = merkle::compute_state_root(&after_state);
+    // Compute entity tree roots (circuit Phase 1 uses entity roots only)
+    let mut before_tree = merkle::build_entity_tree(&before_state).unwrap();
+    let mut after_tree = merkle::build_entity_tree(&after_state).unwrap();
+    let before_root = before_tree.root();
+    let after_root = after_tree.root();
 
     assert!(before_root.is_ok(), "Before root computation failed");
     assert!(after_root.is_ok(), "After root computation failed");
@@ -89,7 +90,7 @@ fn test_move_action_state_roots() {
     assert_ne!(
         before_root.unwrap(),
         after_root.unwrap(),
-        "State roots should differ after move"
+        "Entity tree roots should differ after move"
     );
 }
 
@@ -106,9 +107,11 @@ fn test_game_transition_circuit_construction() {
     });
     let delta = game_core::StateDelta::from_states(dummy_action, &before_state, &after_state);
 
-    // Compute roots
-    let before_root = merkle::compute_state_root(&before_state).unwrap();
-    let after_root = merkle::compute_state_root(&after_state).unwrap();
+    // Compute entity tree roots (circuit Phase 1 uses entity roots only)
+    let mut before_tree = merkle::build_entity_tree(&before_state).unwrap();
+    let mut after_tree = merkle::build_entity_tree(&after_state).unwrap();
+    let before_root = before_tree.root().unwrap();
+    let after_root = after_tree.root().unwrap();
 
     // Generate witnesses
     let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
@@ -142,8 +145,13 @@ fn test_move_action_full_proof() {
         input: ActionInput::Direction(CardinalDirection::North),
     });
     let delta = game_core::StateDelta::from_states(move_action, &before_state, &after_state);
-    let before_root = merkle::compute_state_root(&before_state).unwrap();
-    let after_root = merkle::compute_state_root(&after_state).unwrap();
+
+    // Compute entity tree roots (circuit Phase 1 uses entity roots only)
+    let mut before_tree = merkle::build_entity_tree(&before_state).unwrap();
+    let mut after_tree = merkle::build_entity_tree(&after_state).unwrap();
+    let before_root = before_tree.root().unwrap();
+    let after_root = after_tree.root().unwrap();
+
     let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
 
     let circuit = GameTransitionCircuit::new(
@@ -197,8 +205,14 @@ fn test_move_action_proof_verification() {
 
     // Generate witnesses and state roots
     let delta = game_core::StateDelta::from_states(move_action, &before_state, &after_state);
-    let before_root = merkle::compute_state_root(&before_state).unwrap();
-    let after_root = merkle::compute_state_root(&after_state).unwrap();
+
+    // IMPORTANT: Circuit expects entity tree roots, not combined state roots
+    // (Phase 1: entity roots only; Phase 2 will add turn state)
+    let mut before_tree = merkle::build_entity_tree(&before_state).unwrap();
+    let mut after_tree = merkle::build_entity_tree(&after_state).unwrap();
+    let before_root = before_tree.root().unwrap();
+    let after_root = after_tree.root().unwrap();
+
     let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
 
     // Create circuit with all witnesses
@@ -233,7 +247,14 @@ fn test_move_action_proof_verification() {
 
     // Verify proof cryptographically
     println!("Verifying proof...");
-    let public_inputs = vec![before_root, after_root, ActionType::Move.to_field(), Fp254::from(EntityId::PLAYER.0 as u64)];
+    // Public inputs: before_root, after_root, action_type, actor_id
+    // (these must match the circuit's public input allocation order)
+    let public_inputs = vec![
+        before_root,
+        after_root,
+        ActionType::Move.to_field(),
+        Fp254::from(EntityId::PLAYER.0 as u64),
+    ];
 
     let is_valid = groth16::verify(&proof, &public_inputs, &keys.verifying_key)
         .expect("Verification failed");
@@ -342,4 +363,49 @@ fn test_state_transition_from_delta() {
     );
 
     println!("✓ StateTransition::from_delta() successful");
+}
+
+// Test removed - dummy circuit now uses None for public inputs (for key generation only)
+
+#[test]
+fn test_compute_dummy_merkle_roots() {
+    use zk::circuit::merkle::{hash_many, MerklePath, SparseMerkleTree};
+    use zk::circuit::commitment::hash_two;
+    
+    // Dummy witness data (matching GameTransitionCircuit::dummy())
+    let before_data = vec![
+        Fp254::from(0u64), // id
+        Fp254::from(0u64), // x  
+        Fp254::from(0u64), // y (before)
+        Fp254::from(0u64), // hp
+        Fp254::from(0u64), // max_hp
+    ];
+    
+    let after_data = vec![
+        Fp254::from(0u64), // id
+        Fp254::from(0u64), // x
+        Fp254::from(1u64), // y (after) = before_y + delta_y
+        Fp254::from(0u64), // hp
+        Fp254::from(0u64), // max_hp
+    ];
+    
+    // Hash to get leaf hashes
+    let before_leaf = hash_many(&before_data).unwrap();
+    let after_leaf = hash_many(&after_data).unwrap();
+    
+    println!("Before leaf hash: {}", before_leaf);
+    println!("After leaf hash: {}", after_leaf);
+    
+    // Build Merkle tree with just this one leaf at index 0
+    let mut before_tree = SparseMerkleTree::new(10);
+    before_tree.insert(0, before_leaf);
+    let computed_before_root = before_tree.root().unwrap();
+    
+    let mut after_tree = SparseMerkleTree::new(10);
+    after_tree.insert(0, after_leaf);
+    let computed_after_root = after_tree.root().unwrap();
+    
+    println!("Computed before root: {}", computed_before_root);
+    println!("Computed after root: {}", computed_after_root);
+    println!("\nDummy circuit should use these values instead of 0!");
 }

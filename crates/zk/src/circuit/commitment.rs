@@ -119,13 +119,19 @@ pub fn hash_one(input: Fp254) -> Result<Fp254, ProofError> {
 /// * `Ok(Fp254)` - Hash digest on success
 /// * `Err(ProofError)` - If Poseidon evaluation fails
 ///
-/// OPTIMIZATION: Uses cached config singleton and array slice (no heap allocation).
+/// CRITICAL: Must match gadget implementation which absorbs inputs separately.
+/// Absorbing [left, right] together vs separately produces different hashes!
+/// OPTIMIZATION: Uses cached config singleton (no heap allocation).
 pub fn hash_two(left: Fp254, right: Fp254) -> Result<Fp254, ProofError> {
     let config = get_poseidon_config();
     let mut sponge = PoseidonSponge::<Fp254>::new(config);
 
-    // Absorb both inputs (using array slice to avoid Vec allocation)
-    let inputs = [left, right];
+    // IMPORTANT: Absorb inputs SEPARATELY to match gadget's behavior
+    // poseidon_hash_two_gadget calls sponge.absorb(left) then sponge.absorb(right)
+    // Absorbing separately vs together produces different internal sponge states!
+    let inputs = [left];
+    sponge.absorb(&inputs.as_slice());
+    let inputs = [right];
     sponge.absorb(&inputs.as_slice());
 
     // Squeeze one field element
