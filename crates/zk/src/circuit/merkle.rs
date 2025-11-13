@@ -210,29 +210,20 @@ impl SparseMerkleTree {
 use game_core::{ActorState, GameState, ItemState, PropState};
 
 #[cfg(feature = "arkworks")]
-/// Hash multiple field elements together.
-///
-/// Currently uses a simple combination of hash_two for demonstration.
-/// Production should use Poseidon hash with variable-length input.
+/// Hash multiple field elements using Poseidon sponge.
 pub fn hash_many(inputs: &[Fp254]) -> Result<Fp254, ProofError> {
     if inputs.is_empty() {
         return Ok(Fp254::from(0u64));
     }
 
-    // Use Poseidon sponge to hash multiple inputs (same as circuit)
     use super::commitment::get_poseidon_config;
     use ark_crypto_primitives::sponge::{CryptographicSponge, poseidon::PoseidonSponge};
 
-    let config = get_poseidon_config();
-    let mut sponge = PoseidonSponge::<Fp254>::new(config);
-
-    // Absorb all inputs
+    let mut sponge = PoseidonSponge::<Fp254>::new(get_poseidon_config());
     for &input in inputs {
-        let input_vec = vec![input];
-        sponge.absorb(&input_vec.as_slice());
+        let input_slice = [input];
+        sponge.absorb(&input_slice.as_slice());
     }
-
-    // Squeeze output
     sponge
         .squeeze_field_elements::<Fp254>(1)
         .first()

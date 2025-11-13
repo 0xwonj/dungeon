@@ -1,7 +1,4 @@
 //! Integration tests for GameTransitionCircuit with real game actions.
-//!
-//! These tests verify that the circuit can prove valid game state transitions
-//! for various action types (Move, MeleeAttack, Wait).
 
 #![cfg(feature = "arkworks")]
 
@@ -15,144 +12,100 @@ use zk::circuit::game_transition::{ActionType, GameTransitionCircuit};
 use zk::circuit::test_helpers::create_test_state_with_enemy;
 use zk::circuit::{groth16, merkle, witness};
 
-/// Helper to create a test state with player and enemy.
-fn create_test_state() -> GameState {
-    let mut state = create_test_state_with_enemy(true); // Include enemy
-
-    // Set up turn state with active actors
+fn setup_test_state() -> GameState {
+    let mut state = create_test_state_with_enemy(true);
     let mut active_actors = std::collections::BTreeSet::new();
     active_actors.insert(EntityId::PLAYER);
-    active_actors.insert(EntityId(1)); // Enemy
-
+    active_actors.insert(EntityId(1));
     state.turn = TurnState {
         current_actor: EntityId::PLAYER,
         clock: 0,
         nonce: 0,
         active_actors,
     };
-
     state
+}
+
+fn build_entity_roots(
+    before: &GameState,
+    after: &GameState,
+) -> Result<(Fp254, Fp254), Box<dyn std::error::Error>> {
+    let mut before_tree = merkle::build_entity_tree(before)?;
+    let mut after_tree = merkle::build_entity_tree(after)?;
+    Ok((before_tree.root()?, after_tree.root()?))
 }
 
 #[test]
 fn test_move_action_witness_generation() {
-    // Create before state
-    let before_state = create_test_state();
-
-    // Create Move action: player moves north
+    let before_state = setup_test_state();
     let action = Action::Character(CharacterAction {
         actor: EntityId::PLAYER,
         kind: ActionKind::Move,
         input: ActionInput::Direction(CardinalDirection::North),
     });
 
-    // Simulate state after move (player is now at (5, 6))
     let mut after_state = before_state.clone();
     after_state.entities.actors[0].position = Position::new(5, 6);
     after_state.turn.nonce = 1;
 
-    // Generate StateDelta (action is required for proper delta tracking)
     let delta = game_core::StateDelta::from_states(action.clone(), &before_state, &after_state);
+    let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
 
-    // Generate witnesses
-    let witnesses_result = witness::generate_witnesses(&delta, &before_state, &after_state);
-    assert!(
-        witnesses_result.is_ok(),
-        "Witness generation failed: {:?}",
-        witnesses_result.err()
-    );
-
-    let witnesses = witnesses_result.unwrap();
-    assert!(
-        !witnesses.entities.is_empty(),
-        "No entity witnesses generated"
-    );
-
-    // Verify first witness is for player
+    assert!(!witnesses.entities.is_empty());
     assert_eq!(witnesses.entities[0].id, EntityId::PLAYER);
 }
 
 #[test]
 fn test_move_action_state_roots() {
-    let before_state = create_test_state();
+    let before_state = setup_test_state();
     let mut after_state = before_state.clone();
     after_state.entities.actors[0].position = Position::new(5, 6);
 
-    // Compute entity tree roots (circuit Phase 1 uses entity roots only)
-    let mut before_tree = merkle::build_entity_tree(&before_state).unwrap();
-    let mut after_tree = merkle::build_entity_tree(&after_state).unwrap();
-    let before_root = before_tree.root();
-    let after_root = after_tree.root();
-
-    assert!(before_root.is_ok(), "Before root computation failed");
-    assert!(after_root.is_ok(), "After root computation failed");
-
-    // Roots should be different (state changed)
-    assert_ne!(
-        before_root.unwrap(),
-        after_root.unwrap(),
-        "Entity tree roots should differ after move"
-    );
+    let (before_root, after_root) = build_entity_roots(&before_state, &after_state).unwrap();
+    assert_ne!(before_root, after_root);
 }
 
 #[test]
 fn test_game_transition_circuit_construction() {
-    let before_state = create_test_state();
+    let before_state = setup_test_state();
     let mut after_state = before_state.clone();
     after_state.entities.actors[0].position = Position::new(5, 6);
 
-    let dummy_action = Action::Character(CharacterAction {
+    let action = Action::Character(CharacterAction {
         actor: EntityId::PLAYER,
         kind: ActionKind::Move,
         input: ActionInput::Direction(CardinalDirection::North),
     });
-    let delta = game_core::StateDelta::from_states(dummy_action, &before_state, &after_state);
-
-    // Compute entity tree roots (circuit Phase 1 uses entity roots only)
-    let mut before_tree = merkle::build_entity_tree(&before_state).unwrap();
-    let mut after_tree = merkle::build_entity_tree(&after_state).unwrap();
-    let before_root = before_tree.root().unwrap();
-    let after_root = after_tree.root().unwrap();
-
-    // Generate witnesses
+    let delta = game_core::StateDelta::from_states(action, &before_state, &after_state);
+    let (before_root, after_root) = build_entity_roots(&before_state, &after_state).unwrap();
     let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
 
-    // Create circuit
     let _circuit = GameTransitionCircuit::new(
         before_root,
         after_root,
         ActionType::Move.to_field(),
         Fp254::from(EntityId::PLAYER.0 as u64),
         witnesses,
-        None,                                         // No target for move
-        Some(Fp254::from(0u64)),                      // Direction: North = 0
-        Some((Fp254::from(0i64), Fp254::from(1i64))), // Delta: (0, 1)
+        None,
+        Some(Fp254::from(0u64)),
+        Some((Fp254::from(0i64), Fp254::from(1i64))),
     );
-
-    // Verify circuit can be created successfully
-    println!("✓ GameTransitionCircuit created successfully for Move action");
 }
 
 #[test]
-#[ignore] // Expensive test - run with --ignored flag
+#[ignore]
 fn test_move_action_full_proof() {
-    let before_state = create_test_state();
+    let before_state = setup_test_state();
     let mut after_state = before_state.clone();
     after_state.entities.actors[0].position = Position::new(5, 6);
 
-    let move_action = Action::Character(CharacterAction {
+    let action = Action::Character(CharacterAction {
         actor: EntityId::PLAYER,
         kind: ActionKind::Move,
         input: ActionInput::Direction(CardinalDirection::North),
     });
-    let delta = game_core::StateDelta::from_states(move_action, &before_state, &after_state);
-
-    // Compute entity tree roots (circuit Phase 1 uses entity roots only)
-    let mut before_tree = merkle::build_entity_tree(&before_state).unwrap();
-    let mut after_tree = merkle::build_entity_tree(&after_state).unwrap();
-    let before_root = before_tree.root().unwrap();
-    let after_root = after_tree.root().unwrap();
-
+    let delta = game_core::StateDelta::from_states(action, &before_state, &after_state);
+    let (before_root, after_root) = build_entity_roots(&before_state, &after_state).unwrap();
     let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
 
     let circuit = GameTransitionCircuit::new(
@@ -166,100 +119,56 @@ fn test_move_action_full_proof() {
         Some((Fp254::from(0i64), Fp254::from(1i64))),
     );
 
-    // Generate proving and verifying keys
     let mut rng = test_rng();
     let dummy_circuit = GameTransitionCircuit::dummy();
-    let keys_result = groth16::Groth16Keys::generate(dummy_circuit, &mut rng);
-
-    if let Ok(keys) = keys_result {
-        // Generate proof
-        let proof_result = groth16::prove(circuit, &keys, &mut rng);
-        assert!(proof_result.is_ok(), "Proof generation failed");
-
-        let proof = proof_result.unwrap();
-
-        // Serialize and deserialize proof
-        let proof_bytes = groth16::serialize_proof(&proof);
-        assert!(proof_bytes.is_ok(), "Proof serialization failed");
-
-        println!("✓ Full Move action proof generated successfully");
-        println!("  Proof size: {} bytes", proof_bytes.unwrap().len());
-    } else {
-        println!("⚠ Key generation skipped (circuit constraints incomplete)");
+    if let Ok(keys) = groth16::Groth16Keys::generate(dummy_circuit, &mut rng) {
+        let proof = groth16::prove(circuit, &keys, &mut rng).unwrap();
+        groth16::serialize_proof(&proof).unwrap();
     }
 }
 
 #[test]
-#[ignore] // Expensive test - requires key generation and proof verification (~20-30 seconds)
+#[ignore]
 fn test_move_action_proof_verification() {
-    // Setup: Create before and after states with a Move action
-    let before_state = create_test_state();
+    let before_state = setup_test_state();
     let mut after_state = before_state.clone();
     after_state.entities.actors[0].position = Position::new(5, 6);
     after_state.turn.nonce = 1;
 
-    let move_action = Action::Character(CharacterAction {
+    let action = Action::Character(CharacterAction {
         actor: EntityId::PLAYER,
         kind: ActionKind::Move,
         input: ActionInput::Direction(CardinalDirection::North),
     });
-
-    // Generate witnesses and state roots
-    let delta = game_core::StateDelta::from_states(move_action, &before_state, &after_state);
-
-    // IMPORTANT: Circuit expects entity tree roots, not combined state roots
-    // (Phase 1: entity roots only; Phase 2 will add turn state)
-    let mut before_tree = merkle::build_entity_tree(&before_state).unwrap();
-    let mut after_tree = merkle::build_entity_tree(&after_state).unwrap();
-    let before_root = before_tree.root().unwrap();
-    let after_root = after_tree.root().unwrap();
-
+    let delta = game_core::StateDelta::from_states(action, &before_state, &after_state);
+    let (before_root, after_root) = build_entity_roots(&before_state, &after_state).unwrap();
     let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
 
-    // Create circuit for proving
     let circuit = GameTransitionCircuit::new(
         before_root,
         after_root,
         ActionType::Move.to_field(),
         Fp254::from(EntityId::PLAYER.0 as u64),
-        witnesses.clone(),  // Clone so we can use it twice
-        None,                                         // No target for move
-        Some(Fp254::from(0u64)),                      // Direction: North = 0
-        Some((Fp254::from(0i64), Fp254::from(1i64))), // Delta: (0, 1) for north
+        witnesses.clone(),
+        None,
+        Some(Fp254::from(0u64)),
+        Some((Fp254::from(0i64), Fp254::from(1i64))),
     );
 
-    // CRITICAL FIX: Use the SAME circuit for key generation as proving
-    // Dummy circuit has different witness values which causes verification to fail!
-    println!("Generating Groth16 keys (this may take 15-20 seconds)...");
     let mut rng = test_rng();
     let key_gen_circuit = GameTransitionCircuit::new(
         before_root,
         after_root,
         ActionType::Move.to_field(),
         Fp254::from(EntityId::PLAYER.0 as u64),
-        witnesses,  // Use actual witnesses
+        witnesses,
         None,
         Some(Fp254::from(0u64)),
         Some((Fp254::from(0i64), Fp254::from(1i64))),
     );
-    let keys = groth16::Groth16Keys::generate(key_gen_circuit, &mut rng)
-        .expect("Key generation failed");
+    let keys = groth16::Groth16Keys::generate(key_gen_circuit, &mut rng).unwrap();
+    let proof = groth16::prove(circuit, &keys, &mut rng).unwrap();
 
-    println!("✓ Keys generated");
-
-    // Generate proof
-    println!("Generating proof...");
-    let proof = groth16::prove(circuit, &keys, &mut rng).expect("Proof generation failed");
-
-    println!("✓ Proof generated ({} bytes)", {
-        let bytes = groth16::serialize_proof(&proof).unwrap();
-        bytes.len()
-    });
-
-    // Verify proof cryptographically
-    println!("Verifying proof...");
-    // Public inputs: before_root, after_root, action_type, actor_id
-    // (these must match the circuit's public input allocation order)
     let public_inputs = vec![
         before_root,
         after_root,
@@ -267,156 +176,42 @@ fn test_move_action_proof_verification() {
         Fp254::from(EntityId::PLAYER.0 as u64),
     ];
 
-    let is_valid = groth16::verify(&proof, &public_inputs, &keys.verifying_key)
-        .expect("Verification failed");
-
-    assert!(is_valid, "Proof verification returned false - proof is invalid!");
-
-    println!("✓ Proof verified successfully - GameTransitionCircuit proof is cryptographically valid");
+    let is_valid = groth16::verify(&proof, &public_inputs, &keys.verifying_key).unwrap();
+    assert!(is_valid);
 }
 
 #[test]
 fn test_wait_action_witnesses() {
-    let before_state = create_test_state();
-    let after_state = before_state.clone(); // Wait doesn't change entity state
+    let before_state = setup_test_state();
+    let after_state = before_state.clone();
 
-    let wait_action = Action::Character(CharacterAction {
+    let action = Action::Character(CharacterAction {
         actor: EntityId::PLAYER,
         kind: ActionKind::Wait,
         input: ActionInput::None,
     });
-    let delta = game_core::StateDelta::from_states(wait_action, &before_state, &after_state);
-
-    // Wait action should generate minimal witnesses
-    let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
-
-    println!(
-        "✓ Wait action witness generation: {} witnesses",
-        witnesses.entities.len()
-    );
+    let delta = game_core::StateDelta::from_states(action, &before_state, &after_state);
+    witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
 }
 
 #[test]
 fn test_melee_attack_action_witness_structure() {
-    let before_state = create_test_state();
-
-    // Simulate attack: enemy takes damage
+    let before_state = setup_test_state();
     let mut after_state = before_state.clone();
-    // Reduce enemy health (they're at index 1)
     after_state.entities.actors[1].resources.hp = after_state.entities.actors[1]
         .resources
         .hp
         .saturating_sub(10);
     after_state.turn.nonce = 1;
 
-    let attack_action = Action::Character(CharacterAction {
+    let action = Action::Character(CharacterAction {
         actor: EntityId::PLAYER,
         kind: ActionKind::MeleeAttack,
         input: ActionInput::Entity(EntityId(1)),
     });
-    let delta = game_core::StateDelta::from_states(attack_action, &before_state, &after_state);
-    let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state);
+    let delta = game_core::StateDelta::from_states(action, &before_state, &after_state);
+    let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
 
-    assert!(witnesses.is_ok(), "Attack witness generation failed");
-
-    let witnesses = witnesses.unwrap();
-    assert!(
-        !witnesses.entities.is_empty(),
-        "Attack should generate witnesses"
-    );
-
-    println!(
-        "✓ MeleeAttack witness generation: {} witnesses",
-        witnesses.entities.len()
-    );
+    assert!(!witnesses.entities.is_empty());
 }
 
-#[test]
-fn test_state_transition_from_delta() {
-    use zk::circuit::StateTransition;
-
-    let before_state = create_test_state();
-    let mut after_state = before_state.clone();
-    after_state.entities.actors[0].position = Position::new(5, 6);
-
-    let move_action = Action::Character(CharacterAction {
-        actor: EntityId::PLAYER,
-        kind: ActionKind::Move,
-        input: ActionInput::Direction(CardinalDirection::North),
-    });
-    let delta = game_core::StateDelta::from_states(move_action, &before_state, &after_state);
-
-    // Test StateTransition::from_delta()
-    let transition_result = StateTransition::from_delta(delta, &before_state, &after_state);
-
-    assert!(
-        transition_result.is_ok(),
-        "StateTransition::from_delta() failed: {:?}",
-        transition_result.err()
-    );
-
-    let transition = transition_result.unwrap();
-
-    // Verify transition has valid components
-    assert_ne!(
-        transition.root,
-        Fp254::from(0u64),
-        "Root should be non-zero"
-    );
-    assert_ne!(
-        transition.leaf,
-        Fp254::from(0u64),
-        "Leaf should be non-zero"
-    );
-    assert!(
-        !transition.path.siblings.is_empty(),
-        "Merkle path should have siblings"
-    );
-
-    println!("✓ StateTransition::from_delta() successful");
-}
-
-// Test removed - dummy circuit now uses None for public inputs (for key generation only)
-
-#[test]
-fn test_compute_dummy_merkle_roots() {
-    use zk::circuit::merkle::{hash_many, MerklePath, SparseMerkleTree};
-    use zk::circuit::commitment::hash_two;
-    
-    // Dummy witness data (matching GameTransitionCircuit::dummy())
-    let before_data = vec![
-        Fp254::from(0u64), // id
-        Fp254::from(0u64), // x  
-        Fp254::from(0u64), // y (before)
-        Fp254::from(0u64), // hp
-        Fp254::from(0u64), // max_hp
-    ];
-    
-    let after_data = vec![
-        Fp254::from(0u64), // id
-        Fp254::from(0u64), // x
-        Fp254::from(1u64), // y (after) = before_y + delta_y
-        Fp254::from(0u64), // hp
-        Fp254::from(0u64), // max_hp
-    ];
-    
-    // Hash to get leaf hashes
-    let before_leaf = hash_many(&before_data).unwrap();
-    let after_leaf = hash_many(&after_data).unwrap();
-    
-    println!("Before leaf hash: {}", before_leaf);
-    println!("After leaf hash: {}", after_leaf);
-    
-    // Build Merkle tree with just this one leaf at index 0
-    let mut before_tree = SparseMerkleTree::new(10);
-    before_tree.insert(0, before_leaf);
-    let computed_before_root = before_tree.root().unwrap();
-    
-    let mut after_tree = SparseMerkleTree::new(10);
-    after_tree.insert(0, after_leaf);
-    let computed_after_root = after_tree.root().unwrap();
-    
-    println!("Computed before root: {}", computed_before_root);
-    println!("Computed after root: {}", computed_after_root);
-    println!("\nDummy circuit should use these values instead of 0!");
-}

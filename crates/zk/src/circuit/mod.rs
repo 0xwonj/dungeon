@@ -72,10 +72,7 @@
 #![allow(dead_code)] // Allow dead code since this is future work
 
 use crate::{ProofData, ProofError};
-use game_core::{GameState, StateDelta};
-
-#[cfg(feature = "arkworks")]
-use ark_bn254::Fr as Fp254;
+use game_core::GameState;
 
 /// State transition with Merkle witnesses (Phase 2).
 ///
@@ -104,125 +101,6 @@ impl StateTransition {
         Err(ProofError::CircuitProofError(
             "Arkworks circuit not yet implemented - use zkVM backend".to_string(),
         ))
-    }
-}
-
-/// State transition with Merkle witnesses.
-///
-/// For the hello world implementation, this contains:
-/// - root: The Merkle root hash
-/// - leaf: A leaf value to prove
-/// - path: The Merkle authentication path
-#[cfg(feature = "arkworks")]
-#[derive(Clone, Debug)]
-pub struct StateTransition {
-    pub root: Fp254,
-    pub leaf: Fp254,
-    pub path: merkle::MerklePath,
-}
-
-#[cfg(feature = "arkworks")]
-impl StateTransition {
-    /// Create a new state transition for hello world proof
-    ///
-    /// # Arguments
-    /// * `root` - The Merkle root hash
-    /// * `leaf` - The leaf value to prove
-    /// * `path` - The Merkle authentication path
-    pub fn new(root: Fp254, leaf: Fp254, path: merkle::MerklePath) -> Self {
-        Self { root, leaf, path }
-    }
-
-    /// Convert a StateDelta into a StateTransition with Merkle witnesses.
-    ///
-    /// # Algorithm (from architecture doc)
-    ///
-    /// 1. Build full Merkle trees from before_state
-    /// 2. Build full Merkle trees from after_state
-    /// 3. Generate witnesses using delta as guide (only changed entities)
-    /// 4. Construct StateTransition with before/after roots and witnesses
-    ///
-    /// # Complexity
-    ///
-    /// - Time: O(n log n) where n = entity count
-    /// - Space: O(k log n) where k = changed entities
-    ///
-    /// See: docs/state-delta-architecture.md Section 5.4
-    pub fn from_delta(
-        delta: StateDelta,
-        before_state: &GameState,
-        after_state: &GameState,
-    ) -> Result<Self, ProofError> {
-        // Compute Merkle roots for before and after states
-        let before_root = merkle::compute_state_root(before_state)?;
-        let _after_root = merkle::compute_state_root(after_state)?;
-
-        // Generate witnesses for all changed entities
-        let _witnesses = witness::generate_witnesses(&delta, before_state, after_state)?;
-
-        // For hello world compatibility, use a simple transition
-        // TODO: Phase 3 will use full GameTransitionCircuit with all witnesses
-        let mut before_tree = merkle::build_entity_tree(before_state)?;
-
-        // Get first actor's leaf for demonstration
-        let first_actor = before_state
-            .entities
-            .actors
-            .first()
-            .ok_or_else(|| ProofError::StateInconsistency("No actors in state".to_string()))?;
-        let leaf_index = first_actor.id.0;
-        let leaf_data = merkle::serialize_actor(first_actor);
-        let leaf_hash = merkle::hash_many(&leaf_data)?;
-
-        // Generate proof for this leaf
-        let path = before_tree.prove(leaf_index)?;
-
-        Ok(Self {
-            root: before_root,
-            leaf: leaf_hash,
-            path,
-        })
-    }
-
-    /// Generate a Groth16 proof from this transition.
-    ///
-    /// This creates a circuit, generates proving keys, and produces a proof.
-    ///
-    /// # Security
-    ///
-    /// # Security Warning
-    ///
-    /// ⚠️  Uses `test_rng()` which is deterministic and NOT cryptographically secure.
-    /// This is acceptable for hello-world examples but NOT for production.
-    ///
-    /// For production use, either:
-    /// 1. Use `ArkworksProver::with_cached_keys()` to pre-generate keys with secure RNG
-    /// 2. Persist keys to disk and load them on startup
-    /// 3. Implement your own RNG injection mechanism
-    pub fn prove(&self) -> Result<ProofData, ProofError> {
-        use ark_std::test_rng;
-
-        // TODO: Replace with cryptographically secure RNG for production
-        // Current limitation: ark-std's RNG traits don't easily support system entropy
-        let mut rng = test_rng();
-
-        // Generate keys for this circuit
-        let dummy_circuit = constraints::HelloWorldCircuit::dummy();
-        let keys = groth16::Groth16Keys::generate(dummy_circuit, &mut rng)?;
-
-        // Create circuit with witness
-        let circuit = constraints::HelloWorldCircuit::new(self.root, self.leaf, self.path.clone());
-
-        // Generate proof
-        let proof = groth16::prove(circuit, &keys, &mut rng)?;
-
-        // Serialize proof
-        let proof_bytes = groth16::serialize_proof(&proof)?;
-
-        Ok(ProofData {
-            bytes: proof_bytes,
-            backend: crate::ProofBackend::Arkworks,
-        })
     }
 }
 
@@ -536,12 +414,6 @@ pub mod merkle;
 /// Generate Merkle witnesses from StateDelta.
 /// See: docs/state-delta-architecture.md Section 5.4
 pub mod witness;
-
-#[cfg(feature = "arkworks")]
-/// R1CS constraint generation for state transitions.
-///
-/// Defines circuits that prove state transition validity.
-pub mod constraints;
 
 #[cfg(feature = "arkworks")]
 /// Groth16 proof generation and verification.

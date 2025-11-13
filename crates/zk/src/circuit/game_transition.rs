@@ -215,7 +215,6 @@ impl GameTransitionCircuit {
     /// IMPORTANT: Must use the same Merkle depth as real circuits (depth 10) to ensure
     /// the circuit structure matches. Different depths = different constraint counts = invalid keys.
     pub fn dummy() -> Self {
-        use super::merkle::MerklePath;
         use super::witness::EntityWitness;
         use game_core::EntityId;
 
