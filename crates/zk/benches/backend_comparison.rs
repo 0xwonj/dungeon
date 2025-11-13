@@ -40,9 +40,9 @@ use zk::Risc0Prover;
 use zk::StubProver;
 
 #[cfg(feature = "arkworks")]
-use zk::circuit::test_helpers::create_test_state_with_actors;
-#[cfg(feature = "arkworks")]
 use zk::ArkworksProver;
+#[cfg(feature = "arkworks")]
+use zk::circuit::test_helpers::create_test_state_with_actors;
 
 use zk::Prover;
 

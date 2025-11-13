@@ -214,4 +214,3 @@ fn test_melee_attack_action_witness_structure() {
 
     assert!(!witnesses.entities.is_empty());
 }
-

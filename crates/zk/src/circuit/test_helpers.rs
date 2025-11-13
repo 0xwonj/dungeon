@@ -5,8 +5,8 @@
 
 use game_core::state::BoundedVec;
 use game_core::{
-    ActorState, CoreStats, EntitiesState, EntityId, GameState, InventoryState, Position,
-    TurnState, WorldState,
+    ActorState, CoreStats, EntitiesState, EntityId, GameState, InventoryState, Position, TurnState,
+    WorldState,
 };
 
 /// Create a simple test state with a single actor at the given position.

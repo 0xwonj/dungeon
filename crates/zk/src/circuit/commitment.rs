@@ -89,8 +89,10 @@ mod tests {
 
     #[test]
     fn test_hash_two_different_inputs() {
-        let result1 = hash_two(Fp254::from(3u64), Fp254::from(4u64)).expect("hash_two should succeed");
-        let result2 = hash_two(Fp254::from(5u64), Fp254::from(6u64)).expect("hash_two should succeed");
+        let result1 =
+            hash_two(Fp254::from(3u64), Fp254::from(4u64)).expect("hash_two should succeed");
+        let result2 =
+            hash_two(Fp254::from(5u64), Fp254::from(6u64)).expect("hash_two should succeed");
         assert_ne!(result1, result2);
     }
 

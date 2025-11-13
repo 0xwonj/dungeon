@@ -253,12 +253,23 @@ fn calculate_position_delta(
         return None;
     }
 
-    let before_actor = before_state.entities.actors.iter().find(|a| a.id == char_action.actor)?;
-    let after_actor = after_state.entities.actors.iter().find(|a| a.id == char_action.actor)?;
+    let before_actor = before_state
+        .entities
+        .actors
+        .iter()
+        .find(|a| a.id == char_action.actor)?;
+    let after_actor = after_state
+        .entities
+        .actors
+        .iter()
+        .find(|a| a.id == char_action.actor)?;
 
     let dx = after_actor.position.x - before_actor.position.x;
     let dy = after_actor.position.y - before_actor.position.y;
-    Some((ark_bn254::Fr::from(dx as i64), ark_bn254::Fr::from(dy as i64)))
+    Some((
+        ark_bn254::Fr::from(dx as i64),
+        ark_bn254::Fr::from(dy as i64),
+    ))
 }
 
 // ============================================================================

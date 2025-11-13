@@ -128,9 +128,11 @@ fn test_merkle_tree_multiple_leaves() {
     let mut tree = SparseMerkleTree::new(4);
 
     // Add 3 leaves
-    let leaves = [vec![Fp254::from(1u64), Fp254::from(2u64)],
+    let leaves = [
+        vec![Fp254::from(1u64), Fp254::from(2u64)],
         vec![Fp254::from(3u64), Fp254::from(4u64)],
-        vec![Fp254::from(5u64), Fp254::from(6u64)]];
+        vec![Fp254::from(5u64), Fp254::from(6u64)],
+    ];
 
     for (i, leaf_data) in leaves.iter().enumerate() {
         let leaf_hash = hash_many(leaf_data).expect("Failed to hash");

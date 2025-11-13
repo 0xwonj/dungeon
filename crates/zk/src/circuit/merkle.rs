@@ -4,10 +4,10 @@
 
 use crate::ProofError;
 
-#[cfg(feature = "arkworks")]
-use super::commitment::hash_two;
 #[cfg(all(test, feature = "arkworks"))]
 use super::commitment::hash_one;
+#[cfg(feature = "arkworks")]
+use super::commitment::hash_two;
 #[cfg(feature = "arkworks")]
 use ark_bn254::Fr as Fp254;
 #[cfg(feature = "arkworks")]
@@ -438,14 +438,8 @@ mod game_state_tests {
         assert_eq!(serialized.len(), 5);
         assert_eq!(serialized[0], Fp254::from(EntityId::PLAYER.0 as u64));
         // Coordinates use offset encoding: (coord + 2^30) to handle signed values
-        assert_eq!(
-            serialized[1],
-            Fp254::from((5i64 + COORD_OFFSET) as u64)
-        );
-        assert_eq!(
-            serialized[2],
-            Fp254::from((10i64 + COORD_OFFSET) as u64)
-        );
+        assert_eq!(serialized[1], Fp254::from((5i64 + COORD_OFFSET) as u64));
+        assert_eq!(serialized[2], Fp254::from((10i64 + COORD_OFFSET) as u64));
     }
 
     #[test]

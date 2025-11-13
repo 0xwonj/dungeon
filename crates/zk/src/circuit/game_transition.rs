@@ -245,7 +245,7 @@ impl GameTransitionCircuit {
 
         // CRITICAL: Compute correct Merkle roots AND paths for dummy witness data!
         // Using incorrect paths causes Merkle verification constraints to fail.
-        use super::merkle::{hash_many, SparseMerkleTree};
+        use super::merkle::{SparseMerkleTree, hash_many};
 
         // Hash witness data to get leaf hashes
         let before_leaf = hash_many(&before_data).expect("Failed to hash before_data");
@@ -255,7 +255,9 @@ impl GameTransitionCircuit {
         let mut before_tree = SparseMerkleTree::new(DUMMY_DEPTH);
         before_tree.insert(0, before_leaf);
         let before_root_value = before_tree.root().expect("Failed to compute before root");
-        let before_path = before_tree.prove(0).expect("Failed to generate before path");
+        let before_path = before_tree
+            .prove(0)
+            .expect("Failed to generate before path");
 
         let mut after_tree = SparseMerkleTree::new(DUMMY_DEPTH);
         after_tree.insert(0, after_leaf);
@@ -281,11 +283,11 @@ impl GameTransitionCircuit {
         Self {
             before_root: Some(before_root_value),
             after_root: Some(after_root_value),
-            action_type: Some(Fp254::from(0u64)),  // Move
-            actor_id: Some(Fp254::from(0u64)),     // Entity ID 0
+            action_type: Some(Fp254::from(0u64)), // Move
+            actor_id: Some(Fp254::from(0u64)),    // Entity ID 0
             witnesses: Some(witnesses),
             target_id: Some(Fp254::from(0u64)),
-            direction: Some(Fp254::from(0u64)),  // North
+            direction: Some(Fp254::from(0u64)), // North
             position_delta: Some((Fp254::from(0i64), Fp254::from(1i64))),
         }
     }
@@ -337,7 +339,10 @@ impl ConstraintSynthesizer<Fp254> for GameTransitionCircuit {
 
         // Allocate position delta (may be None for non-movement actions)
         let position_delta_var = match self.position_delta {
-            Some((dx, dy)) => Some((alloc_witness_fp(cs.clone(), dx)?, alloc_witness_fp(cs.clone(), dy)?)),
+            Some((dx, dy)) => Some((
+                alloc_witness_fp(cs.clone(), dx)?,
+                alloc_witness_fp(cs.clone(), dy)?,
+            )),
             None => None,
         };
 
@@ -463,7 +468,10 @@ fn alloc_witness_fp_vec(
     cs: ConstraintSystemRef<Fp254>,
     values: &[Fp254],
 ) -> Result<Vec<FpVar<Fp254>>, SynthesisError> {
-    values.iter().map(|&field| alloc_witness_fp(cs.clone(), field)).collect()
+    values
+        .iter()
+        .map(|&field| alloc_witness_fp(cs.clone(), field))
+        .collect()
 }
 
 /// Allocate a Merkle path as circuit variables.

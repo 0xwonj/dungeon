@@ -250,7 +250,6 @@ pub fn generate_witnesses(
         "Item",
     )?);
 
-
     // Sort witnesses by entity ID for deterministic circuit layout
     entity_witnesses.sort_by_key(|w| w.id.0);
 
@@ -270,7 +269,6 @@ mod tests {
     };
 
     use crate::circuit::test_helpers::create_test_state_at_position;
-
 
     #[test]
     fn test_generate_witnesses_simple_movement() {
