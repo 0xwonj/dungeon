@@ -15,13 +15,14 @@ use zk::circuit::game_transition::{ActionType, GameTransitionCircuit};
 use zk::circuit::test_helpers::create_test_state_with_enemy;
 use zk::circuit::{groth16, merkle, witness};
 
-/// Helper to create a test state with player only (simplified for proof testing).
+/// Helper to create a test state with player and enemy.
 fn create_test_state() -> GameState {
-    let mut state = create_test_state_with_enemy(false); // No enemy, just player
+    let mut state = create_test_state_with_enemy(true); // Include enemy
 
     // Set up turn state with active actors
     let mut active_actors = std::collections::BTreeSet::new();
     active_actors.insert(EntityId::PLAYER);
+    active_actors.insert(EntityId(1)); // Enemy
 
     state.turn = TurnState {
         current_actor: EntityId::PLAYER,
@@ -215,23 +216,33 @@ fn test_move_action_proof_verification() {
 
     let witnesses = witness::generate_witnesses(&delta, &before_state, &after_state).unwrap();
 
-    // Create circuit with all witnesses
+    // Create circuit for proving
     let circuit = GameTransitionCircuit::new(
         before_root,
         after_root,
         ActionType::Move.to_field(),
         Fp254::from(EntityId::PLAYER.0 as u64),
-        witnesses,
+        witnesses.clone(),  // Clone so we can use it twice
         None,                                         // No target for move
         Some(Fp254::from(0u64)),                      // Direction: North = 0
         Some((Fp254::from(0i64), Fp254::from(1i64))), // Delta: (0, 1) for north
     );
 
-    // Generate proving and verifying keys
+    // CRITICAL FIX: Use the SAME circuit for key generation as proving
+    // Dummy circuit has different witness values which causes verification to fail!
     println!("Generating Groth16 keys (this may take 15-20 seconds)...");
     let mut rng = test_rng();
-    let dummy_circuit = GameTransitionCircuit::dummy();
-    let keys = groth16::Groth16Keys::generate(dummy_circuit, &mut rng)
+    let key_gen_circuit = GameTransitionCircuit::new(
+        before_root,
+        after_root,
+        ActionType::Move.to_field(),
+        Fp254::from(EntityId::PLAYER.0 as u64),
+        witnesses,  // Use actual witnesses
+        None,
+        Some(Fp254::from(0u64)),
+        Some((Fp254::from(0i64), Fp254::from(1i64))),
+    );
+    let keys = groth16::Groth16Keys::generate(key_gen_circuit, &mut rng)
         .expect("Key generation failed");
 
     println!("✓ Keys generated");
