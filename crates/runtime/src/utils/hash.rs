@@ -10,6 +10,7 @@ use zk::ProofData;
 /// Compute a deterministic hash of GameState using bincode serialization.
 ///
 /// Returns the first 8 bytes of the hash as a hex string for compact logging.
+#[allow(dead_code)]
 pub fn hash_game_state(state: &GameState) -> String {
     let bytes = bincode::serialize(state).expect("GameState serialization should not fail");
     let hash = hash_bytes(&bytes);

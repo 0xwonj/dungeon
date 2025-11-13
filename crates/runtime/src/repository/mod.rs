@@ -49,8 +49,8 @@ pub use types::{ActionBatch, ActionBatchStatus, ActionLogEntry};
 
 // Re-export file implementations
 pub use file::{
-    BufActionLogReader, FileActionBatchRepository, FileActionLog, FileEventLog, FileRepository,
-    FileStateRepository, MmapActionLogReader,
+    FileActionBatchRepository, FileActionLog, FileActionLogReader, FileEventLog, FileRepository,
+    FileStateRepository,
 };
 
 // Re-export memory implementations

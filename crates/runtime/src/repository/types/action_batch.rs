@@ -17,8 +17,8 @@
 //! # File Path Convention
 //!
 //! ActionBatch does not store file paths. Instead, canonical paths are computed:
-//! - Action log: `{base_dir}/{session_id}/actions/actions_{session}_{start:010}_{end:010}.log`
-//! - Proof file: `{base_dir}/{session_id}/proofs/proof_{start:010}_{end:010}.bin`
+//! - Action log: `{base_dir}/{session_id}/actions/actions_{start:010}.bin`
+//! - Proof file: `{base_dir}/{session_id}/proofs/proof_{start:010}.bin`
 //!
 //! # Replaces ProofIndex
 //!
@@ -112,12 +112,18 @@ impl ActionBatch {
 
     /// Get the action log filename for this batch.
     ///
-    /// Format: `actions_{session}_{start_nonce:010}_{end_nonce:010}.log`
+    /// Format: `actions_{start_nonce:010}.bin`
     pub fn action_log_filename(&self) -> String {
-        format!(
-            "actions_{}_{:010}_{:010}.log",
-            self.session_id, self.start_nonce, self.end_nonce
-        )
+        format!("actions_{:010}.bin", self.start_nonce)
+    }
+
+    /// Get the batch metadata filename.
+    ///
+    /// Format: `batch_{start_nonce:010}.json`
+    ///
+    /// Only start_nonce is used to ensure the filename is known when the batch is created.
+    pub fn batch_filename(&self) -> String {
+        format!("batch_{:010}.json", self.start_nonce)
     }
 
     /// Get the proof filename for this batch.
@@ -211,12 +217,11 @@ mod tests {
 
     #[test]
     fn test_action_log_filename() {
-        let mut batch = ActionBatch::new("session123".to_string(), 0);
-        batch.end_nonce = 9;
-        assert_eq!(
-            batch.action_log_filename(),
-            "actions_session123_0000000000_0000000009.log"
-        );
+        let batch = ActionBatch::new("session123".to_string(), 0);
+        assert_eq!(batch.action_log_filename(), "actions_0000000000.bin");
+
+        let batch2 = ActionBatch::new("session123".to_string(), 42);
+        assert_eq!(batch2.action_log_filename(), "actions_0000000042.bin");
     }
 
     #[test]

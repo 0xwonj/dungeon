@@ -1,5 +1,5 @@
 [package]
-name = "game-verifier"
+name = "batch-state-transition"
 version = "0.1.0"
 edition = "2024"
 

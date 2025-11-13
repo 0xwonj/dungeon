@@ -112,8 +112,7 @@ impl ActionLogReader for InMemoryActionLogReader {
             return Err(crate::repository::RepositoryError::InvalidOffset {
                 offset,
                 file_size: entries.len() as u64,
-            }
-            .into());
+            });
         }
 
         *position = index;

@@ -45,7 +45,10 @@ mod generated {
 }
 
 #[cfg(feature = "risc0")]
-pub use generated::{GAME_VERIFIER_ELF, GAME_VERIFIER_ID};
+pub use generated::{
+    BATCH_STATE_TRANSITION_ELF, BATCH_STATE_TRANSITION_ID, SINGLE_STATE_TRANSITION_ELF,
+    SINGLE_STATE_TRANSITION_ID,
+};
 
 // Oracle snapshot for serializable game content
 pub mod oracle;

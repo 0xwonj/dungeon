@@ -101,4 +101,7 @@ risc0-zkvm = { workspace = true, optional = true }
 # - ark-ff, ark-ec, ark-bn254, ark-groth16, ark-relations, ark-crypto-primitives
 
 [package.metadata.risc0]
-methods = ["methods/guest"]
+methods = [
+    "methods/single-state-transition",
+    "methods/batch-state-transition",
+]

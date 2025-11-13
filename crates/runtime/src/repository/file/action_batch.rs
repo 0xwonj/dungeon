@@ -2,10 +2,10 @@
 //!
 //! Action batches are stored as individual JSON files:
 //! ```text
-//! {base_dir}/{session_id}/batches/batch_{end_nonce:010}.json
+//! {base_dir}/{session_id}/batches/batch_{start_nonce:010}.json
 //! ```
 //!
-//! Each batch is uniquely identified by its end_nonce within a session.
+//! Each batch is uniquely identified by its start_nonce within a session.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -31,8 +31,8 @@ impl FileActionBatchRepository {
     /// {base_dir}/
     ///   {session_id}/
     ///     batches/
-    ///       batch_0000000009.json
-    ///       batch_0000000019.json
+    ///       batch_0000000000.json
+    ///       batch_0000000010.json
     ///       ...
     /// ```
     pub fn new(base_dir: impl AsRef<Path>) -> Result<Self> {
@@ -45,20 +45,20 @@ impl FileActionBatchRepository {
         Ok(Self { base_dir })
     }
 
-    /// Get the batches directory for a session.
-    fn batches_dir(&self, session_id: &str) -> PathBuf {
-        self.base_dir.join(session_id).join("batches")
+    /// Get the batches directory (base_dir is already the batches directory).
+    fn batches_dir(&self) -> PathBuf {
+        self.base_dir.clone()
     }
 
     /// Get the file path for a batch.
-    fn batch_path(&self, session_id: &str, end_nonce: u64) -> PathBuf {
-        self.batches_dir(session_id)
-            .join(format!("batch_{:010}.json", end_nonce))
+    fn batch_path(&self, _session_id: &str, start_nonce: u64) -> PathBuf {
+        self.batches_dir()
+            .join(format!("batch_{:010}.json", start_nonce))
     }
 
     /// Ensure the batches directory exists.
-    fn ensure_dir(&self, session_id: &str) -> Result<()> {
-        let dir = self.batches_dir(session_id);
+    fn ensure_dir(&self, _session_id: &str) -> Result<()> {
+        let dir = self.batches_dir();
         if !dir.exists() {
             fs::create_dir_all(&dir)?;
         }
@@ -70,7 +70,7 @@ impl ActionBatchRepository for FileActionBatchRepository {
     fn save(&self, batch: &ActionBatch) -> Result<()> {
         self.ensure_dir(&batch.session_id)?;
 
-        let path = self.batch_path(&batch.session_id, batch.end_nonce);
+        let path = self.batch_path(&batch.session_id, batch.start_nonce);
         let json = serde_json::to_string_pretty(batch)
             .map_err(|e| RepositoryError::Json(format!("Failed to serialize batch: {}", e)))?;
 
@@ -79,8 +79,8 @@ impl ActionBatchRepository for FileActionBatchRepository {
         Ok(())
     }
 
-    fn load(&self, session_id: &str, end_nonce: u64) -> Result<Option<ActionBatch>> {
-        let path = self.batch_path(session_id, end_nonce);
+    fn load(&self, session_id: &str, start_nonce: u64) -> Result<Option<ActionBatch>> {
+        let path = self.batch_path(session_id, start_nonce);
 
         if !path.exists() {
             return Ok(None);
@@ -94,8 +94,8 @@ impl ActionBatchRepository for FileActionBatchRepository {
         Ok(Some(batch))
     }
 
-    fn list(&self, session_id: &str) -> Result<Vec<ActionBatch>> {
-        let dir = self.batches_dir(session_id);
+    fn list(&self, _session_id: &str) -> Result<Vec<ActionBatch>> {
+        let dir = self.batches_dir();
 
         if !dir.exists() {
             return Ok(Vec::new());
@@ -120,8 +120,8 @@ impl ActionBatchRepository for FileActionBatchRepository {
             }
         }
 
-        // Sort by end_nonce for consistent ordering
-        batches.sort_by_key(|b| b.end_nonce);
+        // Sort by start_nonce for consistent ordering
+        batches.sort_by_key(|b| b.start_nonce);
 
         Ok(batches)
     }
@@ -144,8 +144,8 @@ impl ActionBatchRepository for FileActionBatchRepository {
         Ok(filtered)
     }
 
-    fn delete(&self, session_id: &str, end_nonce: u64) -> Result<()> {
-        let path = self.batch_path(session_id, end_nonce);
+    fn delete(&self, session_id: &str, start_nonce: u64) -> Result<()> {
+        let path = self.batch_path(session_id, start_nonce);
 
         if path.exists() {
             fs::remove_file(&path)?;
@@ -190,8 +190,7 @@ mod tests {
         let (_temp, repo) = setup();
 
         let batch1 = ActionBatch::new("session123".to_string(), 0);
-        let mut batch2 = ActionBatch::new("session123".to_string(), 10);
-        batch2.end_nonce = 19;
+        let batch2 = ActionBatch::new("session123".to_string(), 10);
 
         repo.save(&batch1).unwrap();
         repo.save(&batch2).unwrap();
@@ -218,7 +217,7 @@ mod tests {
             .list_by_status("session123", ActionBatchStatus::Complete)
             .unwrap();
         assert_eq!(complete.len(), 1);
-        assert_eq!(complete[0].end_nonce, 9);
+        assert_eq!(complete[0].start_nonce, 0);
 
         let in_progress = repo
             .list_by_status("session123", ActionBatchStatus::InProgress)

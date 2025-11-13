@@ -11,8 +11,10 @@
 //! # Generated Constants
 //!
 //! Outputs to `OUT_DIR/methods.rs`:
-//! - `GAME_VERIFIER_ELF: &[u8]` - Guest program binary
-//! - `GAME_VERIFIER_ID: [u32; 8]` - Program identifier for verification
+//! - `SINGLE_STATE_TRANSITION_ELF: &[u8]` - Single state transition guest program binary
+//! - `SINGLE_STATE_TRANSITION_ID: [u32; 8]` - Single state transition program identifier
+//! - `BATCH_STATE_TRANSITION_ELF: &[u8]` - Batch state transition guest program binary
+//! - `BATCH_STATE_TRANSITION_ID: [u32; 8]` - Batch state transition program identifier
 
 fn main() {
     use std::env;
@@ -53,8 +55,10 @@ fn generate_placeholder() {
     let methods_path = std::path::Path::new(&out_dir).join("methods.rs");
     std::fs::write(
         methods_path,
-        r#"pub const GAME_VERIFIER_ELF: &[u8] = &[];
-pub const GAME_VERIFIER_ID: [u32; 8] = [0; 8];
+        r#"pub const SINGLE_STATE_TRANSITION_ELF: &[u8] = &[];
+pub const SINGLE_STATE_TRANSITION_ID: [u32; 8] = [0; 8];
+pub const BATCH_STATE_TRANSITION_ELF: &[u8] = &[];
+pub const BATCH_STATE_TRANSITION_ID: [u32; 8] = [0; 8];
 "#,
     )
     .expect("Failed to write placeholder methods.rs");

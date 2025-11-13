@@ -44,9 +44,9 @@ pub use providers::ai::{AiContext, GoalBasedAiProvider};
 pub use providers::{SystemActionHandler, SystemActionProvider};
 pub use repository::{
     ActionBatch, ActionBatchRepository, ActionBatchStatus, ActionLogEntry, ActionLogReader,
-    ActionLogWriter, BufActionLogReader, EventRepository, FileActionBatchRepository, FileActionLog,
-    FileEventLog, FileStateRepository, InMemoryActionLogReader, InMemoryStateRepo,
-    MmapActionLogReader, RepositoryError, StateRepository,
+    ActionLogWriter, EventRepository, FileActionBatchRepository, FileActionLog,
+    FileActionLogReader, FileEventLog, FileStateRepository, InMemoryActionLogReader,
+    InMemoryStateRepo, RepositoryError, StateRepository,
 };
 pub use runtime::{PersistenceSettings, ProvingSettings, Runtime, RuntimeBuilder, RuntimeConfig};
 pub use scenario::{EntityKind, EntityPlacement, Scenario};

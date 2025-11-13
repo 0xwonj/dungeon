@@ -13,16 +13,21 @@ use game_core::{EntityId, GameConfig, GameState};
 use crate::api::{
     ActionProvider, ProviderKind, ProviderRegistry, Result, RuntimeError, RuntimeHandle,
 };
-use crate::events::EventBus;
+use crate::events::{EventBus, Topic};
 use crate::oracle::OracleManager;
 use crate::providers::SystemActionProvider;
+use crate::repository::ActionBatch;
+use crate::scenario::Scenario;
 use crate::workers::{
-    CheckpointStrategy, Command, PersistenceConfig, PersistenceWorker, ProofMetrics, ProverWorker,
-    SimulationWorker,
+    CheckpointStrategy, Command, PersistenceConfig, PersistenceWorker, ProofMetrics, ProverConfig,
+    ProverWorker, SimulationWorker,
 };
 
 /// Shared reference to proof generation metrics (thread-safe, lock-free)
 type ProofMetricsArc = std::sync::Arc<ProofMetrics>;
+
+/// Result type for persistence worker creation: (worker handle, batch completion receiver)
+type PersistenceWorkerResult = (Option<JoinHandle<()>>, Option<mpsc::Receiver<ActionBatch>>);
 
 /// Core runtime configuration for channels and buffers.
 #[derive(Debug, Clone)]
@@ -248,7 +253,7 @@ pub struct RuntimeBuilder {
     proving: ProvingSettings,
     state: Option<GameState>,
     oracles: Option<OracleManager>,
-    scenario: Option<crate::scenario::Scenario>,
+    scenario: Option<Scenario>,
     providers: ProviderRegistry,
     system_provider: Option<SystemActionProvider>,
 }
@@ -300,7 +305,7 @@ impl RuntimeBuilder {
     /// Provide scenario for entity initialization.
     ///
     /// If both scenario and initial_state are provided, initial_state takes precedence.
-    pub fn scenario(mut self, scenario: crate::scenario::Scenario) -> Self {
+    pub fn scenario(mut self, scenario: Scenario) -> Self {
         self.scenario = Some(scenario);
         self
     }
@@ -477,7 +482,7 @@ impl RuntimeBuilder {
             system_provider,
         );
 
-        let persistence_worker_handle = Self::create_persistence_worker(
+        let (persistence_worker_handle, batch_complete_rx) = Self::create_persistence_worker(
             &config,
             &persistence,
             command_tx.clone(),
@@ -488,7 +493,7 @@ impl RuntimeBuilder {
             &config,
             &persistence,
             &proving,
-            event_bus.clone(),
+            batch_complete_rx,
             oracles.clone(),
         )?;
 
@@ -527,14 +532,16 @@ impl RuntimeBuilder {
     }
 
     /// Create and spawn the persistence worker (if enabled).
+    ///
+    /// Returns the worker handle and batch completion receiver for ProverWorker.
     fn create_persistence_worker(
         config: &RuntimeConfig,
         persistence: &PersistenceSettings,
         sim_command_tx: mpsc::Sender<Command>,
         event_bus: EventBus,
-    ) -> Result<Option<JoinHandle<()>>> {
+    ) -> Result<PersistenceWorkerResult> {
         if !persistence.enabled {
-            return Ok(None);
+            return Ok((None, None));
         }
 
         let persistence_config =
@@ -543,25 +550,33 @@ impl RuntimeBuilder {
                     persistence.checkpoint_interval,
                 ));
 
-        let event_rx = event_bus.subscribe(crate::events::Topic::GameState);
+        let event_rx = event_bus.subscribe(Topic::GameState);
 
         // PersistenceWorker has its own Command type, but we don't expose it
-        // Create a dummy channel since we don't send commands to it yet
-        let (_persistence_cmd_tx, persistence_cmd_rx) = mpsc::channel(8);
+        // Keep the sender alive to prevent the worker from shutting down
+        let (persistence_cmd_tx, persistence_cmd_rx) = mpsc::channel(8);
+
+        // Channel for notifying ProverWorker about completed batches
+        let (batch_complete_tx, batch_complete_rx) = mpsc::channel(100);
 
         let persistence_worker = PersistenceWorker::new(
             persistence_config,
             event_rx,
             persistence_cmd_rx,
             sim_command_tx,
+            batch_complete_tx,
         )
-        .map_err(RuntimeError::InvalidConfig)?;
+        .map_err(|e| RuntimeError::InvalidConfig(e.to_string()))?;
 
         let handle = tokio::spawn(async move {
             persistence_worker.run().await;
         });
 
-        Ok(Some(handle))
+        // Keep the command sender alive by returning it
+        // (If we drop it, the worker will shut down immediately)
+        std::mem::forget(persistence_cmd_tx);
+
+        Ok((Some(handle), Some(batch_complete_rx)))
     }
 
     /// Create and spawn the prover worker (if enabled).
@@ -575,8 +590,8 @@ impl RuntimeBuilder {
         config: &RuntimeConfig,
         persistence: &PersistenceSettings,
         proving: &ProvingSettings,
-        event_bus: EventBus,
-        oracles: OracleManager,
+        batch_complete_rx: Option<mpsc::Receiver<ActionBatch>>,
+        _oracles: OracleManager,
     ) -> Result<(Option<JoinHandle<()>>, Option<ProofMetricsArc>)> {
         if !proving.enabled {
             return Ok((None, None));
@@ -588,33 +603,70 @@ impl RuntimeBuilder {
             "Proving requires persistence - should be caught by validate()"
         );
 
-        // Construct session directory path
-        let session_dir = persistence.base_dir.join(&config.session_id);
-
-        // Build ProverWorker using its builder
-        // Note: ProverWorker automatically resumes from ProofIndex checkpoint
-        let mut builder = ProverWorker::builder()
-            .session_id(config.session_id.clone())
-            .persistence_dir(&persistence.base_dir)
-            .event_bus(event_bus)
-            .oracles(oracles);
-
-        // Optionally save proofs to disk
-        if proving.save_proofs_dir.is_some() || persistence.enabled {
-            let proofs_dir = session_dir.join("proofs");
-            builder = builder.save_proofs_to(proofs_dir);
-        }
-
-        let prover_worker = builder.build().map_err(|e| {
-            RuntimeError::InvalidConfig(format!("Failed to create ProverWorker: {}", e))
+        let batch_complete_rx = batch_complete_rx.ok_or_else(|| {
+            RuntimeError::InvalidConfig(
+                "Proving requires persistence to be enabled, but batch_complete_rx is None"
+                    .to_string(),
+            )
         })?;
 
-        let prover_metrics = prover_worker.metrics();
+        // Create prover config
+        let prover_config =
+            ProverConfig::new(config.session_id.clone(), persistence.base_dir.clone())
+                .with_max_parallel(4); // TODO: Make this configurable
+
+        // Create oracle snapshot for prover
+        let oracle_snapshot = {
+            use zk::{
+                ActorsSnapshot, ConfigSnapshot, ItemsSnapshot, MapSnapshot, OracleSnapshot,
+                TablesSnapshot,
+            };
+
+            let map_snapshot = MapSnapshot::from_oracle(_oracles.map.as_ref());
+            let items_snapshot = ItemsSnapshot::empty(); // TODO: Populate with actual items
+            let actors_snapshot = ActorsSnapshot::empty(); // TODO: Populate with actual actors
+            let tables_snapshot = TablesSnapshot::from_oracle(_oracles.tables.as_ref());
+            let config_snapshot = ConfigSnapshot::from_oracle(_oracles.config.as_ref());
+
+            OracleSnapshot::new(
+                map_snapshot,
+                items_snapshot,
+                actors_snapshot,
+                tables_snapshot,
+                config_snapshot,
+            )
+        };
+
+        // Create prover instance (stub or risc0)
+        #[cfg(feature = "stub")]
+        let prover = {
+            use zk::StubProver;
+            Arc::new(StubProver::new(oracle_snapshot))
+        };
+
+        #[cfg(not(feature = "stub"))]
+        let prover = {
+            use zk::Risc0Prover;
+            Arc::new(Risc0Prover::new(oracle_snapshot))
+        };
+
+        // Create command channel (keep sender alive to prevent shutdown)
+        let (prover_cmd_tx, prover_cmd_rx) = mpsc::channel(8);
+
+        // Create ProverWorker
+        let prover_worker =
+            ProverWorker::new(prover_config, prover, prover_cmd_rx, batch_complete_rx)
+                .map_err(|e| RuntimeError::InvalidConfig(e.to_string()))?;
 
         let handle = tokio::spawn(async move {
             prover_worker.run().await;
         });
 
-        Ok((Some(handle), Some(prover_metrics)))
+        // Keep the command sender alive by forgetting it
+        // (If we drop it, the worker will shut down immediately)
+        std::mem::forget(prover_cmd_tx);
+
+        // TODO: Re-add metrics
+        Ok((Some(handle), None))
     }
 }

@@ -24,7 +24,7 @@ serde_json = { workspace = true }
 bincode = { workspace = true }
 directories = { workspace = true }
 memmap2 = "0.9"
-ron = "0.11"
+ron = "0.12"
 
 [dev-dependencies]
 client-bootstrap = { workspace = true }

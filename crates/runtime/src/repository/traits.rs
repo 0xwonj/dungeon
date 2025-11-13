@@ -9,7 +9,7 @@ use super::error::RepositoryError;
 type Result<T> = std::result::Result<T, RepositoryError>;
 
 // Re-export shared types
-pub use super::types::{ActionBatch, ActionBatchStatus, ActionLogEntry};
+pub use super::types::ActionLogEntry;
 
 /// Repository for game state persistence and loading
 ///
@@ -131,7 +131,7 @@ pub trait ActionLogWriter: Send + Sync {
 ///
 /// # Implementations
 ///
-/// - `MmapActionLogReader`: Zero-copy memory-mapped file reader (production)
+/// - `FileActionLogReader`: Buffered file reader for sequential reads
 /// - `InMemoryActionLogReader`: In-memory reader for testing
 pub trait ActionLogReader: Send + Sync {
     /// Read the next action log entry from the current position.
@@ -198,14 +198,18 @@ pub trait ActionLogReader: Send + Sync {
 /// - InProgress → Complete (PersistenceWorker)
 /// - Complete → Proving → Proven (ProverWorker)
 /// - Proven → OnChain (OnchainWorker)
+///
+/// Batches are identified by their start_nonce, which is known when the batch is created
+/// and remains constant throughout its lifecycle.
 pub trait ActionBatchRepository: Send + Sync {
     /// Save or update an action batch.
     fn save(&self, batch: &super::types::ActionBatch) -> Result<()>;
 
-    /// Load an action batch by its end nonce.
+    /// Load an action batch by its start nonce.
     ///
-    /// The end nonce uniquely identifies a batch within a session.
-    fn load(&self, session_id: &str, end_nonce: u64) -> Result<Option<super::types::ActionBatch>>;
+    /// The start nonce uniquely identifies a batch within a session.
+    fn load(&self, session_id: &str, start_nonce: u64)
+    -> Result<Option<super::types::ActionBatch>>;
 
     /// List all batches for a session.
     fn list(&self, session_id: &str) -> Result<Vec<super::types::ActionBatch>>;
@@ -218,11 +222,12 @@ pub trait ActionBatchRepository: Send + Sync {
     ) -> Result<Vec<super::types::ActionBatch>>;
 
     /// Delete a batch.
-    fn delete(&self, session_id: &str, end_nonce: u64) -> Result<()>;
+    fn delete(&self, session_id: &str, start_nonce: u64) -> Result<()>;
 
     /// Get the current in-progress batch (if any).
     fn get_current_batch(&self, session_id: &str) -> Result<Option<super::types::ActionBatch>> {
-        let batches = self.list_by_status(session_id, super::types::ActionBatchStatus::InProgress)?;
+        let batches =
+            self.list_by_status(session_id, super::types::ActionBatchStatus::InProgress)?;
         Ok(batches.into_iter().next())
     }
 }

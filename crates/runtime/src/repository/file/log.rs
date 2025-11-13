@@ -71,7 +71,9 @@ where
 
         // Prevent overwriting existing logs
         if path.exists() {
-            return Err(RepositoryError::LogAlreadyExists(path.display().to_string()).into());
+            return Err(RepositoryError::LogAlreadyExists(
+                path.display().to_string(),
+            ));
         }
 
         let file = OpenOptions::new()

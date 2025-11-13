@@ -2,13 +2,11 @@
 
 mod action_batch;
 mod action_reader;
-mod buf_action_reader;
 mod log;
 mod state;
 
 pub use action_batch::FileActionBatchRepository;
-pub use action_reader::MmapActionLogReader;
-pub use buf_action_reader::BufActionLogReader;
+pub use action_reader::FileActionLogReader;
 pub use state::FileStateRepository;
 
 // Append-only log repository (generic implementation)
