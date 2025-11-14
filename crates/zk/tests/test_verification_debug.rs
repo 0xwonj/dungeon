@@ -2,13 +2,13 @@
 
 #![cfg(feature = "arkworks")]
 
-use game_core::*;
-use zk::circuit::test_helpers::create_test_state_with_enemy;
-use zk::circuit::{groth16, merkle, witness, game_transition::*};
-use zk::circuit::ArkworksProver;
-use zk::Prover;
 use ark_bn254::Fr as Fp254;
 use ark_std::test_rng;
+use game_core::*;
+use zk::Prover;
+use zk::circuit::ArkworksProver;
+use zk::circuit::test_helpers::create_test_state_with_enemy;
+use zk::circuit::{game_transition::*, groth16, merkle, witness};
 
 fn create_simple_test_state() -> GameState {
     let mut state = create_test_state_with_enemy(false);
@@ -59,7 +59,7 @@ fn test_direct_groth16_verification() {
         actor_id,
         witnesses.clone(),
         None,
-        Some(Fp254::from(0u64)), // North
+        Some(Fp254::from(0u64)),                      // North
         Some((Fp254::from(0i64), Fp254::from(1i64))), // delta
     );
 
@@ -118,8 +118,14 @@ fn test_prover_trait_verification() {
     println!("Proof data:");
     println!("  bytes length: {}", proof_data.bytes.len());
     println!("  backend: {:?}", proof_data.backend);
-    println!("  public_inputs: {:?}", proof_data.public_inputs.as_ref().map(|pi| pi.len()));
-    println!("  verifying_key: {:?}", proof_data.verifying_key.as_ref().map(|vk| vk.len()));
+    println!(
+        "  public_inputs: {:?}",
+        proof_data.public_inputs.as_ref().map(|pi| pi.len())
+    );
+    println!(
+        "  verifying_key: {:?}",
+        proof_data.verifying_key.as_ref().map(|vk| vk.len())
+    );
 
     if let Some(ref public_inputs) = proof_data.public_inputs {
         use ark_serialize::CanonicalDeserialize;

@@ -322,7 +322,7 @@ mod tests {
     use ark_relations::r1cs::ConstraintSystem;
 
     #[test]
-    #[ignore] // FIXME: is_cmp has issues with arkworks 0.5.0 - use bounds_check_gadget instead
+    #[ignore] // Disabled: arkworks 0.5.0 comparison API issues prevent this test from running
     fn test_range_check_gadget() {
         let cs = ConstraintSystem::<Fp254>::new_ref();
 

@@ -6,9 +6,9 @@
 #![cfg(feature = "arkworks")]
 
 use game_core::*;
-use zk::circuit::test_helpers::create_test_state_with_enemy;
-use zk::circuit::ArkworksProver;
 use zk::Prover;
+use zk::circuit::ArkworksProver;
+use zk::circuit::test_helpers::create_test_state_with_enemy;
 
 fn create_simple_test_state() -> GameState {
     let mut state = create_test_state_with_enemy(false);
@@ -53,7 +53,11 @@ fn test_verify_valid_proof() {
         "Valid proof should verify successfully. Proof data: backend={:?}, proof_bytes={}, public_inputs_count={}",
         proof_data.backend,
         proof_data.bytes.len(),
-        proof_data.public_inputs.as_ref().map(|pi| pi.len()).unwrap_or(0)
+        proof_data
+            .public_inputs
+            .as_ref()
+            .map(|pi| pi.len())
+            .unwrap_or(0)
     );
 }
 

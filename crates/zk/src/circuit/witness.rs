@@ -85,7 +85,7 @@ fn generate_entity_witnesses<'a, T, I, F>(
 where
     T: HasEntityId,
     I: Iterator<Item = EntityId>,
-    F: Fn(&T) -> [Fp254; 5],
+    F: Fn(&T) -> Result<[Fp254; 5], ProofError>,
 {
     changed_ids
         .map(|id| {
@@ -112,8 +112,8 @@ where
                 })?;
 
             // Serialize entity data
-            let before_data = serialize_fn(before_entity).to_vec();
-            let after_data = serialize_fn(after_entity).to_vec();
+            let before_data = serialize_fn(before_entity)?.to_vec();
+            let after_data = serialize_fn(after_entity)?.to_vec();
 
             // Generate Merkle paths
             let before_path = before_tree.prove(id.0)?;

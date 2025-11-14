@@ -1,6 +1,30 @@
-//! Poseidon hash functions with BN254 field.
+//! Poseidon hash functions for BN254 field elements.
 //!
-//! Config cached globally with OnceLock for ~100-1000x speedup.
+//! Provides native (non-circuit) Poseidon hashing for:
+//! - Merkle tree construction
+//! - Leaf hash computation
+//! - State commitment generation
+//!
+//! # Performance
+//!
+//! Uses globally cached Poseidon config (OnceLock) for ~100-1000x speedup.
+//! Config is initialized once on first use and reused for all subsequent hashing.
+//!
+//! # Security Parameters
+//!
+//! - Field: BN254 (254-bit prime)
+//! - Full rounds: 8
+//! - Partial rounds: 57
+//! - Security level: 128 bits
+//!
+//! # Consistency with Circuit
+//!
+//! Hash functions must match their circuit gadget counterparts in `gadgets.rs`:
+//! - `hash_one()` ↔ `poseidon_hash_one_gadget()`
+//! - `hash_two()` ↔ `poseidon_hash_two_gadget()`
+//! - `hash_many()` ↔ `poseidon_hash_many_gadget()`
+//!
+//! Validated by consistency tests in `tests/poseidon_consistency.rs`.
 
 #[cfg(feature = "arkworks")]
 use ark_bn254::Fr as Fp254;

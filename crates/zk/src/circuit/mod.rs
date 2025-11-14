@@ -6,20 +6,29 @@
 //!
 //! **CRITICAL:** This implementation has known security limitations and should NOT be used in production:
 //!
-//! 1. **Verification Testing Incomplete**: The circuit has not been tested against malicious provers
-//!    attempting to forge invalid state transitions. While R1CS constraints are properly generated
-//!    (verified by tests in `gadgets.rs:348-408`) and cryptographic verification is now implemented,
-//!    comprehensive adversarial testing is required before production use.
+//! 1. **Adversarial Testing Incomplete**: While cryptographic verification is implemented and working
+//!    (verified by `arkworks_prover_verification.rs`), the circuit has not been tested against malicious
+//!    provers attempting to forge invalid state transitions. Comprehensive adversarial testing with
+//!    manipulated witnesses is required before production use.
 //!
-//! 2. **Key Management**: Production deployments need key persistence and proper key distribution
-//!    to verifiers. Keys are now generated using secure RNG (OsRng) in production builds.
+//! 2. **Key Management**: Groth16 keys are circuit-specific and regenerated per proof with matching
+//!    witness counts. Production deployments need:
+//!    - Persistent key storage (currently keys are ephemeral)
+//!    - Secure key distribution to verifiers
+//!    - Key versioning for circuit updates
+//!    Keys use cryptographically secure RNG (OsRng) in production builds.
 //!
-//! 3. **Expensive Key Generation**: Groth16 keys are regenerated on every `prove()` call unless
-//!    `with_cached_keys()` is used, making proof generation prohibitively slow (minutes for complex
-//!    circuits). Production use requires key caching/persistence.
+//! 3. **Performance Limitations**: Key generation takes ~15-18 seconds per proof due to circuit-specific
+//!    constraints. The `with_cached_keys()` method is deprecated as cached keys only work for circuits
+//!    with identical witness counts. Production use requires either:
+//!    - Pre-generated key sets for common action patterns
+//!    - Universal SNARK alternative (not Groth16)
+//!    - Circuit padding to fixed witness count (wasteful)
 //!
-//! 4. **Signed Integer Bugs**: Negative coordinate casting may produce incorrect field elements,
-//!    breaking movement validation for west/south directions. Needs testing with negative coordinates.
+//! 4. **Incomplete Action Constraints**: Attack action constraints are stubbed out (game_transition.rs:604-624)
+//!    due to arkworks 0.5.0 comparison API limitations. Bounds checking is disabled (game_transition.rs:560-563).
+//!    While these validations occur in game-core before proof generation, they are not cryptographically
+//!    enforced in-circuit, allowing a malicious prover to potentially submit invalid transitions.
 //!
 //! **Use Case**: This backend is suitable for:
 //! - Performance benchmarking and optimization research
@@ -51,21 +60,33 @@
 //! Proof (compact, fast verification)
 //! ```
 //!
-//! # Modules (to be implemented)
+//! # Modules
 //!
-//! - `merkle/`: Sparse Merkle tree implementation
-//! - `witness/`: Witness generation from StateDelta
-//! - `transition/`: StateTransition structure
-//! - `circuits/`: Circuit definitions for each action type
+//! - `commitment/`: Poseidon hash functions and state commitments
+//! - `merkle/`: Sparse Merkle tree with batch operations (IMPLEMENTED)
+//! - `witness/`: Witness generation from StateDelta (IMPLEMENTED)
+//! - `game_transition/`: Main game transition circuit (IMPLEMENTED)
+//! - `gadgets/`: R1CS constraint gadgets for Poseidon and Merkle proofs (IMPLEMENTED)
+//! - `groth16/`: Groth16 proving and verification (IMPLEMENTED)
+//! - `test_helpers/`: Shared test utilities (IMPLEMENTED)
 //!
 //! # Implementation Status
 //!
-//! **Not yet implemented** - This is Phase 2+ work that will be done when:
-//! 1. zkVM proof generation time becomes a bottleneck
-//! 2. On-chain verification costs are too high
-//! 3. Team has bandwidth for multi-month circuit development
+//! **PARTIALLY IMPLEMENTED** - Core infrastructure complete, action constraints in progress:
 //!
-//! For now, use the zkVM backend (default feature).
+//! - ✅ Merkle tree construction and proof generation
+//! - ✅ Witness generation from StateDelta
+//! - ✅ Groth16 key generation, proving, and verification
+//! - ✅ Move action constraints (position delta validation)
+//! - ✅ Wait action (trivial constraints)
+//! - ✅ Cryptographic proof generation and verification working
+//! - ✅ Coordinate bounds validation (merkle.rs:36-50 encode_coordinate with range checks)
+//! - 🚧 Attack action constraints (stubbed, needs arkworks 0.5.0 comparison fixes)
+//! - 🚧 Position bounds checking in-circuit (disabled, needs arkworks fixes)
+//! - 📅 Turn state witnesses (deferred to Phase 2)
+//! - 📅 Key persistence and distribution
+//!
+//! Use this backend for prototyping and benchmarking. Use zkVM backend (default) for production.
 
 #![allow(dead_code)] // Allow dead code since this is future work
 
@@ -193,7 +214,9 @@ impl ArkworksProver {
         let dummy_circuit = game_transition::GameTransitionCircuit::dummy();
         let keys = groth16::Groth16Keys::generate(dummy_circuit, &mut rng)?;
 
-        tracing::info!("ArkworksProver: Keys cached successfully (only usable for 1-entity proofs)");
+        tracing::info!(
+            "ArkworksProver: Keys cached successfully (only usable for 1-entity proofs)"
+        );
 
         Ok(Self {
             cached_keys: Some(keys),
@@ -245,27 +268,21 @@ fn extract_target_id(input: &game_core::ActionInput) -> Option<ark_bn254::Fr> {
     }
 }
 
-/// Convert cardinal direction to field element (0-7).
-#[inline]
-fn direction_to_field(dir: &game_core::CardinalDirection) -> ark_bn254::Fr {
-    use game_core::CardinalDirection;
-    ark_bn254::Fr::from(match dir {
-        CardinalDirection::North => 0u64,
-        CardinalDirection::NorthEast => 1u64,
-        CardinalDirection::East => 2u64,
-        CardinalDirection::SouthEast => 3u64,
-        CardinalDirection::South => 4u64,
-        CardinalDirection::SouthWest => 5u64,
-        CardinalDirection::West => 6u64,
-        CardinalDirection::NorthWest => 7u64,
-    })
-}
-
-/// Extract direction from action input as field element.
+/// Extract direction from action input as field element (0-7).
 #[inline]
 fn extract_direction(input: &game_core::ActionInput) -> Option<ark_bn254::Fr> {
+    use game_core::CardinalDirection;
     match input {
-        game_core::ActionInput::Direction(dir) => Some(direction_to_field(dir)),
+        game_core::ActionInput::Direction(dir) => Some(ark_bn254::Fr::from(match dir {
+            CardinalDirection::North => 0u64,
+            CardinalDirection::NorthEast => 1u64,
+            CardinalDirection::East => 2u64,
+            CardinalDirection::SouthEast => 3u64,
+            CardinalDirection::South => 4u64,
+            CardinalDirection::SouthWest => 5u64,
+            CardinalDirection::West => 6u64,
+            CardinalDirection::NorthWest => 7u64,
+        })),
         _ => None,
     }
 }
@@ -277,22 +294,21 @@ fn calculate_position_delta(
     before_state: &GameState,
     after_state: &GameState,
 ) -> Option<(ark_bn254::Fr, ark_bn254::Fr)> {
-    use game_core::ActionKind;
-
-    if !matches!(char_action.kind, ActionKind::Move) {
+    if !matches!(char_action.kind, game_core::ActionKind::Move) {
         return None;
     }
 
+    let actor_id = char_action.actor;
     let before_actor = before_state
         .entities
         .actors
         .iter()
-        .find(|a| a.id == char_action.actor)?;
+        .find(|a| a.id == actor_id)?;
     let after_actor = after_state
         .entities
         .actors
         .iter()
-        .find(|a| a.id == char_action.actor)?;
+        .find(|a| a.id == actor_id)?;
 
     let dx = after_actor.position.x - before_actor.position.x;
     let dy = after_actor.position.y - before_actor.position.y;
@@ -337,8 +353,8 @@ impl crate::Prover for ArkworksProver {
         // Generate StateDelta
         let delta = game_core::StateDelta::from_states(action.clone(), before_state, after_state);
 
-        // Compute entity tree roots (simplified for MVP - no turn state in circuit yet)
-        // TODO Phase 2: Include turn state in circuit constraints
+        // Compute entity tree roots (entity state only - turn state deferred to Phase 2)
+        // Phase 2 will include turn state witnesses for clock/nonce verification
         let mut before_entity_tree = merkle::build_entity_tree(before_state)?;
         let before_root = before_entity_tree.root()?;
 
@@ -347,20 +363,6 @@ impl crate::Prover for ArkworksProver {
 
         // Generate witnesses
         let witnesses = witness::generate_witnesses(&delta, before_state, after_state)?;
-
-        // Create circuit with full witness data
-        // Note: We need to clone witnesses because Groth16 requires generating keys
-        // with the EXACT same circuit structure (same number of witnesses)
-        let circuit = game_transition::GameTransitionCircuit::new(
-            before_root,
-            after_root,
-            action_type.to_field(),
-            actor_id,
-            witnesses.clone(),
-            target_id,
-            direction,
-            position_delta,
-        );
 
         // Use secure RNG for key generation (OsRng from system entropy)
         // In tests, use deterministic test_rng() for reproducibility
@@ -374,21 +376,38 @@ impl crate::Prover for ArkworksProver {
         #[cfg(test)]
         let mut rng = test_rng();
 
-        #[cfg(feature = "arkworks")]
-        let keys = if let Some(ref cached) = self.cached_keys {
+        // Generate or use cached keys
+        // OPTIMIZATION: Only clone witnesses if we need to generate keys (slow path)
+        let (circuit, keys) = if let Some(ref cached) = self.cached_keys {
             // Fast path: use pre-generated keys (~0ms overhead)
             // ⚠️  LIMITATION: Cached keys only work if the circuit structure matches dummy()
-            //     which means exactly 1 entity witness. If your proof has different number
-            //     of witnesses, this will fail verification!
-            tracing::debug!("Using cached Groth16 keys (only works for circuits matching dummy structure)");
-            cached.clone()
+            tracing::debug!(
+                "Using cached Groth16 keys (only works for circuits matching dummy structure)"
+            );
+
+            // No clone needed - we can use witnesses directly since no key generation
+            let circuit = game_transition::GameTransitionCircuit::new(
+                before_root,
+                after_root,
+                action_type.to_field(),
+                actor_id,
+                witnesses,
+                target_id,
+                direction,
+                position_delta,
+            );
+
+            (circuit, cached.clone())
         } else {
-            // Correct path: generate keys with same circuit structure as proof
+            // Slow path: generate keys with same circuit structure as proof
             // This is slow (~15-18 seconds) but produces correct keys
             tracing::warn!(
                 "Generating Groth16 keys for circuit with {} entity witnesses (~15-18s)",
                 witnesses.entities.len()
             );
+
+            // Clone witnesses once for both circuits
+            let witnesses_for_proof = witnesses.clone();
 
             // CRITICAL: Generate keys using identical circuit structure
             let key_gen_circuit = game_transition::GameTransitionCircuit::new(
@@ -401,22 +420,22 @@ impl crate::Prover for ArkworksProver {
                 direction,
                 position_delta,
             );
-            groth16::Groth16Keys::generate(key_gen_circuit, &mut rng)?
-        };
 
-        #[cfg(not(feature = "arkworks"))]
-        let keys = {
-            let key_gen_circuit = game_transition::GameTransitionCircuit::new(
+            let keys = groth16::Groth16Keys::generate(key_gen_circuit, &mut rng)?;
+
+            // Create proof circuit with cloned witnesses
+            let circuit = game_transition::GameTransitionCircuit::new(
                 before_root,
                 after_root,
                 action_type.to_field(),
                 actor_id,
-                witnesses,
+                witnesses_for_proof,
                 target_id,
                 direction,
                 position_delta,
             );
-            groth16::Groth16Keys::generate(key_gen_circuit, &mut rng)?
+
+            (circuit, keys)
         };
 
         // Generate Groth16 proof (~1-2 seconds)

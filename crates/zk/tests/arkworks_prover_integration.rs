@@ -172,6 +172,8 @@ fn test_arkworks_prover_wrong_backend_rejection() {
     let fake_proof = ProofData {
         bytes: vec![0x00, 0x01, 0x02, 0x03],
         backend: fake_backend,
+        public_inputs: None,
+        verifying_key: None,
     };
 
     // Verification should reject wrong backend

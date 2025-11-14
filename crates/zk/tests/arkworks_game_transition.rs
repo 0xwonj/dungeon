@@ -1,4 +1,12 @@
 //! Integration tests for GameTransitionCircuit with real game actions.
+//!
+//! Verifies end-to-end proving workflow:
+//! - Witness generation from game state deltas
+//! - Merkle tree construction and root computation
+//! - Circuit constraint satisfaction
+//! - Groth16 key generation, proving, and verification
+//!
+//! Tests cover Move, Wait, and Attack actions with realistic game states.
 
 #![cfg(feature = "arkworks")]
 
@@ -37,6 +45,7 @@ fn build_entity_roots(
 
 #[test]
 fn test_move_action_witness_generation() {
+    // Verify that witness generation captures the actor's position change
     let before_state = setup_test_state();
     let action = Action::Character(CharacterAction {
         actor: EntityId::PLAYER,
@@ -57,6 +66,7 @@ fn test_move_action_witness_generation() {
 
 #[test]
 fn test_move_action_state_roots() {
+    // Verify that Merkle roots differ when entity state changes
     let before_state = setup_test_state();
     let mut after_state = before_state.clone();
     after_state.entities.actors[0].position = Position::new(5, 6);
@@ -67,6 +77,7 @@ fn test_move_action_state_roots() {
 
 #[test]
 fn test_game_transition_circuit_construction() {
+    // Verify circuit can be constructed with proper public/private inputs
     let before_state = setup_test_state();
     let mut after_state = before_state.clone();
     after_state.entities.actors[0].position = Position::new(5, 6);
@@ -94,6 +105,7 @@ fn test_game_transition_circuit_construction() {
 
 #[test]
 fn test_move_action_full_proof() {
+    // End-to-end test: Generate Groth16 proof and verify it cryptographically
     let before_state = setup_test_state();
     let mut after_state = before_state.clone();
     after_state.entities.actors[0].position = Position::new(5, 6);

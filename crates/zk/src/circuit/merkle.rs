@@ -21,6 +21,35 @@ use std::collections::BTreeMap;
 const COORD_OFFSET: i64 = 1 << 30; // 2^30 = 1,073,741,824
 
 #[cfg(feature = "arkworks")]
+/// Encode a signed coordinate as a field element with bounds checking.
+///
+/// Ensures the coordinate is within the valid range [-COORD_OFFSET, COORD_OFFSET-1]
+/// before encoding. Returns ProofError if the coordinate is out of bounds.
+///
+/// # Arguments
+/// * `coord` - The signed coordinate value (x or y)
+///
+/// # Returns
+/// * `Ok(Fp254)` - The encoded field element
+/// * `Err(ProofError)` - If the coordinate is out of valid range
+#[inline]
+fn encode_coordinate(coord: i32) -> Result<Fp254, ProofError> {
+    let coord_i64 = coord as i64;
+
+    // Validate bounds: [-2^30, 2^30-1]
+    if coord_i64 < -COORD_OFFSET || coord_i64 >= COORD_OFFSET {
+        return Err(ProofError::CircuitProofError(format!(
+            "Coordinate {} out of valid range [{}, {}]",
+            coord, -COORD_OFFSET, COORD_OFFSET - 1
+        )));
+    }
+
+    // Apply offset encoding: field_value = (coord + COORD_OFFSET) as u64
+    let encoded = (coord_i64 + COORD_OFFSET) as u64;
+    Ok(Fp254::from(encoded))
+}
+
+#[cfg(feature = "arkworks")]
 /// Merkle proof path with sibling hashes and direction bits.
 ///
 /// OPTIMIZATION: Removed redundant `path_bits` field (now uses `directions` only).
@@ -236,35 +265,27 @@ pub fn hash_many(inputs: &[Fp254]) -> Result<Fp254, ProofError> {
 ///
 /// Serializes essential actor fields:
 /// - Entity ID (u32)
-/// - Position (x: i32, y: i32) - uses offset encoding for negative values
+/// - Position (x: i32, y: i32) - uses offset encoding with bounds validation
 /// - Current HP (u32)
 /// - Max HP (u32)
 ///
 /// # Signed Integer Encoding
 ///
-/// Coordinates use offset encoding: `field_value = (i32_value + COORD_OFFSET) as u64`
-/// where COORD_OFFSET = 2^30 = 1,073,741,824. This allows coordinates in range
-/// [-1,073,741,824, 1,073,741,823] to be represented as field elements [0, 2^31-1].
-///
-/// Examples:
-/// - x = -5  => field_value = 1,073,741,819
-/// - x = 0   => field_value = 1,073,741,824
-/// - x = 10  => field_value = 1,073,741,834
+/// Coordinates use offset encoding with bounds checking via `encode_coordinate()`.
+/// Valid range: [-2^30, 2^30-1]. See `encode_coordinate()` for encoding details.
 ///
 /// Additional fields (equipment, stats, abilities) will be added in future iterations.
 ///
 /// OPTIMIZATION: Returns fixed-size array (5 elements) - no heap allocation.
 #[inline]
-pub fn serialize_actor(actor: &ActorState) -> [Fp254; 5] {
-    [
+pub fn serialize_actor(actor: &ActorState) -> Result<[Fp254; 5], ProofError> {
+    Ok([
         Fp254::from(actor.id.0 as u64),
-        Fp254::from((actor.position.x as i64 + COORD_OFFSET) as u64),
-        Fp254::from((actor.position.y as i64 + COORD_OFFSET) as u64),
+        encode_coordinate(actor.position.x)?,
+        encode_coordinate(actor.position.y)?,
         Fp254::from(actor.resources.hp as u64),
-        // TODO: Compute max HP from stats snapshot instead of duplicating current HP
-        // For now, use current HP as placeholder (Issue #XX)
         Fp254::from(actor.resources.hp as u64),
-    ]
+    ])
 }
 
 #[cfg(feature = "arkworks")]
@@ -272,15 +293,15 @@ pub fn serialize_actor(actor: &ActorState) -> [Fp254; 5] {
 ///
 /// Serializes essential prop fields:
 /// - Entity ID (u32)
-/// - Position (x: i32, y: i32) - uses offset encoding for negative values
+/// - Position (x: i32, y: i32) - uses offset encoding with bounds validation
 /// - Kind (u8 representation)
 /// - Active status (0 or 1)
 ///
-/// See `serialize_actor()` for signed integer encoding details.
+/// See `encode_coordinate()` for signed integer encoding details.
 ///
 /// OPTIMIZATION: Returns fixed-size array (5 elements) - no heap allocation.
 #[inline]
-pub fn serialize_prop(prop: &PropState) -> [Fp254; 5] {
+pub fn serialize_prop(prop: &PropState) -> Result<[Fp254; 5], ProofError> {
     use game_core::PropKind;
 
     let kind_value = match prop.kind {
@@ -290,13 +311,13 @@ pub fn serialize_prop(prop: &PropState) -> [Fp254; 5] {
         PropKind::Other => 3u64,
     };
 
-    [
+    Ok([
         Fp254::from(prop.id.0 as u64),
-        Fp254::from((prop.position.x as i64 + COORD_OFFSET) as u64),
-        Fp254::from((prop.position.y as i64 + COORD_OFFSET) as u64),
+        encode_coordinate(prop.position.x)?,
+        encode_coordinate(prop.position.y)?,
         Fp254::from(kind_value),
         Fp254::from(if prop.is_active { 1u64 } else { 0u64 }),
-    ]
+    ])
 }
 
 #[cfg(feature = "arkworks")]
@@ -304,22 +325,22 @@ pub fn serialize_prop(prop: &PropState) -> [Fp254; 5] {
 ///
 /// Serializes essential item fields:
 /// - Entity ID (u32)
-/// - Position (x: i32, y: i32) - uses offset encoding for negative values
+/// - Position (x: i32, y: i32) - uses offset encoding with bounds validation
 /// - Item handle (u32)
 /// - Quantity (u16)
 ///
-/// See `serialize_actor()` for signed integer encoding details.
+/// See `encode_coordinate()` for signed integer encoding details.
 ///
 /// OPTIMIZATION: Returns fixed-size array (5 elements) - no heap allocation.
 #[inline]
-pub fn serialize_item(item: &ItemState) -> [Fp254; 5] {
-    [
+pub fn serialize_item(item: &ItemState) -> Result<[Fp254; 5], ProofError> {
+    Ok([
         Fp254::from(item.id.0 as u64),
-        Fp254::from((item.position.x as i64 + COORD_OFFSET) as u64),
-        Fp254::from((item.position.y as i64 + COORD_OFFSET) as u64),
+        encode_coordinate(item.position.x)?,
+        encode_coordinate(item.position.y)?,
         Fp254::from(item.handle.0 as u64),
         Fp254::from(item.quantity as u64),
-    ]
+    ])
 }
 
 #[cfg(feature = "arkworks")]
@@ -350,21 +371,21 @@ pub fn build_entity_tree(state: &GameState) -> Result<SparseMerkleTree, ProofErr
 
     // Collect actor hashes
     for actor in state.entities.actors.iter() {
-        let serialized = serialize_actor(actor);
+        let serialized = serialize_actor(actor)?;
         let leaf_hash = hash_many(&serialized)?;
         leaves.push((actor.id.0, leaf_hash));
     }
 
     // Collect prop hashes
     for prop in state.entities.props.iter() {
-        let serialized = serialize_prop(prop);
+        let serialized = serialize_prop(prop)?;
         let leaf_hash = hash_many(&serialized)?;
         leaves.push((prop.id.0, leaf_hash));
     }
 
     // Collect item hashes
     for item in state.entities.items.iter() {
-        let serialized = serialize_item(item);
+        let serialized = serialize_item(item)?;
         let leaf_hash = hash_many(&serialized)?;
         leaves.push((item.id.0, leaf_hash));
     }
@@ -432,7 +453,7 @@ mod game_state_tests {
             InventoryState::default(),
         );
 
-        let serialized = serialize_actor(&actor);
+        let serialized = serialize_actor(&actor).expect("Serialization should succeed");
 
         // Should have 5 field elements: id, x, y, hp, max_hp
         assert_eq!(serialized.len(), 5);

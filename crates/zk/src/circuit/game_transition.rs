@@ -277,9 +277,10 @@ impl GameTransitionCircuit {
             entities: vec![entity_witness],
         };
 
-        // For key generation, we need actual witness values that satisfy constraints
-        // Arkworks handles None/AssignmentMissing during key gen, but we use real values
-        // to ensure the dummy circuit can also be used for testing proof generation
+        // Use concrete witness values instead of None to satisfy all constraints.
+        // This allows the dummy circuit to be used for both key generation AND
+        // proof generation testing. Arkworks supports None during key gen, but
+        // concrete values provide better constraint coverage verification.
         Self {
             before_root: Some(before_root_value),
             after_root: Some(after_root_value),
@@ -350,10 +351,8 @@ impl ConstraintSynthesizer<Fp254> for GameTransitionCircuit {
         // 3. Merkle Proof Verification (Before State)
         // ====================================================================
 
-        // For now, we'll verify that at least one entity witness is present
-        // and its before_path verifies against before_root.
-        //
-        // TODO: Verify all entity witnesses in the full implementation.
+        // Currently verifies the first entity witness (actor) only.
+        // Future: Verify all entity witnesses when supporting multi-entity actions.
 
         if witnesses.entities.is_empty() {
             return Err(SynthesisError::Unsatisfiable);
@@ -369,8 +368,8 @@ impl ConstraintSynthesizer<Fp254> for GameTransitionCircuit {
         let actor_before_path_vars = allocate_merkle_path(cs.clone(), &actor_witness.before_path)?;
 
         // Verify actor's before Merkle proof
-        let actor_leaf_hash = compute_leaf_hash(&actor_before_data_vars)?;
-        verify_merkle_path_constraint(&actor_leaf_hash, &actor_before_path_vars, &before_root_var)?;
+        let actor_leaf_hash = poseidon_hash_many_gadget(&actor_before_data_vars)?;
+        verify_merkle_path_gadget(&actor_leaf_hash, &actor_before_path_vars, &before_root_var)?;
 
         // ====================================================================
         // 4. Action-Specific Constraints
@@ -418,8 +417,8 @@ impl ConstraintSynthesizer<Fp254> for GameTransitionCircuit {
         let actor_after_path_vars = allocate_merkle_path(cs.clone(), &actor_witness.after_path)?;
 
         // Verify actor's after Merkle proof
-        let actor_after_leaf_hash = compute_leaf_hash(&actor_after_data_vars)?;
-        verify_merkle_path_constraint(
+        let actor_after_leaf_hash = poseidon_hash_many_gadget(&actor_after_data_vars)?;
+        verify_merkle_path_gadget(
             &actor_after_leaf_hash,
             &actor_after_path_vars,
             &after_root_var,
@@ -456,10 +455,7 @@ fn alloc_witness_fp_optional(
     cs: ConstraintSystemRef<Fp254>,
     value: Option<Fp254>,
 ) -> Result<Option<FpVar<Fp254>>, SynthesisError> {
-    match value {
-        Some(v) => Ok(Some(alloc_witness_fp(cs, v)?)),
-        None => Ok(None),
-    }
+    value.map(|v| alloc_witness_fp(cs, v)).transpose()
 }
 
 /// Allocate a vector of field elements as witness variables.
@@ -470,7 +466,7 @@ fn alloc_witness_fp_vec(
 ) -> Result<Vec<FpVar<Fp254>>, SynthesisError> {
     values
         .iter()
-        .map(|&field| alloc_witness_fp(cs.clone(), field))
+        .map(|&field| FpVar::new_witness(cs.clone(), || Ok(field)))
         .collect()
 }
 
@@ -481,30 +477,14 @@ fn allocate_merkle_path(
 ) -> Result<Vec<(FpVar<Fp254>, Boolean<Fp254>)>, SynthesisError> {
     path.siblings
         .iter()
-        .zip(path.directions.iter())
-        .map(|(sibling, &direction)| {
-            let sibling_var = alloc_witness_fp(cs.clone(), *sibling)?;
-            let direction_var = Boolean::new_witness(cs.clone(), || Ok(direction))?;
-            Ok((sibling_var, direction_var))
+        .zip(&path.directions)
+        .map(|(&sibling, &direction)| {
+            Ok((
+                FpVar::new_witness(cs.clone(), || Ok(sibling))?,
+                Boolean::new_witness(cs.clone(), || Ok(direction))?,
+            ))
         })
         .collect()
-}
-
-/// Compute hash of leaf data using Poseidon.
-fn compute_leaf_hash(data: &[FpVar<Fp254>]) -> Result<FpVar<Fp254>, SynthesisError> {
-    if data.is_empty() {
-        return Err(SynthesisError::Unsatisfiable);
-    }
-    poseidon_hash_many_gadget(data)
-}
-
-/// Verify Merkle path constraint using Poseidon hash gadget.
-fn verify_merkle_path_constraint(
-    leaf: &FpVar<Fp254>,
-    path: &[(FpVar<Fp254>, Boolean<Fp254>)],
-    root: &FpVar<Fp254>,
-) -> Result<(), SynthesisError> {
-    verify_merkle_path_gadget(leaf, path, root)
 }
 
 // ============================================================================
@@ -578,14 +558,14 @@ fn constrain_move_action(
         after_x.enforce_equal(&expected_x)?;
         after_y.enforce_equal(&expected_y)?;
 
-        // TODO: Verify new position is within bounds
-        // Temporarily disabled due to is_cmp issues in arkworks 0.5.0
-        // Bounds are validated in game-core before proof generation
+        // Bounds checking disabled pending arkworks 0.5.0 comparison API fixes.
+        // Bounds validation currently occurs in game-core before proof generation.
         // let map_max = Fp254::from(1000u64);
         // bounds_check_gadget(&expected_x, &expected_y, map_max, map_max)?;
 
-        // TODO: Verify new position is not occupied (requires additional witness for occupancy map)
-        // TODO: Verify new position is passable (requires witness for tile passability)
+        // Future enhancements (not yet implemented):
+        // - Verify new position is not occupied (requires occupancy map witness)
+        // - Verify new position is passable (requires tile passability witness)
     }
 
     Ok(())
@@ -628,9 +608,9 @@ fn constrain_attack_action(
     _target_id: &Option<FpVar<Fp254>>,
     _cs: ConstraintSystemRef<Fp254>,
 ) -> Result<(), SynthesisError> {
-    // TODO: Implement attack constraints when arkworks 0.5.0 is_cmp API is fixed
+    // Attack constraints are stubbed pending arkworks 0.5.0 comparison API fixes.
     //
-    // Required constraints:
+    // Required constraints (not yet implemented):
     // - Verify actor is alive (health > 0)
     // - Verify actor has sufficient stamina for attack
     // - Verify target is adjacent (Chebyshev distance <= 1)
@@ -638,8 +618,8 @@ fn constrain_attack_action(
     // - Verify target health updated correctly
     // - Verify actor stamina decreased by action cost
     //
-    // Currently attack validation is performed in game-core before proof generation.
-    // See: https://github.com/arkworks-rs/r1cs-std/issues/XXX
+    // Attack validation currently occurs in game-core before proof generation.
+    // Circuit constraints will be added when arkworks comparison gadgets stabilize.
 
     Ok(())
 }

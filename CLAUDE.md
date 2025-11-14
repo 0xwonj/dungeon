@@ -90,7 +90,7 @@ just help
 - `risc0` - RISC0 zkVM (production, real proofs, slow guest compilation)
 - `stub` - Stub prover (instant, no real proofs, testing only)
 - `sp1` - SP1 zkVM (not implemented yet)
-- `arkworks` - Arkworks circuits (not implemented yet)
+- `arkworks` - Arkworks circuits (prototype, working proofs, NOT production ready - see limitations below)
 
 ### Direct Cargo Commands (without Just)
 
@@ -137,6 +137,33 @@ crates/
 ```
 
 **Dependency flow**: `client`, `runtime`, `zk` → depend on `game/core` only. Never the reverse.
+
+### zk: Zero-Knowledge Proving
+
+- **Responsibility**: Generate cryptographic proofs of valid game state transitions
+- **Architecture**: Multi-backend system with unified `Prover` trait
+- **Backends**:
+  - `risc0` (default): RISC0 zkVM - production ready, general-purpose proving
+  - `stub`: Dummy prover for fast development iteration
+  - `sp1`: SP1 zkVM (not implemented)
+  - `arkworks`: Hand-crafted circuits with Groth16 (prototype only)
+- **Core Modules**:
+  - `prover`: Unified `Prover` trait and backend-agnostic types (`ProofData`, `ProofError`, `ProofBackend`)
+  - `oracle`: Serializable oracle snapshots for circuit consumption (`OracleSnapshot`, oracle snapshot types)
+  - `zkvm`: zkVM backend implementations (RISC0, SP1)
+  - `circuit`: Arkworks circuit proving (prototype - see limitations)
+- **Arkworks Backend Status** (⚠️ NOT PRODUCTION READY):
+  - ✅ Core infrastructure: Merkle trees, witness generation, Groth16 proving/verification
+  - ✅ Working cryptographic verification (validated by integration tests)
+  - ✅ Move action constraints implemented
+  - 🚧 Attack constraints stubbed (awaiting arkworks 0.5.0 comparison API fixes)
+  - ⚠️ Known limitations:
+    - No adversarial testing (malicious prover attacks not validated)
+    - No key persistence (keys regenerated per proof, ~15-18s overhead)
+    - Cached keys broken (only work for circuits with identical witness counts)
+    - Incomplete action constraints (attack/bounds checking disabled)
+  - **Use case**: Prototyping, benchmarking, R1CS education only
+  - **Recommendation**: Use RISC0 backend for all production scenarios
 
 ### game/core: Pure State Machine
 
