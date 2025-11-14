@@ -6,22 +6,21 @@
 //!
 //! **CRITICAL:** This implementation has known security limitations and should NOT be used in production:
 //!
-//! 1. **Incomplete R1CS Constraints**: Poseidon hash gadgets compute witness values without generating
-//!    proper R1CS constraints. A malicious prover can submit arbitrary hash outputs, completely
-//!    bypassing circuit soundness. See `gadgets.rs:48-79` for details.
+//! 1. **Verification Testing Incomplete**: The circuit has not been tested against malicious provers
+//!    attempting to forge invalid state transitions. While R1CS constraints are properly generated
+//!    (verified by tests in `gadgets.rs:348-408`) and cryptographic verification is now implemented,
+//!    comprehensive adversarial testing is required before production use.
 //!
-//! 2. **Verification Testing Incomplete**: While production code uses secure `OsRng`, the full
-//!    circuit has not been tested against malicious provers attempting to forge invalid state transitions.
+//! 2. **Key Management**: Verification requires cached keys via `with_cached_keys()`. Production
+//!    deployments need secure key generation (using OsRng instead of test_rng), key persistence,
+//!    and proper key distribution to verifiers.
 //!
-//! 3. **Incomplete Verification**: The `verify()` method only deserializes proofs without performing
-//!    actual Groth16 cryptographic verification against public inputs.
+//! 3. **Expensive Key Generation**: Groth16 keys are regenerated on every `prove()` call unless
+//!    `with_cached_keys()` is used, making proof generation prohibitively slow (minutes for complex
+//!    circuits). Production use requires key caching/persistence.
 //!
-//! 4. **Expensive Key Generation**: Groth16 keys are regenerated on every `prove()` call, making
-//!    proof generation prohibitively slow (minutes to hours for complex circuits). Production use
-//!    requires key caching/persistence.
-//!
-//! 5. **Signed Integer Bugs**: Negative coordinate casting produces incorrect field elements,
-//!    breaking movement validation for west/south directions.
+//! 4. **Signed Integer Bugs**: Negative coordinate casting may produce incorrect field elements,
+//!    breaking movement validation for west/south directions. Needs testing with negative coordinates.
 //!
 //! **Use Case**: This backend is suitable for:
 //! - Performance benchmarking and optimization research
@@ -365,14 +364,29 @@ impl crate::Prover for ArkworksProver {
         // Serialize proof
         let proof_bytes = groth16::serialize_proof(&proof)?;
 
+        // Serialize public inputs for verification
+        // Public inputs: [before_root, after_root, action_type, actor_id]
+        use ark_serialize::CanonicalSerialize;
+        let public_inputs_fields = vec![before_root, after_root, action_type.to_field(), actor_id];
+        let mut public_inputs_bytes = Vec::new();
+        for field in &public_inputs_fields {
+            let mut field_bytes = Vec::new();
+            field
+                .serialize_compressed(&mut field_bytes)
+                .map_err(|e| ProofError::SerializationError(e.to_string()))?;
+            public_inputs_bytes.push(field_bytes);
+        }
+
         tracing::info!(
-            "ArkworksProver: Generated proof with {} bytes",
-            proof_bytes.len()
+            "ArkworksProver: Generated proof with {} bytes, {} public inputs",
+            proof_bytes.len(),
+            public_inputs_bytes.len()
         );
 
         Ok(ProofData {
             bytes: proof_bytes,
             backend: crate::ProofBackend::Arkworks,
+            public_inputs: Some(public_inputs_bytes),
         })
     }
 
@@ -384,22 +398,61 @@ impl crate::Prover for ArkworksProver {
             )));
         }
 
-        tracing::info!("ArkworksProver::verify - deserializing and validating proof structure");
+        tracing::info!("ArkworksProver::verify - performing cryptographic verification");
 
-        // Deserialize the Groth16 proof to validate it's well-formed
-        let _groth16_proof = groth16::deserialize_proof(&proof.bytes)?;
+        // Deserialize the Groth16 proof
+        let groth16_proof = groth16::deserialize_proof(&proof.bytes)?;
 
-        // Note: Full verification requires public inputs (before_root, after_root, action_type, actor_id)
-        // which are not available in this method signature. In production:
-        // - Public inputs would be available on-chain or from the verifier's context
-        // - The verifier would call groth16::verify(proof, public_inputs, verifying_key)
-        //
-        // For now, we validate that the proof is well-formed by successful deserialization
-        tracing::info!("ArkworksProver: Proof is well-formed (deserialized successfully)");
+        // Extract public inputs (required for Groth16 verification)
+        let public_inputs_bytes = proof.public_inputs.as_ref().ok_or_else(|| {
+            ProofError::CircuitProofError(
+                "Arkworks proof missing public inputs - cannot verify".to_string(),
+            )
+        })?;
 
-        // Return true if deserialization succeeded (structural validity)
-        // Note: This is NOT cryptographic verification - just format validation
-        Ok(true)
+        // Deserialize public inputs from bytes
+        use ark_bn254::Fr as Fp254;
+        use ark_serialize::CanonicalDeserialize;
+        let mut public_inputs = Vec::new();
+        for field_bytes in public_inputs_bytes {
+            let field = Fp254::deserialize_compressed(field_bytes.as_slice())
+                .map_err(|e| ProofError::SerializationError(e.to_string()))?;
+            public_inputs.push(field);
+        }
+
+        tracing::info!(
+            "ArkworksProver: Deserialized {} public inputs for verification",
+            public_inputs.len()
+        );
+
+        // Get verifying key (either from cache or regenerate)
+        #[cfg(feature = "arkworks")]
+        let vk = if let Some(ref cached) = self.cached_keys {
+            // Fast path: use cached verifying key
+            tracing::debug!("Using cached verifying key");
+            &cached.verifying_key
+        } else {
+            // Slow path: need to regenerate keys to get verifying key
+            // In production, this should never happen - verifying key should be public and cached
+            tracing::warn!(
+                "No cached keys available - cannot verify without verifying key. \
+                 Use with_cached_keys() to enable verification."
+            );
+            return Err(ProofError::CircuitProofError(
+                "Verification requires cached keys (verifying key not available)".to_string(),
+            ));
+        };
+
+        // Perform actual Groth16 cryptographic verification
+        let is_valid = groth16::verify(&groth16_proof, &public_inputs, vk)?;
+
+        if is_valid {
+            tracing::info!("ArkworksProver: Proof verified successfully ✓");
+        } else {
+            tracing::warn!("ArkworksProver: Proof verification FAILED ✗");
+        }
+
+        Ok(is_valid)
     }
 }
 

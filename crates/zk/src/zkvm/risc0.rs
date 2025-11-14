@@ -78,6 +78,7 @@ impl Prover for Risc0Prover {
         Ok(ProofData {
             bytes,
             backend: ProofBackend::Risc0,
+            public_inputs: None, // zkVM doesn't use public inputs like circuits do
         })
     }
 
