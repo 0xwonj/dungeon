@@ -45,10 +45,7 @@ mod generated {
 }
 
 #[cfg(feature = "risc0")]
-pub use generated::{
-    BATCH_STATE_TRANSITION_ELF, BATCH_STATE_TRANSITION_ID, SINGLE_STATE_TRANSITION_ELF,
-    SINGLE_STATE_TRANSITION_ID,
-};
+pub use generated::{STATE_TRANSITION_ELF, STATE_TRANSITION_ID};
 
 // Oracle snapshot for serializable game content
 pub mod oracle;
@@ -58,7 +55,10 @@ pub use oracle::{
 
 // Prover module - universal interface and types for all proving backends
 pub mod prover;
-pub use prover::{ProofBackend, ProofData, ProofError, Prover};
+pub use prover::{
+    JournalFields, ProofBackend, ProofData, ProofError, Prover, compute_journal_digest,
+    parse_journal, verify_journal_structure,
+};
 
 #[cfg(feature = "stub")]
 pub use prover::StubProver;
@@ -78,7 +78,7 @@ pub mod circuit;
 pub use circuit::*;
 
 // Re-export commonly used types from game-core
-pub use game_core::{Action, GameState, StateDelta};
+pub use game_core::{Action, GameState, StateDelta, compute_actions_root};
 
 /// The ZK prover backend configured for this build.
 ///

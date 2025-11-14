@@ -611,9 +611,11 @@ impl RuntimeBuilder {
         })?;
 
         // Create prover config
+        // Use max_parallel=1 for RISC0 to avoid overwhelming the system
+        // (RISC0 proof generation is extremely CPU-intensive)
         let prover_config =
             ProverConfig::new(config.session_id.clone(), persistence.base_dir.clone())
-                .with_max_parallel(4); // TODO: Make this configurable
+                .with_max_parallel(1); // TODO: Make this configurable via env var
 
         // Create oracle snapshot for prover
         let oracle_snapshot = {

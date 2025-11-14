@@ -209,8 +209,8 @@ module dungeon::game_session {
         let blob_id = walrus::blob::blob_id(&actions_blob);
         let actions_root = u256_to_bytes(blob_id);
 
-        // Construct public inputs for verification
-        let public_inputs = proof_verifier::new_public_inputs(
+        // Construct journal data for verification
+        let journal_data = proof_verifier::new_journal_data(
             session.oracle_root,
             session.seed_commitment,
             session.state_root,
@@ -219,9 +219,14 @@ module dungeon::game_session {
             new_nonce,
         );
 
+        // TODO: Extract journal_digest from proof data
+        // For now, using a placeholder. In production, the caller should provide
+        // both the journal_digest and the journal_data.
+        let journal_digest = vector::empty<u8>(); // Placeholder
+
         // Verify ZK proof (aborts if invalid)
         // The proof verifies that blob_id (actions_root) matches the actions used in state transition
-        proof_verifier::verify_game_proof(vk, &public_inputs, proof);
+        proof_verifier::verify_game_proof(vk, journal_digest, &journal_data, proof);
 
         // Create action log blob wrapper with metadata
         let action_log = ActionLogBlob {

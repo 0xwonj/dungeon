@@ -54,7 +54,7 @@ impl ProverConfig {
         Self {
             session_id,
             base_dir,
-            max_parallel: 4, // Default: 4 batches in parallel
+            max_parallel: 1,
         }
     }
 
@@ -134,6 +134,10 @@ impl ProverWorker {
             self.config.session_id, self.config.max_parallel
         );
 
+        // Cleanup timer to prevent task accumulation
+        let mut cleanup_interval = tokio::time::interval(tokio::time::Duration::from_secs(1));
+        cleanup_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
         loop {
             tokio::select! {
                 // Handle completed batches from PersistenceWorker
@@ -159,6 +163,13 @@ impl ProverWorker {
                             break;
                         }
                     }
+                }
+
+                // Periodic cleanup to prevent task accumulation and free slots
+                _ = cleanup_interval.tick() => {
+                    self.cleanup_completed_tasks();
+                    // Process pending queue if slots freed up
+                    self.process_pending_batches();
                 }
 
                 else => break,
@@ -241,9 +252,13 @@ impl ProverWorker {
         let state_repo = Arc::clone(&self.state_repo);
         let prover = Arc::clone(&self.prover);
 
-        let task = tokio::spawn(async move {
+        // CRITICAL: Run entire proof generation in blocking thread pool
+        // This prevents blocking tokio runtime with:
+        // 1. CPU-intensive proof generation (RISC0 zkVM)
+        // 2. Synchronous I/O operations (file reads/writes)
+        let task = tokio::task::spawn_blocking(move || {
             if let Err(e) =
-                Self::prove_batch(start_nonce, config, batch_repo, state_repo, prover).await
+                Self::prove_batch_blocking(start_nonce, config, batch_repo, state_repo, prover)
             {
                 error!("Proof generation failed for batch {}: {}", start_nonce, e);
                 Err(e)
@@ -264,20 +279,37 @@ impl ProverWorker {
 
     /// Clean up completed tasks from the running_tasks list
     fn cleanup_completed_tasks(&mut self) {
+        let before = self.running_tasks.len();
+
         // Remove finished tasks and log any errors
         self.running_tasks.retain_mut(|task| {
             if task.is_finished() {
                 // Task is done, log result if needed (can't access result without blocking)
-                debug!("Proof task completed");
                 false // Remove from list
             } else {
                 true // Keep in list
             }
         });
+
+        let cleaned = before - self.running_tasks.len();
+        if cleaned > 0 {
+            debug!(
+                "Cleaned up {} completed proof task(s), {}/{} slots now in use",
+                cleaned,
+                self.running_tasks.len(),
+                self.config.max_parallel
+            );
+        }
     }
 
-    /// Generate proof for a specific batch
-    async fn prove_batch(
+    /// Generate proof for a specific batch (blocking version)
+    ///
+    /// IMPORTANT: This function runs in a blocking thread pool and performs:
+    /// 1. Synchronous file I/O (loading states, actions, saving proofs)
+    /// 2. CPU-intensive proof generation (RISC0 zkVM execution)
+    ///
+    /// Never call this directly from async context - use spawn_blocking wrapper.
+    fn prove_batch_blocking(
         start_nonce: u64,
         config: ProverConfig,
         batch_repo: Arc<FileActionBatchRepository>,
@@ -330,8 +362,7 @@ impl ProverWorker {
         // Generate proof
         let proof_start = Instant::now();
         let proof_data =
-            Self::generate_batch_proof(&batch, &start_state, &end_state, &mut reader, &prover)
-                .await?;
+            Self::generate_batch_proof(&batch, &start_state, &end_state, &mut reader, &prover)?;
         let generation_time_ms = proof_start.elapsed().as_millis() as u64;
 
         // Save proof file
@@ -361,11 +392,11 @@ impl ProverWorker {
         Ok(())
     }
 
-    /// Generate a proof for all actions in a batch
+    /// Generate a proof for all actions in a batch (blocking version)
     ///
     /// Generates a single batch proof that verifies:
     /// - start_state + [action1, action2, ..., actionN] → end_state
-    async fn generate_batch_proof(
+    fn generate_batch_proof(
         batch: &ActionBatch,
         start_state: &GameState,
         end_state: &GameState,
@@ -408,14 +439,20 @@ impl ProverWorker {
             });
         }
 
-        // Generate single batch proof: start_state + actions → end_state
-        let proof = prover.prove_batch(start_state, &batch_actions, end_state)?;
+        // Generate proof: start_state + actions → end_state
+        // NOTE: Already running in blocking thread pool (via spawn_blocking in spawn_proof_task)
+        // so we can directly call the CPU-intensive prove() method here
+        info!(
+            "Starting proof generation for {} actions (batch {})",
+            batch_actions.len(),
+            batch.start_nonce
+        );
+
+        let proof = prover.prove(start_state, &batch_actions, end_state)?;
 
         info!(
             "Batch proof generated: {} actions, start_nonce={}, end_nonce={}",
-            batch_actions.len(),
-            batch.start_nonce,
-            batch.end_nonce
+            action_count, batch.start_nonce, batch.end_nonce
         );
 
         Ok(proof)

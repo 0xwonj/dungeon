@@ -1307,9 +1307,11 @@ name = "game-core"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
+ "bincode",
  "bitflags 2.10.0",
  "bounded-vector",
  "serde",
+ "sha2",
  "thiserror 2.0.17",
 ]
 
@@ -4342,6 +4344,7 @@ dependencies = [
  "risc0-build",
  "risc0-zkvm",
  "serde",
+ "sha2",
  "thiserror 2.0.17",
  "tracing",
 ]

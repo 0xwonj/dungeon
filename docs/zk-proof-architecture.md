@@ -68,7 +68,7 @@ Since Groth16 only provides `journalDigest` as a public input, we use a two-stag
 The guest program commits 6 fields to the journal in a specific order:
 
 ```rust
-// In guest program (methods/batch-state-transition/src/main.rs)
+// In guest program (methods/state-transition/src/main.rs)
 env::commit(&oracle_root);           // 32 bytes
 env::commit(&seed_commitment);       // 32 bytes
 env::commit(&prev_state_root);       // 32 bytes
@@ -170,55 +170,11 @@ fun compute_journal_digest(journal: &JournalData): vector<u8> {
 
 ## Guest Program Implementation
 
-### Single State Transition
+### State Transition (Unified)
 
-**File:** `crates/zk/methods/single-state-transition/src/main.rs`
+**File:** `crates/zk/methods/state-transition/src/main.rs`
 
-Proves execution of a single action:
-
-```rust
-use risc0_zkvm::guest::env;
-
-fn main() {
-    // Read inputs
-    let oracle_snapshot: OracleSnapshot = env::read();
-    let seed_commitment: [u8; 32] = env::read();
-    let mut state: GameState = env::read();
-    let action: Action = env::read();
-
-    // Setup environment
-    let oracle_bundle = SnapshotOracleBundle::new(&oracle_snapshot);
-    let game_env = oracle_bundle.as_env().into_game_env();
-
-    // Compute roots before execution
-    let oracle_root = oracle_snapshot.compute_oracle_root();
-    let prev_state_root = state.compute_state_root();
-    let prev_nonce = state.nonce();
-
-    // Execute action
-    let mut engine = GameEngine::new(&mut state);
-    engine.execute(game_env, &action)
-        .expect("Action execution failed");
-
-    // Compute roots after execution
-    let new_state_root = state.compute_state_root();
-    let new_nonce = state.nonce();
-
-    // Commit to journal (in order)
-    env::commit(&oracle_root);
-    env::commit(&seed_commitment);
-    env::commit(&prev_state_root);
-    env::commit(&[0u8; 32]);  // No actions_root for single action
-    env::commit(&new_state_root);
-    env::commit(&new_nonce);
-}
-```
-
-### Batch State Transition
-
-**File:** `crates/zk/methods/batch-state-transition/src/main.rs`
-
-Proves execution of multiple actions in sequence:
+Proves execution of actions (single or batch) in sequence:
 
 ```rust
 use risc0_zkvm::guest::env;
@@ -342,7 +298,7 @@ pub fn compute_actions_root(actions: &[Action]) -> [u8; 32] {
 
 ```rust
 impl Prover for Risc0Prover {
-    fn prove_batch(
+    fn prove(
         &self,
         oracle_snapshot: &OracleSnapshot,
         seed_commitment: [u8; 32],
@@ -475,18 +431,17 @@ pub struct ProofData {
 - [ ] Implement `compute_actions_root()` helper in `zk`
 
 ### Phase 2: Guest Programs
-- [ ] Implement `batch-state-transition/src/main.rs` with correct journal commits
-- [ ] Implement `single-state-transition/src/main.rs` with correct journal commits
-- [ ] Verify guest programs compile with `risc0` feature
-- [ ] Test guest programs with stub backend
+- [x] Implement `state-transition/src/main.rs` with correct journal commits
+- [x] Verify guest programs compile with `risc0` feature
+- [x] Test guest programs with stub backend
 
 ### Phase 3: Host Prover
-- [ ] Update `ProofData` structure with `journal_digest` field
-- [ ] Implement `Risc0Prover::prove_batch()` with journal parsing
-- [ ] Implement `parse_journal()` helper
-- [ ] Implement `compute_journal_digest()` helper
-- [ ] Implement `verify_batch()` with journal verification
-- [ ] Test proof generation with stub backend
+- [x] Update `ProofData` structure with `journal_digest` field
+- [x] Implement `Risc0Prover::prove()` with journal parsing
+- [x] Implement `parse_journal()` helper
+- [x] Implement `compute_journal_digest()` helper
+- [x] Implement `verify()` with journal verification
+- [x] Test proof generation with stub backend
 - [ ] Test proof generation with RISC0 backend (dev mode)
 
 ### Phase 4: Sui Contract

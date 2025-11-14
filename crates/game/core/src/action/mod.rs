@@ -21,12 +21,14 @@
 //! - `types`: Core types (CharacterAction, ActionInput, ActionResult)
 //! - `execute`: Action execution pipeline (resolve targets + apply effects)
 //! - `system`: System actions (PrepareTurn, ActionCost, Activation)
+//! - `root`: Action root computation for ZK proofs
 
 pub mod effect;
 pub mod error;
 pub mod execute;
 pub mod formula;
 pub mod profile;
+pub mod root;
 pub mod system;
 pub mod targeting;
 pub mod types;
@@ -39,6 +41,7 @@ pub use error::{ActionError, ActivationError, DeactivateError, RemoveFromWorldEr
 pub use execute::{EffectContext, apply, post_validate, pre_validate};
 pub use formula::Formula;
 pub use profile::{ActionKind, ActionProfile, ActionTag, Requirement, ResourceCost};
+pub use root::compute_actions_root;
 pub use system::{ActivationAction, DeactivateAction, PrepareTurnAction, RemoveFromWorldAction};
 pub use targeting::TargetingMode;
 pub use types::{

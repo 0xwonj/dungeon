@@ -16,7 +16,7 @@ pub use action::{
     ActionTag, ActionTransition, ActivationAction, ActivationError, CardinalDirection,
     CharacterAction, DamageType, DeactivateAction, EffectContext, EffectKind, ExecutionPhase,
     Formula, PrepareTurnAction, RemoveFromWorldAction, RemoveFromWorldError, ResourceCost,
-    SystemActionKind, TargetingMode, TurnError, get_available_actions,
+    SystemActionKind, TargetingMode, TurnError, compute_actions_root, get_available_actions,
 };
 pub use config::GameConfig;
 pub use engine::{

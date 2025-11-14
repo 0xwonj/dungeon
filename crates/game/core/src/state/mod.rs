@@ -266,4 +266,63 @@ impl GameState {
 
         state
     }
+
+    /// Returns the current action nonce (sequential action counter).
+    pub fn nonce(&self) -> u64 {
+        self.turn.nonce
+    }
+
+    /// Computes a deterministic SHA-256 hash of the entire game state.
+    ///
+    /// This is used as the "state root" for ZK proofs, providing a cryptographic
+    /// commitment to the complete game state at a specific point in time.
+    ///
+    /// # Design Choice: Simple Hash vs Merkle Tree
+    ///
+    /// For zkVM environments (RISC0, SP1), a simple SHA-256 hash is optimal because:
+    /// - zkVM verifies the entire state transition, not partial state access
+    /// - Merkle trees provide no performance benefit in this context
+    /// - Simpler = fewer constraints = faster proving
+    /// - SHA-256 is hardware-accelerated in RISC0 zkVM
+    ///
+    /// For future custom circuits (Arkworks), Merkle trees may become valuable
+    /// to enable partial state updates and reduce circuit size.
+    ///
+    /// # Serialization
+    ///
+    /// Requires the `serde` feature. In zkVM environments, ensure both `zkvm` and
+    /// `serde` features are enabled on the `game-core` dependency.
+    #[cfg(feature = "serde")]
+    pub fn compute_state_root(&self) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+
+        let mut hasher = Sha256::new();
+
+        // Hash all state components in deterministic order
+        // Using bincode for consistent binary serialization
+        // Note: BTreeSet in TurnState ensures deterministic active_actors order
+
+        // 1. Game seed (deterministic RNG source)
+        hasher.update(self.game_seed.to_le_bytes());
+
+        // 2. Entity ID allocator state
+        hasher.update(self.next_entity_id.to_le_bytes());
+
+        // 3. Turn state (nonce, clock, active_actors, current_actor)
+        if let Ok(turn_bytes) = bincode::serialize(&self.turn) {
+            hasher.update(&turn_bytes);
+        }
+
+        // 4. Entities state (actors, items, props)
+        if let Ok(entities_bytes) = bincode::serialize(&self.entities) {
+            hasher.update(&entities_bytes);
+        }
+
+        // 5. World state (tile_map occupancy)
+        if let Ok(world_bytes) = bincode::serialize(&self.world) {
+            hasher.update(&world_bytes);
+        }
+
+        hasher.finalize().into()
+    }
 }

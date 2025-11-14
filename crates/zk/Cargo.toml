@@ -91,6 +91,7 @@ thiserror = { workspace = true }
 serde = { workspace = true }
 bincode = { workspace = true }
 tracing = { workspace = true }
+sha2 = { workspace = true }
 
 # zkVM dependencies (only RISC0 is currently implemented)
 risc0-zkvm = { workspace = true, optional = true }
@@ -101,7 +102,4 @@ risc0-zkvm = { workspace = true, optional = true }
 # - ark-ff, ark-ec, ark-bn254, ark-groth16, ark-relations, ark-crypto-primitives
 
 [package.metadata.risc0]
-methods = [
-    "methods/single-state-transition",
-    "methods/batch-state-transition",
-]
+methods = ["methods/state-transition"]

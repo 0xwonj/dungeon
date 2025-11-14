@@ -84,6 +84,57 @@ impl OracleSnapshot {
             ConfigSnapshot::from_oracle(config),
         )
     }
+
+    /// Computes a deterministic SHA-256 hash of the entire oracle snapshot.
+    ///
+    /// This is used as the "oracle root" for ZK proofs, providing a cryptographic
+    /// commitment to all static game content (maps, items, actors, tables, config).
+    ///
+    /// # Design
+    ///
+    /// - Simple SHA-256 hash (hardware-accelerated in RISC0 zkVM)
+    /// - Deterministic binary serialization using bincode
+    /// - BTreeMap in TablesSnapshot ensures deterministic ordering
+    ///
+    /// # Serialization
+    ///
+    /// Requires the `serde` feature. Works in both std and no_std (zkvm) environments.
+    #[cfg(feature = "serde")]
+    pub fn compute_oracle_root(&self) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+
+        let mut hasher = Sha256::new();
+
+        // Hash all oracle components in deterministic order
+        // Using bincode for consistent binary serialization
+
+        // 1. Map snapshot (dimensions + tiles)
+        if let Ok(map_bytes) = bincode::serialize(&self.map) {
+            hasher.update(&map_bytes);
+        }
+
+        // 2. Items snapshot
+        if let Ok(items_bytes) = bincode::serialize(&self.items) {
+            hasher.update(&items_bytes);
+        }
+
+        // 3. Actors snapshot
+        if let Ok(actors_bytes) = bincode::serialize(&self.actors) {
+            hasher.update(&actors_bytes);
+        }
+
+        // 4. Tables snapshot (BTreeMap ensures deterministic order)
+        if let Ok(tables_bytes) = bincode::serialize(&self.tables) {
+            hasher.update(&tables_bytes);
+        }
+
+        // 5. Config snapshot
+        if let Ok(config_bytes) = bincode::serialize(&self.config) {
+            hasher.update(&config_bytes);
+        }
+
+        hasher.finalize().into()
+    }
 }
 
 /// Snapshot of map oracle data (terrain only, no entities)

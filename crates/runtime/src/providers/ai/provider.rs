@@ -71,7 +71,7 @@ impl ActionProvider for GoalBasedAiProvider {
 
         let goal = GoalSelector::select(&ctx);
 
-        tracing::info!("GoalBasedAI: entity={:?} selected goal: {:?}", entity, goal);
+        tracing::debug!("GoalBasedAI: entity={:?} selected goal: {:?}", entity, goal);
 
         // ====================================================================
         // Step 2: Generate Candidates
@@ -80,7 +80,7 @@ impl ActionProvider for GoalBasedAiProvider {
         let candidates = ActionCandidateGenerator::generate(&available_kinds, &ctx);
 
         if candidates.is_empty() {
-            tracing::warn!(
+            tracing::debug!(
                 "GoalBasedAI: entity={:?} has no action candidates, falling back to Wait",
                 entity
             );
@@ -122,7 +122,7 @@ impl ActionProvider for GoalBasedAiProvider {
         let (kind, input) =
             best_candidate.unwrap_or((game_core::ActionKind::Wait, game_core::ActionInput::None));
 
-        tracing::info!(
+        tracing::debug!(
             "GoalBasedAI: entity={:?} selected action: {:?} with input {:?} (score={})",
             entity,
             kind,

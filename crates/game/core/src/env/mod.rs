@@ -187,7 +187,24 @@ where
     C: ConfigOracle + 'a,
     R: RngOracle + 'a,
 {
+    /// Converts this environment into a trait-object based `GameEnv` (consumes self).
+    ///
+    /// Use this when you need to convert once and don't need the original `Env` anymore.
     pub fn into_game_env(self) -> GameEnv<'a> {
+        let map: Option<&'a dyn MapOracle> = self.map.map(|map| map as _);
+        let items: Option<&'a dyn ItemOracle> = self.items.map(|items| items as _);
+        let tables: Option<&'a dyn TablesOracle> = self.tables.map(|tables| tables as _);
+        let actors: Option<&'a dyn ActorOracle> = self.actors.map(|actors| actors as _);
+        let config: Option<&'a dyn ConfigOracle> = self.config.map(|config| config as _);
+        let rng: Option<&'a dyn RngOracle> = self.rng.map(|rng| rng as _);
+        Env::new(map, items, tables, actors, config, rng)
+    }
+
+    /// Converts this environment into a trait-object based `GameEnv` (borrows self).
+    ///
+    /// Use this when you need to convert multiple times (e.g., in a loop).
+    /// Overhead: 6 pointer copies (48 bytes on 64-bit systems).
+    pub fn as_game_env(&self) -> GameEnv<'a> {
         let map: Option<&'a dyn MapOracle> = self.map.map(|map| map as _);
         let items: Option<&'a dyn ItemOracle> = self.items.map(|items| items as _);
         let tables: Option<&'a dyn TablesOracle> = self.tables.map(|tables| tables as _);

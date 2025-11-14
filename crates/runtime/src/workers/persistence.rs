@@ -545,8 +545,13 @@ impl PersistenceWorker {
         );
 
         // Notify ProverWorker about the completed batch
-        if let Err(e) = self.batch_complete_tx.send(batch.clone()).await {
-            warn!("Failed to notify ProverWorker about completed batch: {}", e);
+        // Use try_send (non-blocking) to avoid blocking game progress if ProverWorker is slow
+        if let Err(e) = self.batch_complete_tx.try_send(batch.clone()) {
+            warn!(
+                "Failed to notify ProverWorker about completed batch (queue full or closed): {}. \
+                 This is normal if proof generation is slower than game progress.",
+                e
+            );
         }
 
         // Start new batch

@@ -11,10 +11,8 @@
 //! # Generated Constants
 //!
 //! Outputs to `OUT_DIR/methods.rs`:
-//! - `SINGLE_STATE_TRANSITION_ELF: &[u8]` - Single state transition guest program binary
-//! - `SINGLE_STATE_TRANSITION_ID: [u32; 8]` - Single state transition program identifier
-//! - `BATCH_STATE_TRANSITION_ELF: &[u8]` - Batch state transition guest program binary
-//! - `BATCH_STATE_TRANSITION_ID: [u32; 8]` - Batch state transition program identifier
+//! - `STATE_TRANSITION_ELF: &[u8]` - State transition guest program binary
+//! - `STATE_TRANSITION_ID: [u32; 8]` - State transition program identifier
 
 fn main() {
     use std::env;
@@ -55,10 +53,8 @@ fn generate_placeholder() {
     let methods_path = std::path::Path::new(&out_dir).join("methods.rs");
     std::fs::write(
         methods_path,
-        r#"pub const SINGLE_STATE_TRANSITION_ELF: &[u8] = &[];
-pub const SINGLE_STATE_TRANSITION_ID: [u32; 8] = [0; 8];
-pub const BATCH_STATE_TRANSITION_ELF: &[u8] = &[];
-pub const BATCH_STATE_TRANSITION_ID: [u32; 8] = [0; 8];
+        r#"pub const STATE_TRANSITION_ELF: &[u8] = &[];
+pub const STATE_TRANSITION_ID: [u32; 8] = [0; 8];
 "#,
     )
     .expect("Failed to write placeholder methods.rs");
@@ -67,6 +63,15 @@ pub const BATCH_STATE_TRANSITION_ID: [u32; 8] = [0; 8];
 /// Build RISC0 guest program (only compiled when risc0 feature is enabled)
 #[cfg(feature = "risc0")]
 fn build_risc0_guest() {
+    println!("cargo:rerun-if-changed=methods/");
+
+    // Debug: print current directory and methods path
+    if let Ok(current_dir) = std::env::current_dir() {
+        eprintln!("Current directory: {:?}", current_dir);
+        eprintln!("Methods path: {:?}", current_dir.join("methods"));
+        eprintln!("Methods exists: {}", current_dir.join("methods").exists());
+    }
+
     risc0_build::embed_methods();
 }
 
