@@ -24,7 +24,6 @@ fn create_simple_test_state() -> GameState {
 }
 
 #[test]
-#[ignore] // This test is slow (~5 seconds) - run manually with --ignored
 fn test_verify_valid_proof() {
     // Create test states for a Move action (which we know works)
     let before_state = create_simple_test_state();
@@ -38,9 +37,8 @@ fn test_verify_valid_proof() {
         input: ActionInput::Direction(CardinalDirection::North),
     });
 
-    // Create prover with cached keys (required for verification)
-    let prover = ArkworksProver::with_cached_keys()
-        .expect("Failed to create prover with cached keys");
+    // Create prover without cached keys (generates keys per-proof with matching circuit structure)
+    let prover = ArkworksProver::new();
 
     // Generate proof
     let proof_data = prover
@@ -60,48 +58,46 @@ fn test_verify_valid_proof() {
 }
 
 #[test]
-fn test_verify_requires_cached_keys() {
+fn test_verify_requires_verifying_key() {
     // Create test states
     let before_state = create_simple_test_state();
     let mut after_state = before_state.clone();
     after_state.entities.actors[0].position = Position::new(5, 6);
+    after_state.turn.nonce = 1;
 
     let action = Action::Character(CharacterAction {
         actor: EntityId::PLAYER,
-        kind: ActionKind::Wait,
-        input: ActionInput::None,
+        kind: ActionKind::Move,
+        input: ActionInput::Direction(CardinalDirection::North),
     });
 
-    // Create prover WITHOUT cached keys
-    let prover_no_keys = ArkworksProver::new();
+    // Create prover and generate proof
+    let prover = ArkworksProver::new();
 
-    // Create prover WITH cached keys to generate a proof
-    let prover_with_keys = ArkworksProver::with_cached_keys()
-        .expect("Failed to create prover with cached keys");
-
-    let proof_data = prover_with_keys
+    let mut proof_data = prover
         .prove(&before_state, &action, &after_state)
         .expect("Failed to generate proof");
 
-    // Verify should fail without cached keys
-    let result = prover_no_keys.verify(&proof_data);
+    // Remove verifying key from proof data
+    proof_data.verifying_key = None;
+
+    // Verify should fail without verifying key
+    let result = prover.verify(&proof_data);
 
     assert!(
         result.is_err(),
-        "Verification without cached keys should fail"
+        "Verification without verifying key should fail"
     );
     assert!(
-        result.unwrap_err().to_string().contains("cached keys"),
-        "Error should mention missing cached keys"
+        result.unwrap_err().to_string().contains("verifying key"),
+        "Error should mention missing verifying key"
     );
 }
 
 #[test]
-#[ignore] // This test is slow (~5 seconds) - run manually with --ignored
 fn test_verify_requires_public_inputs() {
-    // Create prover with cached keys
-    let prover = ArkworksProver::with_cached_keys()
-        .expect("Failed to create prover with cached keys");
+    // Create prover
+    let prover = ArkworksProver::new();
 
     // Create proof data without public inputs
     // Note: We need a valid proof structure, so we'll generate a real proof
@@ -153,9 +149,8 @@ fn test_proof_contains_public_inputs() {
         input: ActionInput::Direction(CardinalDirection::North),
     });
 
-    // Create prover with cached keys
-    let prover = ArkworksProver::with_cached_keys()
-        .expect("Failed to create prover with cached keys");
+    // Create prover
+    let prover = ArkworksProver::new();
 
     // Generate proof
     let proof_data = prover

@@ -131,16 +131,34 @@ impl ArkworksProver {
     }
 
     /// Create a new prover with pre-generated cached keys.
-    /// This performs the expensive trusted setup once during initialization.
-    /// Recommended for benchmarks and production use.
+    ///
+    /// ⚠️  **CRITICAL LIMITATION**: Groth16 keys are circuit-specific. Cached keys
+    /// are generated using `dummy()` circuit which has exactly 1 entity witness.
+    /// These keys will ONLY work for proofs with exactly 1 entity changing.
+    /// Proofs with 0, 2, or more entity changes will have different circuit structures
+    /// and verification will fail!
+    ///
+    /// **Recommendation**: Don't use this method. Let `new()` generate keys per-proof
+    /// with matching circuit structure. Yes, it's slow (~15-18s per proof), but it works.
+    ///
+    /// # Why Key Caching is Broken
+    ///
+    /// Groth16's proving/verifying keys are tied to the specific constraint system.
+    /// Our circuit structure changes based on how many entities are modified:
+    /// - Move action: usually 1 entity (the actor)
+    /// - Attack action: 2 entities (attacker + target)
+    /// - Different witness counts = different constraint systems = different keys needed
+    ///
+    /// To fix this properly, we'd need to either:
+    /// 1. Pad all circuits to a fixed maximum witness count (wasteful)
+    /// 2. Generate and cache multiple key sets for different witness counts
+    /// 3. Use a universal SNARK that allows circuit flexibility
     ///
     /// # Performance
     /// - Key generation: ~15-18 seconds (one-time cost)
-    /// - Subsequent proofs: ~1-2 seconds each
+    /// - Subsequent proofs: ~1-2 seconds each (but only for 1-witness circuits!)
     ///
     /// # Security
-    ///
-    /// # Security Note
     ///
     /// Currently uses `test_rng()` for key generation due to ark-std RNG limitations.
     /// For production deployment:
@@ -150,11 +168,17 @@ impl ArkworksProver {
     ///
     /// The generated keys themselves are cryptographically sound, but the RNG
     /// determinism means repeated runs produce identical keys (not ideal for security).
+    #[deprecated(note = "Key caching only works for 1-entity proofs. Use new() instead.")]
     pub fn with_cached_keys() -> Result<Self, ProofError> {
         use ark_std::test_rng;
 
+        tracing::warn!(
+            "ArkworksProver::with_cached_keys() is deprecated - keys only work for 1-entity circuits. \
+             Consider using new() instead for correct per-proof key generation."
+        );
+
         tracing::info!(
-            "ArkworksProver: Pre-generating Groth16 keys (this may take 15-20 seconds)..."
+            "ArkworksProver: Pre-generating Groth16 keys with dummy() circuit (this may take 15-20 seconds)..."
         );
 
         // TODO: Use secure RNG for production key generation
@@ -162,7 +186,7 @@ impl ArkworksProver {
         let dummy_circuit = game_transition::GameTransitionCircuit::dummy();
         let keys = groth16::Groth16Keys::generate(dummy_circuit, &mut rng)?;
 
-        tracing::info!("ArkworksProver: Keys cached successfully");
+        tracing::info!("ArkworksProver: Keys cached successfully (only usable for 1-entity proofs)");
 
         Ok(Self {
             cached_keys: Some(keys),
@@ -318,18 +342,19 @@ impl crate::Prover for ArkworksProver {
         let witnesses = witness::generate_witnesses(&delta, before_state, after_state)?;
 
         // Create circuit with full witness data
+        // Note: We need to clone witnesses because Groth16 requires generating keys
+        // with the EXACT same circuit structure (same number of witnesses)
         let circuit = game_transition::GameTransitionCircuit::new(
             before_root,
             after_root,
             action_type.to_field(),
             actor_id,
-            witnesses,
+            witnesses.clone(),
             target_id,
             direction,
             position_delta,
         );
 
-        // Use cached keys if available, otherwise generate them (slower path)
         // ⚠️  Security: Uses test_rng() which is deterministic. For production:
         //    1. Generate keys offline with secure RNG (e.g., OsRng from rand crate)
         //    2. Store keys securely (encrypted at rest)
@@ -341,24 +366,49 @@ impl crate::Prover for ArkworksProver {
         #[cfg(feature = "arkworks")]
         let keys = if let Some(ref cached) = self.cached_keys {
             // Fast path: use pre-generated keys (~0ms overhead)
-            tracing::debug!("Using cached Groth16 keys");
+            // ⚠️  LIMITATION: Cached keys only work if the circuit structure matches dummy()
+            //     which means exactly 1 entity witness. If your proof has different number
+            //     of witnesses, this will fail verification!
+            tracing::debug!("Using cached Groth16 keys (only works for circuits matching dummy structure)");
             cached.clone()
         } else {
-            // Slow path: generate keys on-demand (~15-18 seconds)
+            // Correct path: generate keys with same circuit structure as proof
+            // This is slow (~15-18 seconds) but produces correct keys
             tracing::warn!(
-                "Generating Groth16 keys on-demand (slow - consider using with_cached_keys())"
+                "Generating Groth16 keys for circuit with {} entity witnesses (~15-18s)",
+                witnesses.entities.len()
             );
-            let dummy_circuit = game_transition::GameTransitionCircuit::dummy();
-            groth16::Groth16Keys::generate(dummy_circuit, &mut rng)?
+
+            // CRITICAL: Generate keys using identical circuit structure
+            let key_gen_circuit = game_transition::GameTransitionCircuit::new(
+                before_root,
+                after_root,
+                action_type.to_field(),
+                actor_id,
+                witnesses,
+                target_id,
+                direction,
+                position_delta,
+            );
+            groth16::Groth16Keys::generate(key_gen_circuit, &mut rng)?
         };
 
         #[cfg(not(feature = "arkworks"))]
         let keys = {
-            let dummy_circuit = game_transition::GameTransitionCircuit::dummy();
-            groth16::Groth16Keys::generate(dummy_circuit, &mut rng)?
+            let key_gen_circuit = game_transition::GameTransitionCircuit::new(
+                before_root,
+                after_root,
+                action_type.to_field(),
+                actor_id,
+                witnesses,
+                target_id,
+                direction,
+                position_delta,
+            );
+            groth16::Groth16Keys::generate(key_gen_circuit, &mut rng)?
         };
 
-        // Generate Groth16 proof (~1-2 seconds with cached keys)
+        // Generate Groth16 proof (~1-2 seconds)
         let proof = groth16::prove(circuit, &keys, &mut rng)?;
 
         // Serialize proof
@@ -377,16 +427,23 @@ impl crate::Prover for ArkworksProver {
             public_inputs_bytes.push(field_bytes);
         }
 
+        // Serialize verifying key for verification
+        // In production, the verifying key would be a public constant, not stored with each proof
+        // But for our prototype, we include it for self-contained verification
+        let vk_bytes = keys.serialize_verifying_key()?;
+
         tracing::info!(
-            "ArkworksProver: Generated proof with {} bytes, {} public inputs",
+            "ArkworksProver: Generated proof with {} bytes, {} public inputs, vk {} bytes",
             proof_bytes.len(),
-            public_inputs_bytes.len()
+            public_inputs_bytes.len(),
+            vk_bytes.len()
         );
 
         Ok(ProofData {
             bytes: proof_bytes,
             backend: crate::ProofBackend::Arkworks,
             public_inputs: Some(public_inputs_bytes),
+            verifying_key: Some(vk_bytes),
         })
     }
 
@@ -425,26 +482,20 @@ impl crate::Prover for ArkworksProver {
             public_inputs.len()
         );
 
-        // Get verifying key (either from cache or regenerate)
-        #[cfg(feature = "arkworks")]
-        let vk = if let Some(ref cached) = self.cached_keys {
-            // Fast path: use cached verifying key
-            tracing::debug!("Using cached verifying key");
-            &cached.verifying_key
-        } else {
-            // Slow path: need to regenerate keys to get verifying key
-            // In production, this should never happen - verifying key should be public and cached
-            tracing::warn!(
-                "No cached keys available - cannot verify without verifying key. \
-                 Use with_cached_keys() to enable verification."
-            );
-            return Err(ProofError::CircuitProofError(
-                "Verification requires cached keys (verifying key not available)".to_string(),
-            ));
-        };
+        // Get verifying key from proof data
+        let vk_bytes = proof.verifying_key.as_ref().ok_or_else(|| {
+            ProofError::CircuitProofError(
+                "Arkworks proof missing verifying key - cannot verify".to_string(),
+            )
+        })?;
+
+        // Deserialize verifying key
+        let vk = groth16::Groth16Keys::deserialize_verifying_key(vk_bytes)?;
+
+        tracing::debug!("Using verifying key from proof data");
 
         // Perform actual Groth16 cryptographic verification
-        let is_valid = groth16::verify(&groth16_proof, &public_inputs, vk)?;
+        let is_valid = groth16::verify(&groth16_proof, &public_inputs, &vk)?;
 
         if is_valid {
             tracing::info!("ArkworksProver: Proof verified successfully ✓");

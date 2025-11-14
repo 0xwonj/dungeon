@@ -79,6 +79,7 @@ impl Prover for Risc0Prover {
             bytes,
             backend: ProofBackend::Risc0,
             public_inputs: None, // zkVM doesn't use public inputs like circuits do
+            verifying_key: None, // zkVM verification uses ImageID, not verifying keys
         })
     }
 
