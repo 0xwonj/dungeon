@@ -93,7 +93,6 @@ fn test_game_transition_circuit_construction() {
 }
 
 #[test]
-#[ignore]
 fn test_move_action_full_proof() {
     let before_state = setup_test_state();
     let mut after_state = before_state.clone();
@@ -128,7 +127,6 @@ fn test_move_action_full_proof() {
 }
 
 #[test]
-#[ignore]
 fn test_move_action_proof_verification() {
     let before_state = setup_test_state();
     let mut after_state = before_state.clone();
