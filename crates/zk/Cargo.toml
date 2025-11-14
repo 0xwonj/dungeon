@@ -88,7 +88,8 @@ arkworks = [
     "dep:ark-crypto-primitives",
     "dep:ark-serialize",
     "dep:ark-std",
-    "dep:ark-r1cs-std"
+    "dep:ark-r1cs-std",
+    "dep:rand"
 ]
 
 [build-dependencies]
@@ -114,6 +115,9 @@ ark-crypto-primitives = { workspace = true, optional = true, features = ["crh", 
 ark-serialize = { workspace = true, optional = true }
 ark-std = { workspace = true, optional = true }
 ark-r1cs-std = { workspace = true, optional = true }
+
+# Secure RNG for key generation (arkworks feature only)
+rand = { version = "0.8", optional = true, features = ["getrandom"] }
 
 [dev-dependencies]
 bounded-vector = { workspace = true }

@@ -85,7 +85,7 @@ ark-groth16 = "0.5"               # Groth16 proof system
 ark-relations = "0.5"             # R1CS constraint systems
 ark-crypto-primitives = { version = "0.5", features = ["crh", "sponge"] }  # Poseidon hash, Merkle trees
 ark-serialize = "0.5"             # Serialization for proofs
-ark-std = "0.5"                   # Standard library compatibility
+ark-std = { version = "0.5", features = ["std"] }  # Standard library compatibility (std enables OsRng via getrandom)
 ark-r1cs-std = "0.5"              # R1CS gadgets for constraints
 
 # ----------------------------------------------------------------------------

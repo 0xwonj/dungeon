@@ -11,9 +11,8 @@
 //!    (verified by tests in `gadgets.rs:348-408`) and cryptographic verification is now implemented,
 //!    comprehensive adversarial testing is required before production use.
 //!
-//! 2. **Key Management**: Verification requires cached keys via `with_cached_keys()`. Production
-//!    deployments need secure key generation (using OsRng instead of test_rng), key persistence,
-//!    and proper key distribution to verifiers.
+//! 2. **Key Management**: Production deployments need key persistence and proper key distribution
+//!    to verifiers. Keys are now generated using secure RNG (OsRng) in production builds.
 //!
 //! 3. **Expensive Key Generation**: Groth16 keys are regenerated on every `prove()` call unless
 //!    `with_cached_keys()` is used, making proof generation prohibitively slow (minutes for complex
@@ -160,18 +159,17 @@ impl ArkworksProver {
     ///
     /// # Security
     ///
-    /// Currently uses `test_rng()` for key generation due to ark-std RNG limitations.
-    /// For production deployment:
-    /// 1. Generate keys offline with secure RNG
-    /// 2. Store keys securely (encrypted at rest)
-    /// 3. Load keys from secure storage at runtime
+    /// Uses cryptographically secure RNG (OsRng) for key generation in production builds.
+    /// Test builds use deterministic test_rng() for reproducibility.
     ///
-    /// The generated keys themselves are cryptographically sound, but the RNG
-    /// determinism means repeated runs produce identical keys (not ideal for security).
+    /// For production deployment, keys should be:
+    /// 1. Generated offline with secure RNG (done automatically with OsRng)
+    /// 2. Stored securely (encrypted at rest)
+    /// 3. Loaded from secure storage at runtime
+    ///
+    /// The generated keys themselves are cryptographically sound.
     #[deprecated(note = "Key caching only works for 1-entity proofs. Use new() instead.")]
     pub fn with_cached_keys() -> Result<Self, ProofError> {
-        use ark_std::test_rng;
-
         tracing::warn!(
             "ArkworksProver::with_cached_keys() is deprecated - keys only work for 1-entity circuits. \
              Consider using new() instead for correct per-proof key generation."
@@ -181,8 +179,17 @@ impl ArkworksProver {
             "ArkworksProver: Pre-generating Groth16 keys with dummy() circuit (this may take 15-20 seconds)..."
         );
 
-        // TODO: Use secure RNG for production key generation
+        // Use secure RNG in production, deterministic in tests
+        #[cfg(not(test))]
+        use rand::rngs::OsRng;
+        #[cfg(not(test))]
+        let mut rng = OsRng;
+
+        #[cfg(test)]
+        use ark_std::test_rng;
+        #[cfg(test)]
         let mut rng = test_rng();
+
         let dummy_circuit = game_transition::GameTransitionCircuit::dummy();
         let keys = groth16::Groth16Keys::generate(dummy_circuit, &mut rng)?;
 
@@ -355,12 +362,16 @@ impl crate::Prover for ArkworksProver {
             position_delta,
         );
 
-        // ⚠️  Security: Uses test_rng() which is deterministic. For production:
-        //    1. Generate keys offline with secure RNG (e.g., OsRng from rand crate)
-        //    2. Store keys securely (encrypted at rest)
-        //    3. Load keys from secure storage at runtime
-        // See module-level security warnings for details.
+        // Use secure RNG for key generation (OsRng from system entropy)
+        // In tests, use deterministic test_rng() for reproducibility
+        #[cfg(not(test))]
+        use rand::rngs::OsRng;
+        #[cfg(not(test))]
+        let mut rng = OsRng;
+
+        #[cfg(test)]
         use ark_std::test_rng;
+        #[cfg(test)]
         let mut rng = test_rng();
 
         #[cfg(feature = "arkworks")]
