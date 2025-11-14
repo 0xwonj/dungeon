@@ -7,10 +7,21 @@ use game_core::{Action, GameState};
 /// ZK proof data container.
 ///
 /// Contains serialized proof bytes and backend identifier.
+/// For Arkworks backend, also includes public inputs and verifying key needed for verification.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProofData {
     pub bytes: Vec<u8>,
     pub backend: ProofBackend,
+    /// Public inputs for circuit verification (Arkworks only).
+    /// Format: [before_root, after_root, action_type, actor_id]
+    /// Other backends (zkVM) don't need this as they verify differently.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_inputs: Option<Vec<Vec<u8>>>,
+    /// Verifying key for Groth16 verification (Arkworks only).
+    /// Must match the proving key used to generate the proof.
+    /// In production, this would be a public constant, not stored with each proof.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verifying_key: Option<Vec<u8>>,
 }
 
 /// Identifies which proving backend generated a proof.
@@ -111,6 +122,8 @@ impl Prover for StubProver {
         Ok(ProofData {
             bytes: vec![0xDE, 0xAD, 0xBE, 0xEF],
             backend: ProofBackend::Stub,
+            public_inputs: None,
+            verifying_key: None,
         })
     }
 
