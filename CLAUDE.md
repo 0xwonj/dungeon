@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Technical Architecture
 
-**Multi-Backend ZK System**: Supports RISC0 zkVM (production) and stub prover (testing), with planned SP1/Arkworks support
+**Multi-Backend ZK System**: Supports RISC0 zkVM (production), SP1 zkVM (production), and stub prover (testing), with planned Arkworks support
 
 **Three-Layer Design**:
 1. **game-core**: Pure state machine with 3-phase action pipeline (pre_validate → apply → post_validate)
@@ -59,6 +59,10 @@ just run-fast stub
 just build risc0
 just run risc0
 
+# SP1 backend (alternative production backend, all platforms)
+just build sp1
+just run sp1
+
 # Set default backend via environment variable
 export ZK_BACKEND=stub
 just build   # automatically uses stub
@@ -87,9 +91,9 @@ just help
 
 ### Available ZK Backends
 
-- `risc0` - RISC0 zkVM (production, real proofs, slow guest compilation)
+- `risc0` - RISC0 zkVM (production, real proofs, Linux x86_64 only for Groth16)
+- `sp1` - SP1 zkVM (production, real proofs, all platforms including macOS)
 - `stub` - Stub prover (instant, no real proofs, testing only)
-- `sp1` - SP1 zkVM (not implemented yet)
 - `arkworks` - Arkworks circuits (not implemented yet)
 
 ### Direct Cargo Commands (without Just)
@@ -106,6 +110,11 @@ cargo test --workspace --no-default-features --features stub
 cargo build --workspace
 RISC0_SKIP_BUILD=1 cargo build --workspace  # skip guest builds
 
+# SP1 backend
+cargo build --workspace --no-default-features --features sp1
+cargo run -p client-cli --no-default-features --features sp1
+cargo test --workspace --no-default-features --features sp1
+
 # Lint and format
 cargo lint  # uses default backend (risc0)
 cargo fmt --all
@@ -113,10 +122,28 @@ cargo fmt --all
 
 ### Environment Variables
 
-- `ZK_BACKEND` - Set default backend for Just commands (risc0, risc0-fast, stub, sp1, arkworks)
+#### General Configuration
+- `ZK_BACKEND` - Set default backend for Just commands (risc0, stub, sp1, arkworks)
+- `RUST_LOG=info` - Logging level (use `info` or `warn` only - `debug` causes RISC0 to pollute TUI output)
+- `ENABLE_ZK_PROVING=false` - Disable proof generation entirely (fast mode)
+- `ENABLE_PERSISTENCE=false` - Disable state/action persistence (fast mode)
+
+#### RISC0 Specific
 - `RISC0_SKIP_BUILD=1` - Skip guest builds during cargo build (use for fast iteration)
 - `RISC0_DEV_MODE=1` - Fast dev proofs (when running with real RISC0 backend)
-- `RUST_LOG=info` - Logging level (use `info` or `warn` only - `debug` causes RISC0 to pollute TUI output)
+
+#### SP1 Specific
+- `SP1_PROVER` - SP1 prover mode (cpu, network, cuda, mock)
+  - `cpu` (default): Local CPU proving (slow, high memory)
+  - `network`: Succinct Prover Network (fast, requires API key)
+  - `cuda`: Local CUDA GPU proving (fastest, requires NVIDIA GPU)
+  - `mock`: Mock proving for testing (instant, no real proofs)
+- `SP1_PROOF_MODE` - SP1 proof type (compressed, groth16, plonk)
+  - `compressed` (default): Compressed STARK (~4-5MB, off-chain)
+  - `groth16`: Groth16 SNARK (~260 bytes, on-chain, Sui compatible)
+  - `plonk`: PLONK SNARK (~868 bytes, on-chain, no trusted setup)
+- `NETWORK_PRIVATE_KEY` - Private key for SP1 Prover Network (required for network mode)
+- `NETWORK_RPC_URL` - Custom RPC endpoint for SP1 Prover Network (optional, defaults to mainnet)
 
 ## Architecture
 
@@ -137,6 +164,83 @@ crates/
 ```
 
 **Dependency flow**: `client`, `runtime`, `zk` → depend on `game/core` only. Never the reverse.
+
+### zk: Zero-Knowledge Proof Backends
+
+The `crates/zk` crate provides a unified interface for multiple zkVM backends with feature-gated compilation:
+
+**Backend Architecture:**
+- **RISC0 zkVM** (`feature = "risc0"`): Production-ready zkVM with mature tooling
+  - Guest program: `methods/risc0/state-transition/` (RISC0-specific APIs)
+  - Groth16 compression: Linux x86_64 only, ~200 bytes
+  - Requires: Docker for Groth16, RISC0 toolchain
+  - Status: ✅ Fully implemented and tested
+
+- **SP1 zkVM** (`feature = "sp1"`): Alternative production zkVM with cross-platform support
+  - Guest program: `methods/sp1/state-transition/` (SP1-specific APIs)
+  - Groth16 compression: All platforms (macOS, Linux, Windows), ~260 bytes
+  - PLONK compression: All platforms, ~868 bytes, no trusted setup required
+  - Requires: SP1 toolchain (`sp1up`)
+  - Status: ✅ Fully implemented, identical logic to RISC0
+
+- **Stub Prover** (`feature = "stub"`): Testing-only backend for fast iteration
+  - No real proofs generated (instant execution)
+  - Same interface as production backends
+  - Status: ✅ Used for development
+
+**Proof Structure (Identical Across Backends):**
+Both RISC0 and SP1 use the same 168-byte public values structure:
+```text
+1. oracle_root       (32 bytes) - Commitment to static game content
+2. seed_commitment   (32 bytes) - Commitment to RNG seed
+3. prev_state_root   (32 bytes) - State hash before execution
+4. actions_root      (32 bytes) - Commitment to action sequence
+5. new_state_root    (32 bytes) - State hash after execution
+6. new_nonce         (8 bytes)  - Action counter after execution
+Total: 168 bytes
+```
+
+**Two-Stage Verification Model:**
+- **Stage 1 (On-chain):** Groth16/PLONK proof verification with SHA-256 digest
+- **Stage 2 (On-chain):** Public values content extraction and validation
+
+**Guest Program Design:**
+- Core execution logic is identical between RISC0 and SP1
+- Only I/O APIs differ (`risc0_zkvm::guest::env` vs `sp1_zkvm::io`)
+- Separate directories for clear separation: `methods/risc0/` and `methods/sp1/`
+- Both use `commit_slice()` pattern to avoid serialization overhead
+- Optimizations: Delta tracking disabled in zkVM mode (via `zkvm` feature flag)
+
+**Backend Selection:**
+```rust
+// Feature flags in Cargo.toml (mutually exclusive)
+[features]
+default = ["risc0"]
+risc0 = ["zkvm", "dep:risc0-zkvm", ...]
+sp1 = ["zkvm", "dep:sp1-sdk", ...]
+stub = ["zkvm"]
+```
+
+**Host-Side Prover Interface:**
+```rust
+pub trait Prover {
+    fn prove(&self, start: &GameState, actions: &[Action], end: &GameState) -> Result<ProofData>;
+    fn verify(&self, proof: &ProofData) -> Result<bool>;
+}
+
+// Unified proof data structure
+pub struct ProofData {
+    bytes: Vec<u8>,           // Serialized proof
+    backend: ProofBackend,    // Risc0, Sp1, or Stub
+    journal: Vec<u8>,         // 168-byte public values
+    journal_digest: [u8; 32], // SHA-256(journal)
+}
+```
+
+**When to Choose Which Backend:**
+- **RISC0**: Mature ecosystem, extensive documentation, proven in production
+- **SP1**: Cross-platform Groth16/PLONK, faster iteration on macOS, PLONK trustless setup
+- **Stub**: Development and testing only (instant, no real proofs)
 
 ### game/core: Pure State Machine
 

@@ -88,7 +88,7 @@ pub struct ProverWorker {
 
     // Communication
     command_rx: mpsc::Receiver<Command>,
-    batch_complete_rx: mpsc::Receiver<ActionBatch>,
+    batch_complete_rx: mpsc::UnboundedReceiver<ActionBatch>,
 
     // Track running tasks to avoid blocking on completion
     running_tasks: Vec<tokio::task::JoinHandle<Result<()>>>,
@@ -103,7 +103,7 @@ impl ProverWorker {
         config: ProverConfig,
         prover: Arc<dyn Prover>,
         command_rx: mpsc::Receiver<Command>,
-        batch_complete_rx: mpsc::Receiver<ActionBatch>,
+        batch_complete_rx: mpsc::UnboundedReceiver<ActionBatch>,
     ) -> Result<Self> {
         let base_dir = &config.base_dir;
         let session_id = &config.session_id;
@@ -134,17 +134,17 @@ impl ProverWorker {
             self.config.session_id, self.config.max_parallel
         );
 
-        // Cleanup timer to prevent task accumulation
+        // Proving pace controller: process queue at controlled rate (1 second intervals)
+        // This is the ONLY place where batches are actually processed from the queue
         let mut cleanup_interval = tokio::time::interval(tokio::time::Duration::from_secs(1));
         cleanup_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
             tokio::select! {
-                // Handle completed batches from PersistenceWorker
+                // Queue completed batches from PersistenceWorker
+                // Processing happens at controlled pace via cleanup_interval
                 Some(batch) = self.batch_complete_rx.recv() => {
-                    if let Err(e) = self.handle_completed_batch(batch).await {
-                        error!("Failed to handle completed batch: {}", e);
-                    }
+                    self.pending_batches.push_back(batch);
                 }
 
                 cmd = self.command_rx.recv() => {
@@ -165,10 +165,10 @@ impl ProverWorker {
                     }
                 }
 
-                // Periodic cleanup to prevent task accumulation and free slots
+                // Proving pace controller: process queue at controlled rate
+                // This is where ProverWorker actually processes batches at its own pace
                 _ = cleanup_interval.tick() => {
                     self.cleanup_completed_tasks();
-                    // Process pending queue if slots freed up
                     self.process_pending_batches();
                 }
 
@@ -177,20 +177,6 @@ impl ProverWorker {
         }
 
         info!("ProverWorker stopped");
-    }
-
-    /// Handle a completed batch notification from PersistenceWorker
-    async fn handle_completed_batch(&mut self, batch: ActionBatch) -> Result<()> {
-        // Always queue the new batch first to maintain FIFO order
-        self.pending_batches.push_back(batch);
-
-        // Clean up completed tasks to free slots
-        self.cleanup_completed_tasks();
-
-        // Process queue in order (FIFO)
-        self.process_pending_batches();
-
-        Ok(())
     }
 
     /// Load all Complete batches from repository and queue them for proving
@@ -364,6 +350,25 @@ impl ProverWorker {
         let proof_data =
             Self::generate_batch_proof(&batch, &start_state, &end_state, &mut reader, &prover)?;
         let generation_time_ms = proof_start.elapsed().as_millis() as u64;
+
+        // Debug mode: Verify the generated proof immediately
+        #[cfg(debug_assertions)]
+        {
+            match prover.verify(&proof_data) {
+                Ok(true) => {
+                    debug!("✓ Proof verification passed for batch {}", start_nonce);
+                }
+                Ok(false) => {
+                    return Err(ProverError::Proof(zk::ProofError::ZkvmError(format!(
+                        "Proof verification returned false for batch {}",
+                        start_nonce
+                    ))));
+                }
+                Err(e) => {
+                    return Err(ProverError::Proof(e));
+                }
+            }
+        }
 
         // Save proof file
         let proof_filename = batch.proof_filename();

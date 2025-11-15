@@ -22,7 +22,7 @@
 # Available Backends:
 #   risc0       - RISC0 zkVM (production, real proofs, slow)
 #   stub        - Stub prover (instant, no real proofs, testing only)
-#   sp1         - SP1 zkVM (not implemented yet)
+#   sp1         - SP1 zkVM (proof mode via SP1_PROOF_MODE env var)
 #   arkworks    - Arkworks circuits (not implemented yet)
 
 # ============================================================================
@@ -64,8 +64,13 @@ help:
     @echo "Available backends:"
     @echo "  risc0       Production RISC0 zkVM (real proofs, slow)"
     @echo "  stub        Dummy prover (instant, testing only)"
-    @echo "  sp1         SP1 zkVM (not implemented)"
+    @echo "  sp1         SP1 zkVM (use SP1_PROOF_MODE for proof type)"
     @echo "  arkworks    Arkworks circuits (not implemented)"
+    @echo ""
+    @echo "SP1 Proof Modes (SP1_PROOF_MODE):"
+    @echo "  compressed  Compressed STARK (~4-5MB, off-chain) [default]"
+    @echo "  groth16     Groth16 SNARK (~260 bytes, on-chain)"
+    @echo "  plonk       PLONK SNARK (~868 bytes, on-chain)"
     @echo ""
     @echo "Common workflows:"
     @echo "  just build stub          Fast development build"
@@ -437,7 +442,8 @@ _exec backend *args:
             fi
             ;;
         sp1)
-            echo "🔧 Using SP1 backend"
+            proof_mode="${SP1_PROOF_MODE:-compressed}"
+            echo "🔧 Using SP1 backend (proof mode: $proof_mode)"
             if [ "$found_separator" = true ]; then
                 cargo "${cargo_args[@]}" --no-default-features --features sp1 -- "${rustc_args[@]}"
             else
@@ -457,6 +463,11 @@ _exec backend *args:
             echo ""
             echo "Available backends:"
             echo "  risc0, stub, sp1, arkworks"
+            echo ""
+            echo "For SP1, use SP1_PROOF_MODE to select proof type:"
+            echo "  SP1_PROOF_MODE=compressed (default)"
+            echo "  SP1_PROOF_MODE=groth16"
+            echo "  SP1_PROOF_MODE=plonk"
             exit 1
             ;;
     esac

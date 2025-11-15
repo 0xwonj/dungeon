@@ -165,12 +165,22 @@ pub fn main() {
     // This order MUST match:
     // - Host-side journal parsing in crates/zk/src/zkvm/risc0.rs
     // - On-chain verification in contracts/move/sources/proof_verifier.move
+    //
+    // IMPORTANT: We manually concatenate all fields into a single 168-byte array
+    // and commit it as raw bytes to avoid bincode serialization overhead.
+    // Each env::commit(&value) call adds type metadata, causing journal bloat.
     // ========================================================================
 
-    env::commit(&oracle_root);       // 32 bytes - Static content commitment
-    env::commit(&seed_commitment);   // 32 bytes - RNG seed commitment
-    env::commit(&prev_state_root);   // 32 bytes - State before execution
-    env::commit(&actions_root);      // 32 bytes - Action sequence commitment (Walrus blob_id)
-    env::commit(&new_state_root);    // 32 bytes - State after execution
-    env::commit(&new_nonce);         // 8 bytes  - Action counter after execution
+    let mut journal = [0u8; 168];
+
+    // Copy all fields into journal buffer in exact order
+    journal[0..32].copy_from_slice(&oracle_root);        // offset 0..32
+    journal[32..64].copy_from_slice(&seed_commitment);   // offset 32..64
+    journal[64..96].copy_from_slice(&prev_state_root);   // offset 64..96
+    journal[96..128].copy_from_slice(&actions_root);     // offset 96..128
+    journal[128..160].copy_from_slice(&new_state_root);  // offset 128..160
+    journal[160..168].copy_from_slice(&new_nonce.to_le_bytes()); // offset 160..168
+
+    // Commit the entire journal as raw bytes (exactly 168 bytes, no metadata)
+    env::commit_slice(&journal);
 }

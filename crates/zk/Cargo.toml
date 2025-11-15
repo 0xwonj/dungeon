@@ -60,12 +60,15 @@ zkvm = []
 
 # RISC0 zkVM backend (production)
 # Generates cryptographically secure proofs using RISC Zero's zkVM
-risc0 = ["zkvm", "dep:risc0-zkvm", "dep:risc0-build"]
+risc0 = ["zkvm", "dep:risc0-zkvm", "dep:risc0-build", "dep:risc0-groth16"]
 
-# SP1 zkVM backend (not implemented - placeholder for future)
-# Alternative zkVM backend for future exploration
-# Dependencies will be added when implementation begins
-sp1 = ["zkvm"]
+# SP1 zkVM backend (production alternative to RISC0)
+# Generates cryptographically secure proofs using Succinct's SP1 zkVM
+# Proof mode is selected at runtime via SP1_PROOF_MODE environment variable:
+# - "compressed" (default): Compressed STARK (~4-5MB, off-chain verification)
+# - "groth16": Groth16 SNARK (~260 bytes, on-chain verification)
+# - "plonk": PLONK SNARK (~868 bytes, on-chain, no trusted setup)
+sp1 = ["zkvm", "dep:sp1-sdk", "dep:sp1-build"]
 
 # Stub prover (development only)
 # Returns dummy proofs instantly without real cryptographic proving
@@ -84,6 +87,7 @@ arkworks = []
 
 [build-dependencies]
 risc0-build = { workspace = true, optional = true }
+sp1-build = { workspace = true, optional = true }
 
 [dependencies]
 game-core = { workspace = true, features = ["serde"] }
@@ -93,13 +97,16 @@ bincode = { workspace = true }
 tracing = { workspace = true }
 sha2 = { workspace = true }
 
-# zkVM dependencies (only RISC0 is currently implemented)
+# zkVM dependencies
 risc0-zkvm = { workspace = true, optional = true }
+risc0-groth16 = { workspace = true, optional = true }
 
-# NOTE: Unused backend dependencies are intentionally omitted
-# Add these when implementing the respective backends:
-# - sp1-sdk = { version = "5.2", optional = true }
+# SP1 dependencies
+sp1-sdk = { workspace = true, optional = true }
+
+# NOTE: Arkworks dependencies not yet added
+# Will be added when implementing custom circuit backend:
 # - ark-ff, ark-ec, ark-bn254, ark-groth16, ark-relations, ark-crypto-primitives
 
 [package.metadata.risc0]
-methods = ["methods/state-transition"]
+methods = ["methods/risc0/state-transition"]

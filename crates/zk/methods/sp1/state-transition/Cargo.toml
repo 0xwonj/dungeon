@@ -1,0 +1,12 @@
+[package]
+name = "state-transition"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sp1-zkvm = "5.2"
+game-core = { path = "../../../../game/core", features = ["serde", "zkvm"] }
+serde = { version = "1.0", default-features = false, features = [
+    "derive",
+    "alloc",
+] }

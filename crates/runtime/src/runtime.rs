@@ -27,7 +27,10 @@ use crate::workers::{
 type ProofMetricsArc = std::sync::Arc<ProofMetrics>;
 
 /// Result type for persistence worker creation: (worker handle, batch completion receiver)
-type PersistenceWorkerResult = (Option<JoinHandle<()>>, Option<mpsc::Receiver<ActionBatch>>);
+type PersistenceWorkerResult = (
+    Option<JoinHandle<()>>,
+    Option<mpsc::UnboundedReceiver<ActionBatch>>,
+);
 
 /// Core runtime configuration for channels and buffers.
 #[derive(Debug, Clone)]
@@ -557,7 +560,9 @@ impl RuntimeBuilder {
         let (persistence_cmd_tx, persistence_cmd_rx) = mpsc::channel(8);
 
         // Channel for notifying ProverWorker about completed batches
-        let (batch_complete_tx, batch_complete_rx) = mpsc::channel(100);
+        // Use unbounded channel to ensure no batch information is lost
+        // ProverWorker has internal queue management and processes at its own pace
+        let (batch_complete_tx, batch_complete_rx) = mpsc::unbounded_channel();
 
         let persistence_worker = PersistenceWorker::new(
             persistence_config,
@@ -590,7 +595,7 @@ impl RuntimeBuilder {
         config: &RuntimeConfig,
         persistence: &PersistenceSettings,
         proving: &ProvingSettings,
-        batch_complete_rx: Option<mpsc::Receiver<ActionBatch>>,
+        batch_complete_rx: Option<mpsc::UnboundedReceiver<ActionBatch>>,
         _oracles: OracleManager,
     ) -> Result<(Option<JoinHandle<()>>, Option<ProofMetricsArc>)> {
         if !proving.enabled {
@@ -646,10 +651,16 @@ impl RuntimeBuilder {
             Arc::new(StubProver::new(oracle_snapshot))
         };
 
-        #[cfg(not(feature = "stub"))]
+        #[cfg(all(feature = "risc0", not(feature = "stub")))]
         let prover = {
             use zk::Risc0Prover;
             Arc::new(Risc0Prover::new(oracle_snapshot))
+        };
+
+        #[cfg(all(feature = "sp1", not(feature = "stub")))]
+        let prover = {
+            use zk::Sp1Prover;
+            Arc::new(Sp1Prover::new(oracle_snapshot))
         };
 
         // Create command channel (keep sender alive to prevent shutdown)

@@ -1,8 +1,8 @@
 //! ZK proof generation utilities (host-side only).
 //!
 //! Provides a unified interface for different proving backends:
-//! - **RISC0** (default): Production zkVM backend
-//! - **SP1**: Alternative zkVM backend (not implemented)
+//! - **RISC0** (default): Production zkVM backend with Groth16 support
+//! - **SP1**: Alternative production zkVM with platform-independent Groth16/PLONK
 //! - **Stub**: Dummy prover for testing
 //! - **Arkworks** (future): Custom circuit proving
 //!
@@ -47,6 +47,15 @@ mod generated {
 #[cfg(feature = "risc0")]
 pub use generated::{STATE_TRANSITION_ELF, STATE_TRANSITION_ID};
 
+// Include generated methods from build.rs (SP1 ELF and verification key)
+#[cfg(feature = "sp1")]
+mod sp1_generated {
+    include!(concat!(env!("OUT_DIR"), "/methods.rs"));
+}
+
+#[cfg(feature = "sp1")]
+pub use sp1_generated::STATE_TRANSITION_ELF;
+
 // Oracle snapshot for serializable game content
 pub mod oracle;
 pub use oracle::{
@@ -63,12 +72,19 @@ pub use prover::{
 #[cfg(feature = "stub")]
 pub use prover::StubProver;
 
-// zkVM module - zkVM-based proving backend implementations
-#[cfg(any(feature = "risc0", feature = "sp1"))]
-pub mod zkvm;
+// RISC0 zkVM backend module
+#[cfg(feature = "risc0")]
+pub mod risc0;
 
-#[cfg(any(feature = "risc0", feature = "sp1"))]
-pub use zkvm::*;
+#[cfg(feature = "risc0")]
+pub use risc0::*;
+
+// SP1 zkVM backend module
+#[cfg(feature = "sp1")]
+pub mod sp1;
+
+#[cfg(feature = "sp1")]
+pub use sp1::*;
 
 // Arkworks circuit module (optional, Phase 2+)
 #[cfg(feature = "arkworks")]
@@ -84,7 +100,7 @@ pub use game_core::{Action, GameState, StateDelta, compute_actions_root};
 ///
 /// This type alias resolves to the appropriate prover based on enabled features:
 /// - `risc0` (default) → Risc0Prover
-/// - `sp1` (not implemented) → Sp1Prover
+/// - `sp1` → Sp1Prover
 /// - `stub` → StubProver (testing only)
 #[cfg(feature = "risc0")]
 pub type ZkProver = Risc0Prover;

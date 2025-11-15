@@ -165,7 +165,7 @@ pub struct PersistenceWorker {
     event_rx: broadcast::Receiver<Event>,
     command_rx: mpsc::Receiver<Command>,
     sim_command_tx: mpsc::Sender<SimCommand>,
-    batch_complete_tx: mpsc::Sender<ActionBatch>,
+    batch_complete_tx: mpsc::UnboundedSender<ActionBatch>,
 
     // Checkpoint tracking
     strategy: CheckpointStrategy,
@@ -179,7 +179,7 @@ impl PersistenceWorker {
         event_rx: broadcast::Receiver<Event>,
         command_rx: mpsc::Receiver<Command>,
         sim_command_tx: mpsc::Sender<SimCommand>,
-        batch_complete_tx: mpsc::Sender<ActionBatch>,
+        batch_complete_tx: mpsc::UnboundedSender<ActionBatch>,
     ) -> Result<Self> {
         let base_dir = &config.base_dir;
         let session_id = &config.session_id;
@@ -545,11 +545,11 @@ impl PersistenceWorker {
         );
 
         // Notify ProverWorker about the completed batch
-        // Use try_send (non-blocking) to avoid blocking game progress if ProverWorker is slow
-        if let Err(e) = self.batch_complete_tx.try_send(batch.clone()) {
+        // Use unbounded channel so batch information is never lost
+        // ProverWorker has internal queue management and will process at its own pace
+        if let Err(e) = self.batch_complete_tx.send(batch.clone()) {
             warn!(
-                "Failed to notify ProverWorker about completed batch (queue full or closed): {}. \
-                 This is normal if proof generation is slower than game progress.",
+                "Failed to notify ProverWorker about completed batch (channel closed): {}",
                 e
             );
         }

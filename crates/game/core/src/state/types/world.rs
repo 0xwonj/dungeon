@@ -81,7 +81,8 @@ impl TileMap {
     pub fn remove_occupant(&mut self, position: &Position, entity: EntityId) -> bool {
         if let Some(slot) = self.occupancy.get_mut(position) {
             if let Some(index) = slot.iter().position(|occupant| *occupant == entity) {
-                slot.swap_remove(index);
+                // Use remove() instead of swap_remove() to maintain deterministic order.
+                slot.remove(index);
                 if slot.is_empty() {
                     self.occupancy.remove(position);
                 }
