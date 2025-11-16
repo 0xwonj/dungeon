@@ -37,8 +37,8 @@ pub use events::{
 };
 pub use handlers::{ActivationHandler, DeathHandler, EventContext, HandlerCriticality};
 pub use oracle::{
-    ActorOracleImpl, AiConfig, ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, OracleManager,
-    TablesOracleImpl,
+    ActionOracleImpl, ActorOracleImpl, AiConfig, ConfigOracleImpl, ItemOracleImpl, MapOracleImpl,
+    OracleBundle,
 };
 pub use providers::ai::{AiContext, GoalBasedAiProvider};
 pub use providers::{SystemActionHandler, SystemActionProvider};

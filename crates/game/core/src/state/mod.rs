@@ -290,85 +290,16 @@ impl GameState {
     ///
     /// # Serialization
     ///
-    /// Requires the `serde` feature. In zkVM environments, ensure both `zkvm` and
-    /// `serde` features are enabled on the `game-core` dependency.
+    /// Uses bincode for deterministic binary serialization. Bincode serialization
+    /// is stable across serialize-deserialize round-trips for our state structures.
     #[cfg(feature = "serde")]
     pub fn compute_state_root(&self) -> [u8; 32] {
         use sha2::{Digest, Sha256};
 
+        let serialized =
+            bincode::serialize(self).expect("GameState serialization should never fail");
         let mut hasher = Sha256::new();
-
-        // Hash all state components in deterministic order
-        //
-        // CRITICAL: We do NOT use bincode for BTreeMap/BTreeSet because:
-        // 1. Bincode serializes internal tree structure (node pointers, balancing)
-        // 2. After deserialize -> serialize round-trip, tree structure can differ
-        // 3. Different structure = different bytes = different hash
-        //
-        // Solution: Manually iterate BTree collections in sorted order (guaranteed
-        // by BTree invariant) and hash only the values, not internal structure.
-
-        // 1. Game seed (deterministic RNG source)
-        hasher.update(self.game_seed.to_le_bytes());
-
-        // 2. Entity ID allocator state
-        hasher.update(self.next_entity_id.to_le_bytes());
-
-        // 3. Turn state - hash fields individually to avoid BTreeSet structure
-        hasher.update(self.turn.nonce.to_le_bytes());
-        hasher.update(self.turn.clock.to_le_bytes());
-        hasher.update(self.turn.current_actor.0.to_le_bytes());
-
-        // Hash active_actors in sorted order (BTreeSet guarantees sorted iteration)
-        hasher.update((self.turn.active_actors.len() as u64).to_le_bytes());
-        for actor_id in &self.turn.active_actors {
-            hasher.update(actor_id.0.to_le_bytes());
-        }
-
-        // 4. Entities state - serialize each entity individually for determinism
-        // Avoid serializing BoundedVec wrapper structure by iterating elements
-
-        // Hash actors
-        hasher.update((self.entities.actors.len() as u64).to_le_bytes());
-        for actor in self.entities.actors.iter() {
-            let actor_bytes =
-                bincode::serialize(actor).expect("ActorState serialization should never fail");
-            hasher.update(&actor_bytes);
-        }
-
-        // Hash props
-        hasher.update((self.entities.props.len() as u64).to_le_bytes());
-        for prop in self.entities.props.iter() {
-            let prop_bytes =
-                bincode::serialize(prop).expect("PropState serialization should never fail");
-            hasher.update(&prop_bytes);
-        }
-
-        // Hash items
-        hasher.update((self.entities.items.len() as u64).to_le_bytes());
-        for item in self.entities.items.iter() {
-            let item_bytes =
-                bincode::serialize(item).expect("ItemState serialization should never fail");
-            hasher.update(&item_bytes);
-        }
-
-        // 5. World state - hash tile_map occupancy manually
-        // BTreeMap<Position, ArrayVec<EntityId>> - must avoid tree structure
-        let occupancy = self.world.tile_map.occupancy();
-        hasher.update((occupancy.len() as u64).to_le_bytes());
-
-        for (position, occupants) in occupancy.iter() {
-            // Hash position (sorted by BTreeMap)
-            hasher.update(position.x.to_le_bytes());
-            hasher.update(position.y.to_le_bytes());
-
-            // Hash occupants
-            hasher.update((occupants.len() as u64).to_le_bytes());
-            for entity_id in occupants.iter() {
-                hasher.update(entity_id.0.to_le_bytes());
-            }
-        }
-
+        hasher.update(&serialized);
         hasher.finalize().into()
     }
 }

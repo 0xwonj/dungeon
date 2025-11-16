@@ -41,8 +41,8 @@ impl ActionCandidateGenerator {
 
         for &kind in available_kinds {
             // Get action profile to determine targeting mode
-            let profile = match ctx.env.tables() {
-                Ok(tables) => tables.action_profile(kind),
+            let profile = match ctx.env.actions() {
+                Ok(actions) => actions.action_profile(kind),
                 Err(e) => {
                     tracing::warn!("Failed to get action profile for {:?}: {}", kind, e);
                     continue;

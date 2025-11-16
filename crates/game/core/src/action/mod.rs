@@ -138,8 +138,8 @@ impl Action {
         let base_cost = match self {
             Action::Character(action) => {
                 // Get base cost from action profile
-                env.tables()
-                    .expect("TablesOracle must be available for action cost calculation")
+                env.actions()
+                    .expect("ActionOracle must be available for action cost calculation")
                     .action_profile(action.kind)
                     .base_cost
             }

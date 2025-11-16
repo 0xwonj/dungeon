@@ -73,7 +73,7 @@ pub(super) fn apply(
 
     // 3. Load action profile
     let profile = env
-        .tables()
+        .actions()
         .map_err(|_| ActionError::ProfileNotFound)?
         .action_profile(action.kind);
 

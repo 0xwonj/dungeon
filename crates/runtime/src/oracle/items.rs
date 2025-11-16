@@ -70,4 +70,8 @@ impl ItemOracle for ItemOracleImpl {
     fn definition(&self, handle: ItemHandle) -> Option<ItemDefinition> {
         self.definitions.get(&handle).cloned()
     }
+
+    fn all_definitions(&self) -> Vec<ItemDefinition> {
+        self.definitions.values().cloned().collect()
+    }
 }

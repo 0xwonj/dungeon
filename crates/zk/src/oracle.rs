@@ -12,7 +12,7 @@
 
 // Re-export snapshots from game-core for convenience
 pub use game_core::{
-    ActorsSnapshot, ConfigSnapshot, ItemsSnapshot, MapSnapshot, OracleSnapshot,
-    SnapshotActorOracle, SnapshotConfigOracle, SnapshotItemOracle, SnapshotMapOracle,
-    SnapshotOracleBundle, SnapshotTablesOracle, TablesSnapshot,
+    ActionSnapshot, ActorsSnapshot, ConfigSnapshot, ItemsSnapshot, MapSnapshot, OracleSnapshot,
+    SnapshotActionOracle, SnapshotActorOracle, SnapshotConfigOracle, SnapshotItemOracle,
+    SnapshotMapOracle, SnapshotOracleBundle,
 };

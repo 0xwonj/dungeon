@@ -56,3 +56,6 @@ serde = { workspace = true, optional = true }
 bincode = { workspace = true, optional = true }
 # SHA-256 for deterministic state root computation (hardware-accelerated in RISC0)
 sha2 = { workspace = true }
+
+[dev-dependencies]
+hex = { workspace = true }

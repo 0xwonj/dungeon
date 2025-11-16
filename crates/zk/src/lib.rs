@@ -59,7 +59,7 @@ pub use sp1_generated::STATE_TRANSITION_ELF;
 // Oracle snapshot for serializable game content
 pub mod oracle;
 pub use oracle::{
-    ActorsSnapshot, ConfigSnapshot, ItemsSnapshot, MapSnapshot, OracleSnapshot, TablesSnapshot,
+    ActionSnapshot, ActorsSnapshot, ConfigSnapshot, ItemsSnapshot, MapSnapshot, OracleSnapshot,
 };
 
 // Prover module - universal interface and types for all proving backends

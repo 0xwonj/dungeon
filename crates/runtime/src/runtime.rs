@@ -14,7 +14,7 @@ use crate::api::{
     ActionProvider, ProviderKind, ProviderRegistry, Result, RuntimeError, RuntimeHandle,
 };
 use crate::events::{EventBus, Topic};
-use crate::oracle::OracleManager;
+use crate::oracle::OracleBundle;
 use crate::providers::SystemActionProvider;
 use crate::repository::ActionBatch;
 use crate::scenario::Scenario;
@@ -151,8 +151,8 @@ pub struct Runtime {
     // Provider registry (shared with RuntimeHandle via Arc)
     providers: Arc<RwLock<ProviderRegistry>>,
 
-    // Oracle manager (cloned, cheap due to Arc internals)
-    oracles: OracleManager,
+    // Oracle bundle (cloned, cheap due to Arc internals)
+    oracles: OracleBundle,
 }
 
 impl Runtime {
@@ -255,7 +255,7 @@ pub struct RuntimeBuilder {
     persistence: PersistenceSettings,
     proving: ProvingSettings,
     state: Option<GameState>,
-    oracles: Option<OracleManager>,
+    oracles: Option<OracleBundle>,
     scenario: Option<Scenario>,
     providers: ProviderRegistry,
     system_provider: Option<SystemActionProvider>,
@@ -299,8 +299,8 @@ impl RuntimeBuilder {
         self
     }
 
-    /// Set required oracle manager
-    pub fn oracles(mut self, oracles: OracleManager) -> Self {
+    /// Set required oracle bundle
+    pub fn oracles(mut self, oracles: OracleBundle) -> Self {
         self.oracles = Some(oracles);
         self
     }
@@ -516,7 +516,7 @@ impl RuntimeBuilder {
     /// Create and spawn the simulation worker.
     fn create_simulation_worker(
         initial_state: GameState,
-        oracles: OracleManager,
+        oracles: OracleBundle,
         command_rx: mpsc::Receiver<Command>,
         event_bus: EventBus,
         system_provider: SystemActionProvider,
@@ -596,7 +596,7 @@ impl RuntimeBuilder {
         persistence: &PersistenceSettings,
         proving: &ProvingSettings,
         batch_complete_rx: Option<mpsc::UnboundedReceiver<ActionBatch>>,
-        _oracles: OracleManager,
+        _oracles: OracleBundle,
     ) -> Result<(Option<JoinHandle<()>>, Option<ProofMetricsArc>)> {
         if !proving.enabled {
             return Ok((None, None));
@@ -622,27 +622,8 @@ impl RuntimeBuilder {
             ProverConfig::new(config.session_id.clone(), persistence.base_dir.clone())
                 .with_max_parallel(1); // TODO: Make this configurable via env var
 
-        // Create oracle snapshot for prover
-        let oracle_snapshot = {
-            use zk::{
-                ActorsSnapshot, ConfigSnapshot, ItemsSnapshot, MapSnapshot, OracleSnapshot,
-                TablesSnapshot,
-            };
-
-            let map_snapshot = MapSnapshot::from_oracle(_oracles.map.as_ref());
-            let items_snapshot = ItemsSnapshot::empty(); // TODO: Populate with actual items
-            let actors_snapshot = ActorsSnapshot::empty(); // TODO: Populate with actual actors
-            let tables_snapshot = TablesSnapshot::from_oracle(_oracles.tables.as_ref());
-            let config_snapshot = ConfigSnapshot::from_oracle(_oracles.config.as_ref());
-
-            OracleSnapshot::new(
-                map_snapshot,
-                items_snapshot,
-                actors_snapshot,
-                tables_snapshot,
-                config_snapshot,
-            )
-        };
+        // Create oracle snapshot for prover (includes all actors, items, maps, actions, config)
+        let oracle_snapshot = _oracles.to_snapshot();
 
         // Create prover instance (stub or risc0)
         #[cfg(feature = "stub")]

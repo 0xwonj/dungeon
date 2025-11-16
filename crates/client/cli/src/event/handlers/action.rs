@@ -167,10 +167,10 @@ where
         &mut self,
         action_kind: game_core::ActionKind,
     ) -> Result<()> {
-        use game_core::{ActionInput, CharacterAction, env::TablesOracle};
+        use game_core::{ActionInput, CharacterAction, env::ActionOracle};
 
-        // Get targeting mode from action profile via TablesOracle
-        let action_profile = self.oracles.tables.action_profile(action_kind);
+        // Get targeting mode from action profile via ActionOracle
+        let action_profile = self.oracles.actions.action_profile(action_kind);
         let targeting = action_profile.targeting;
 
         // Check targeting mode

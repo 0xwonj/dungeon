@@ -67,21 +67,25 @@ pub fn evaluate(formula: &Formula, ctx: &EffectContext) -> Result<u32, ActionErr
 
             // Get weapon damage from equipment
             let weapon_damage = if let Some(weapon_handle) = actor.equipment.weapon {
-                // Get weapon definition from ItemOracle
-                match ctx.env.items() {
-                    Ok(items_oracle) => {
-                        if let Some(item_def) = items_oracle.definition(weapon_handle) {
-                            // Extract damage from WeaponData
-                            if let crate::env::ItemKind::Weapon(weapon_data) = item_def.kind {
-                                weapon_data.damage
-                            } else {
-                                5 // Not a weapon (shouldn't happen)
-                            }
-                        } else {
-                            5 // Item definition not found
-                        }
+                let items_oracle = ctx.env.items().map_err(|e| {
+                    ActionError::FormulaEvaluationFailed(format!("ItemOracle unavailable: {}", e))
+                })?;
+
+                let item_def = items_oracle.definition(weapon_handle).ok_or_else(|| {
+                    ActionError::FormulaEvaluationFailed(format!(
+                        "Item definition not found for handle: {:?}",
+                        weapon_handle
+                    ))
+                })?;
+
+                match item_def.kind {
+                    crate::env::ItemKind::Weapon(weapon_data) => weapon_data.damage,
+                    _ => {
+                        return Err(ActionError::FormulaEvaluationFailed(format!(
+                            "Item is not a weapon: {:?}",
+                            item_def.kind
+                        )));
                     }
-                    Err(_) => 5, // Oracle unavailable
                 }
             } else {
                 5 // Unarmed damage

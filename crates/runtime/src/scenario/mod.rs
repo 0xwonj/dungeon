@@ -12,7 +12,7 @@ use game_core::{GameState, ItemHandle, ItemState, Position, PropKind, PropState}
 use serde::{Deserialize, Serialize};
 
 use crate::api::{Result, RuntimeError};
-use crate::oracle::OracleManager;
+use crate::oracle::OracleBundle;
 
 /// Entity placement specification for scenario setup.
 ///
@@ -61,7 +61,7 @@ impl Scenario {
     ///
     /// This allocates EntityIds, creates entities from templates,
     /// and sets up initial world occupancy.
-    pub fn create_initial_state(&self, oracles: &OracleManager) -> Result<GameState> {
+    pub fn create_initial_state(&self, oracles: &OracleBundle) -> Result<GameState> {
         // Start with empty state - scenario will add all entities explicitly
         let mut state = GameState::empty();
 

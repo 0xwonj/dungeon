@@ -7,7 +7,7 @@ use game_core::{Action, GameState, StateDelta};
 
 use crate::events::{GameEvent, extract_events};
 use crate::handlers::{EventContext, HandlerCriticality};
-use crate::oracle::OracleManager;
+use crate::oracle::OracleBundle;
 
 /// Handler for generating specific types of system actions.
 ///
@@ -103,7 +103,7 @@ impl SystemActionProvider {
         delta: &StateDelta,
         state_before: &GameState,
         state_after: &GameState,
-        oracles: &OracleManager,
+        oracles: &OracleBundle,
     ) -> Vec<(Action, &'static str, HandlerCriticality)> {
         // Extract high-level events from delta
         let events = extract_events(delta, state_before, state_after);

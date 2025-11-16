@@ -2,32 +2,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use runtime::{
-    ActorOracleImpl, ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, OracleManager,
-    TablesOracleImpl,
-};
+use runtime::{ActionOracleImpl, ActorOracleImpl, ConfigOracleImpl, ItemOracleImpl, MapOracleImpl};
 
-/// Bundle of oracle implementations that the runtime consumes.
-#[derive(Clone)]
-pub struct OracleBundle {
-    pub map: Arc<MapOracleImpl>,
-    pub items: Arc<ItemOracleImpl>,
-    pub tables: Arc<TablesOracleImpl>,
-    pub actors: Arc<ActorOracleImpl>,
-    pub config: Arc<ConfigOracleImpl>,
-}
-
-impl OracleBundle {
-    pub fn manager(&self) -> OracleManager {
-        OracleManager::new(
-            Arc::clone(&self.map),
-            Arc::clone(&self.items),
-            Arc::clone(&self.tables),
-            Arc::clone(&self.actors),
-            Arc::clone(&self.config),
-        )
-    }
-}
+// Re-export OracleBundle from runtime
+pub use runtime::OracleBundle;
 
 pub trait OracleFactory: Send + Sync {
     fn build(&self) -> OracleBundle;
@@ -213,15 +191,15 @@ impl OracleFactory for ContentOracleFactory {
         let map_oracle = MapOracleImpl::new(dimensions, tiles);
 
         // Build other oracles
-        let tables_oracle = TablesOracleImpl::new();
+        let actions_oracle = ActionOracleImpl::new();
         let config_oracle = ConfigOracleImpl::new(config);
 
-        OracleBundle {
-            map: Arc::new(map_oracle),
-            items: Arc::new(item_oracle),
-            tables: Arc::new(tables_oracle),
-            actors: Arc::new(actor_oracle),
-            config: Arc::new(config_oracle),
-        }
+        OracleBundle::new(
+            Arc::new(map_oracle),
+            Arc::new(item_oracle),
+            Arc::new(actions_oracle),
+            Arc::new(actor_oracle),
+            Arc::new(config_oracle),
+        )
     }
 }

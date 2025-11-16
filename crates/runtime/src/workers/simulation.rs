@@ -14,7 +14,7 @@ use tracing::{debug, error, warn};
 use crate::api::{Result, RuntimeError};
 use crate::events::{Event, EventBus, GameStateEvent};
 use crate::handlers::HandlerCriticality;
-use crate::oracle::OracleManager;
+use crate::oracle::OracleBundle;
 use crate::providers::SystemActionProvider;
 
 /// Commands that can be sent to the simulation worker
@@ -42,7 +42,7 @@ pub enum Command {
 /// This follows the "functional core, imperative shell" principle.
 pub struct SimulationWorker {
     state: GameState,
-    oracles: OracleManager,
+    oracles: OracleBundle,
     command_rx: mpsc::Receiver<Command>,
     event_bus: EventBus,
     system_provider: SystemActionProvider,
@@ -52,7 +52,7 @@ impl SimulationWorker {
     /// Creates a new simulation worker.
     pub fn new(
         state: GameState,
-        oracles: OracleManager,
+        oracles: OracleBundle,
         command_rx: mpsc::Receiver<Command>,
         event_bus: EventBus,
         system_provider: SystemActionProvider,
@@ -167,7 +167,7 @@ impl SimulationWorker {
     fn execute_action_impl(
         action: &Action,
         state: &mut GameState,
-        oracles: &OracleManager,
+        oracles: &OracleBundle,
         event_bus: &EventBus,
     ) -> std::result::Result<game_core::StateDelta, ExecuteError> {
         // Capture state before execution

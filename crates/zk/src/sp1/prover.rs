@@ -1,46 +1,6 @@
 //! SP1 zkVM prover implementation.
 //!
 //! Generates zero-knowledge proofs of game action execution using SP1's zkVM.
-//!
-//! # Two-Stage Verification Model
-//!
-//! SP1 Groth16 proofs use a two-stage verification approach:
-//!
-//! **Stage 1 (On-chain):** Groth16 proof verification
-//! - Verifies the cryptographic proof
-//! - Public input: public_values_digest (SHA-256 of public values)
-//! - This proves: "Some valid execution produced this public values digest"
-//!
-//! **Stage 2 (On-chain):** Public values content verification
-//! - Contract receives 168-byte public values data
-//! - Verifies: SHA-256(public_values) == public_values_digest
-//! - Extracts and validates 6 fields from public values
-//! - This proves: "The public values contain these specific committed values"
-//!
-//! # Public Values Structure (168 bytes)
-//!
-//! ```text
-//! 1. oracle_root       (32 bytes, offset 0..32)   - Static game content commitment
-//! 2. seed_commitment   (32 bytes, offset 32..64)  - RNG seed commitment
-//! 3. prev_state_root   (32 bytes, offset 64..96)  - State before execution
-//! 4. actions_root      (32 bytes, offset 96..128) - Action sequence commitment
-//! 5. new_state_root    (32 bytes, offset 128..160) - State after execution
-//! 6. new_nonce         (8 bytes, offset 160..168) - Action counter
-//! ```
-//!
-//! # Guest Program Flow
-//!
-//! The zkVM guest program commits these 6 fields to public values in exact order.
-//!
-//! # Host Verification
-//!
-//! After proof generation, the host verifies public values consistency:
-//! - oracle_root matches OracleSnapshot hash
-//! - prev_state_root matches start_state hash
-//! - new_state_root matches expected_end_state hash
-//! - new_nonce matches expected_end_state.nonce()
-//!
-//! This catches non-determinism bugs and oracle mismatches before on-chain submission.
 
 use sha2::{Digest, Sha256};
 use sp1_sdk::{EnvProver, SP1ProofWithPublicValues, SP1ProvingKey, SP1Stdin, SP1VerifyingKey};
@@ -53,10 +13,6 @@ use game_core::{Action, GameState};
 use crate::STATE_TRANSITION_ELF;
 
 /// SP1 zkVM prover.
-///
-/// SP1's EnvProver should be initialized once and reused for performance.
-/// According to SP1 best practices, initialization is expensive as it loads
-/// proving parameters and sets up the environment.
 ///
 /// # Prover Configuration
 ///
@@ -72,31 +28,6 @@ use crate::STATE_TRANSITION_ELF;
 /// - `compressed` (default): Compressed STARK (~4-5MB, off-chain verification)
 /// - `groth16`: Groth16 SNARK (~260 bytes, on-chain verification, Sui compatible)
 /// - `plonk`: PLONK SNARK (~868 bytes, on-chain, no trusted setup)
-///
-/// ## Network Mode Configuration
-///
-/// To use the Succinct Prover Network:
-/// ```bash
-/// export SP1_PROVER=network
-/// export SP1_PROOF_MODE=groth16
-/// export NETWORK_PRIVATE_KEY=0x...  # Your network prover private key
-/// ```
-///
-/// Optional network settings:
-/// ```bash
-/// export NETWORK_RPC_URL=https://rpc.succinct.xyz  # Custom RPC endpoint
-/// ```
-///
-/// Benefits of network mode:
-/// - ✅ No local resource requirements (no Docker, no high memory)
-/// - ✅ Fast proof generation (~minutes vs hours)
-/// - ✅ All proof modes supported (compressed, groth16, plonk)
-/// - ⚠️ Requires network prover account and API key
-///
-/// This struct maintains:
-/// - EnvProver (reused across all operations)
-/// - Oracle snapshot (static game content)
-/// - Proving/Verifying keys (cached for the state-transition program)
 pub struct Sp1Prover {
     oracle_snapshot: OracleSnapshot,
     client: EnvProver,
@@ -112,27 +43,6 @@ impl Sp1Prover {
     /// - `SP1_PROOF_MODE`: Selects proof type (compressed, groth16, plonk)
     /// - `NETWORK_PRIVATE_KEY`: Required for network mode
     /// - `NETWORK_RPC_URL`: Optional custom RPC endpoint for network mode
-    ///
-    /// # Performance Note
-    /// EnvProver initialization is expensive - this should be called once
-    /// and the Sp1Prover instance reused for all subsequent proving operations.
-    ///
-    /// # Examples
-    ///
-    /// Local Groth16 (requires Docker with 12-16GB RAM):
-    /// ```bash
-    /// export SP1_PROVER=cpu
-    /// export SP1_PROOF_MODE=groth16
-    /// cargo run -p client-cli --no-default-features --features sp1
-    /// ```
-    ///
-    /// Network Groth16 (fast, no local resources):
-    /// ```bash
-    /// export SP1_PROVER=network
-    /// export SP1_PROOF_MODE=groth16
-    /// export NETWORK_PRIVATE_KEY=0x1234...
-    /// cargo run -p client-cli --no-default-features --features sp1
-    /// ```
     pub fn new(oracle_snapshot: OracleSnapshot) -> Self {
         let client = sp1_sdk::ProverClient::from_env();
         let (pk, vk) = client.setup(STATE_TRANSITION_ELF);
@@ -178,14 +88,6 @@ impl Sp1Prover {
     }
 
     /// Verifies public values fields match expected values (exposed for groth16).
-    ///
-    /// Checks that zkVM-committed values match host-computed values:
-    /// - oracle_root: Must match oracle snapshot hash
-    /// - seed_commitment: Must match game seed commitment
-    /// - prev_state_root: Must match start_state hash
-    /// - actions_root: Must match hash of action sequence
-    /// - new_state_root: Must match expected_end_state hash
-    /// - new_nonce: Must match expected_end_state.nonce()
     ///
     /// # Errors
     ///
@@ -242,112 +144,9 @@ impl Sp1Prover {
 
         // Verify new_state_root
         if fields.new_state_root != expected_new_state_root {
-            // STATE MISMATCH DETECTED - Perform detailed debugging
-            tracing::error!("State root mismatch detected! Performing detailed analysis...");
-
-            // Re-execute actions on host to simulate zkVM execution
-            let mut debug_state = start_state.clone();
-            let snapshot_bundle = game_core::SnapshotOracleBundle::new(&self.oracle_snapshot);
-            let env = snapshot_bundle.as_env();
-            let mut engine = game_core::GameEngine::new(&mut debug_state);
-
-            for (idx, action) in actions.iter().enumerate() {
-                match engine.execute(env.as_game_env(), action) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        tracing::error!(
-                            "Re-execution failed at action {}/{}: {:?}",
-                            idx + 1,
-                            actions.len(),
-                            e
-                        );
-                        break;
-                    }
-                }
-            }
-
-            let recomputed_root = debug_state.compute_state_root();
-
-            tracing::error!("=== STATE ROOT MISMATCH ANALYSIS ===");
-            tracing::error!("zkVM computed:     {:?}", fields.new_state_root);
-            tracing::error!("Expected (file):   {:?}", expected_new_state_root);
-            tracing::error!("Re-executed (host):{:?}", recomputed_root);
-            tracing::error!("zkVM nonce:        {}", fields.new_nonce);
-            tracing::error!("Expected nonce:    {}", expected_new_nonce);
-            tracing::error!("Re-executed nonce: {}", debug_state.nonce());
-
-            // Compare field by field
-            tracing::error!("=== FIELD-BY-FIELD COMPARISON ===");
-            tracing::error!(
-                "game_seed: expected={}, re-executed={}",
-                expected_end_state.game_seed,
-                debug_state.game_seed
-            );
-
-            // Turn state
-            tracing::error!(
-                "turn.nonce: expected={}, re-executed={}",
-                expected_end_state.turn.nonce,
-                debug_state.turn.nonce
-            );
-            tracing::error!(
-                "turn.clock: expected={}, re-executed={}",
-                expected_end_state.turn.clock,
-                debug_state.turn.clock
-            );
-            tracing::error!(
-                "turn.current_actor: expected={:?}, re-executed={:?}",
-                expected_end_state.turn.current_actor,
-                debug_state.turn.current_actor
-            );
-            tracing::error!(
-                "turn.active_actors: expected={:?}, re-executed={:?}",
-                expected_end_state.turn.active_actors,
-                debug_state.turn.active_actors
-            );
-
-            // Entities
-            tracing::error!(
-                "entities.actors.len(): expected={}, re-executed={}",
-                expected_end_state.entities.actors.len(),
-                debug_state.entities.actors.len()
-            );
-            tracing::error!(
-                "entities.items.len(): expected={}, re-executed={}",
-                expected_end_state.entities.items.len(),
-                debug_state.entities.items.len()
-            );
-            tracing::error!(
-                "entities.props.len(): expected={}, re-executed={}",
-                expected_end_state.entities.props.len(),
-                debug_state.entities.props.len()
-            );
-
-            // World
-            tracing::error!(
-                "world.tile_map.occupancy().len(): expected={}, re-executed={}",
-                expected_end_state.world.tile_map.occupancy().len(),
-                debug_state.world.tile_map.occupancy().len()
-            );
-
-            // Check if re-executed matches zkVM (most important!)
-            if recomputed_root == fields.new_state_root {
-                tracing::error!(
-                    "✓ Re-execution matches zkVM! Problem is with expected_end_state from file."
-                );
-                tracing::error!("This suggests bincode deserialization or file persistence issue.");
-            } else if recomputed_root == expected_new_state_root {
-                tracing::error!("✓ Re-execution matches expected! zkVM produced different result.");
-                tracing::error!("This suggests non-determinism in zkVM execution.");
-            } else {
-                tracing::error!("✗ Re-execution matches neither! All three states are different.");
-                tracing::error!("This suggests fundamental execution non-determinism.");
-            }
-
             return Err(ProofError::StateInconsistency(format!(
                 "new_state_root mismatch: zkVM computed {:?}, expected {:?}. \
-                 This indicates non-determinism. zkVM nonce={}, expected nonce={}. \
-                 See logs above for detailed field comparison.",
+                 This indicates non-determinism. zkVM nonce={}, expected nonce={}."
                 fields.new_state_root,
                 expected_new_state_root,
                 fields.new_nonce,
@@ -394,12 +193,6 @@ impl Prover for Sp1Prover {
         stdin.write(&actions.to_vec());
 
         // Generate proof using state transition guest
-        // SP1 5.2 uses builder pattern to select proof type at runtime
-        //
-        // Proof type is determined by SP1_PROOF_MODE environment variable:
-        // - compressed (default): Compressed STARK (~4-5MB, off-chain)
-        // - groth16: Groth16 SNARK (~260 bytes, on-chain, Sui compatible)
-        // - plonk: PLONK SNARK (~868 bytes, on-chain, no trusted setup)
         let proof_mode =
             std::env::var("SP1_PROOF_MODE").unwrap_or_else(|_| "compressed".to_string());
 

@@ -145,7 +145,7 @@ impl Risc0Prover {
         if fields.new_state_root != expected_new_state_root {
             return Err(ProofError::StateInconsistency(format!(
                 "new_state_root mismatch: zkVM computed {:?}, expected {:?}. \
-                 This indicates non-determinism. zkVM nonce={}, expected nonce={}",
+                 This indicates non-determinism. zkVM nonce={}, expected nonce={}.",
                 fields.new_state_root,
                 expected_new_state_root,
                 fields.new_nonce,

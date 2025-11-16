@@ -3,6 +3,11 @@ use crate::state::types::{ArmorKind, WeaponKind};
 
 pub trait ItemOracle: Send + Sync {
     fn definition(&self, handle: ItemHandle) -> Option<ItemDefinition>;
+
+    /// Returns all item definitions available in this oracle.
+    /// Used for creating complete ItemsSnapshot for zkVM execution.
+    #[cfg(feature = "std")]
+    fn all_definitions(&self) -> Vec<ItemDefinition>;
 }
 
 /// Item definition with common fields and type-specific data.

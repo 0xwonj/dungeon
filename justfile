@@ -82,6 +82,8 @@ help:
     @echo "Development tools:"
     @echo "  just tail-logs           Monitor latest session logs"
     @echo "  just tail-logs <id>      Monitor specific session"
+    @echo "  just read-state <nonce>  Read and inspect state file"
+    @echo "  just read-actions        Read and inspect action log (latest session)"
     @echo "  just clean-data          Clean all data (with confirmation)"
     @echo "  just clean-logs          Clean only logs"
     @echo "  just rebuild-guest       Rebuild guest program (fixes malformed binary)"
@@ -395,6 +397,20 @@ rebuild-guest:
 sessions:
     @echo "📋 Available sessions:"
     @ls -1t "$(cargo run -q -p xtask -- tail-logs --help 2>&1 | grep -o '/.*logs' | head -1 || echo "$HOME/Library/Caches/dungeon/logs")" 2>/dev/null || echo "  No sessions found"
+
+# Read and inspect state file at specified nonce
+read-state nonce format='summary':
+    @cargo run -q -p xtask -- read-state {{nonce}} --format {{format}}
+
+# Read and inspect action log for a session (default: latest)
+read-actions nonce='' *args='':
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "$1" ]; then
+        cargo run -q -p xtask -- read-actions ${@:2}
+    else
+        cargo run -q -p xtask -- read-actions "$1" ${@:2}
+    fi
 
 # ============================================================================
 # Internal Helpers (Private Recipes)

@@ -6,10 +6,6 @@ use game_core::{Action, GameState};
 
 /// ZK proof data container with journal and digest.
 ///
-/// # RISC0 Groth16 Architecture
-///
-/// For RISC0 Groth16 proofs, the structure follows a two-stage verification model:
-///
 /// **Stage 1 (On-chain):** Groth16 proof verification
 /// - `bytes`: Groth16 seal (proof)
 /// - `journal_digest`: SHA-256(journal) - the actual Groth16 public input

@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::loaders::{
-    ActorLoader, ConfigLoader, ItemLoader, LoadResult, MapLoader, TablesLoader, load_trait_registry,
+    ActorLoader, ConfigLoader, ItemLoader, LoadResult, MapLoader, load_trait_registry,
 };
 use crate::traits::TraitRegistry;
 
@@ -41,14 +41,6 @@ impl ContentFactory {
     pub fn load_config(&self) -> LoadResult<game_core::GameConfig> {
         let path = self.data_dir.join("config.toml");
         ConfigLoader::load(&path)
-    }
-
-    /// Load game rules tables from `tables.toml`.
-    ///
-    /// **PLACEHOLDER**: Currently returns empty data since TablesOracle has no methods.
-    pub fn load_tables(&self) -> LoadResult<()> {
-        let path = self.data_dir.join("tables.toml");
-        TablesLoader::load(&path)
     }
 
     /// Load item catalog from `items.ron`.

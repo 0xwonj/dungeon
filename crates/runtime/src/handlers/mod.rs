@@ -14,7 +14,7 @@ pub use death::DeathHandler;
 
 use game_core::GameState;
 
-use crate::oracle::OracleManager;
+use crate::oracle::OracleBundle;
 
 /// Criticality level for handler errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +33,6 @@ pub struct EventContext<'a> {
     pub state_before: &'a GameState,
     /// Game state after the action that produced the event
     pub state_after: &'a GameState,
-    /// Oracle manager for accessing game content
-    pub oracles: &'a OracleManager,
+    /// Oracle bundle for accessing game content
+    pub oracles: &'a OracleBundle,
 }

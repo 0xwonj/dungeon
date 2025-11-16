@@ -65,9 +65,8 @@ impl RuntimeBuilder {
 
     pub async fn build(self) -> Result<RuntimeSetup> {
         let oracles = self.oracle_factory.build();
-        let manager = oracles.manager();
 
-        let mut builder = Runtime::builder().oracles(manager.clone());
+        let mut builder = Runtime::builder().oracles(oracles.clone());
 
         // Load scenario if available
         // Try to find scenario file in data directory

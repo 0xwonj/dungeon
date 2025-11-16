@@ -16,8 +16,8 @@ pub fn score_for_attack(
     target: EntityId,
     ctx: &AiContext,
 ) -> u32 {
-    let profile = match ctx.env.tables() {
-        Ok(tables) => tables.action_profile(kind),
+    let profile = match ctx.env.actions() {
+        Ok(actions) => actions.action_profile(kind),
         Err(_) => return 0,
     };
 
@@ -88,8 +88,8 @@ pub fn score_for_flee(
     threat: EntityId,
     ctx: &AiContext,
 ) -> u32 {
-    let profile = match ctx.env.tables() {
-        Ok(tables) => tables.action_profile(kind),
+    let profile = match ctx.env.actions() {
+        Ok(actions) => actions.action_profile(kind),
         Err(_) => return 0,
     };
 
@@ -167,8 +167,8 @@ pub fn score_for_move_to(
     target_pos: Position,
     ctx: &AiContext,
 ) -> u32 {
-    let profile = match ctx.env.tables() {
-        Ok(tables) => tables.action_profile(kind),
+    let profile = match ctx.env.actions() {
+        Ok(actions) => actions.action_profile(kind),
         Err(_) => return 0,
     };
 
@@ -205,8 +205,8 @@ pub fn score_for_protect_ally(
     ally: EntityId,
     ctx: &AiContext,
 ) -> u32 {
-    let profile = match ctx.env.tables() {
-        Ok(tables) => tables.action_profile(kind),
+    let profile = match ctx.env.actions() {
+        Ok(actions) => actions.action_profile(kind),
         Err(_) => return 0,
     };
 

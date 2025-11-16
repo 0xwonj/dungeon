@@ -19,6 +19,17 @@ directories = { workspace = true }
 # Colored terminal output for better UX
 console = "0.16"
 
+# Serialization
+bincode = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Game core types (with serde feature for deserialization)
+game-core = { path = "../game/core", features = ["serde"] }
+
+# Environment variable loading from .env file
+dotenvy = { workspace = true }
+
 # File watching for tail-logs (optional feature for future enhancement)
 # notify = { version = "7.0", optional = true }
 

@@ -23,13 +23,12 @@ pub use engine::{
     ExecuteError, ExecutionOutcome, GameEngine, TransitionPhase, TransitionPhaseError,
 };
 pub use env::{
-    ActionCosts, ActorOracle, ActorTemplate, ActorTemplateBuilder, ActorsSnapshot, ArmorData,
-    CombatParams, ConfigOracle, ConfigSnapshot, ConsumableData, ConsumableEffect, DamageParams,
-    Env, GameEnv, HitChanceParams, ItemDefinition, ItemKind, ItemOracle, ItemsSnapshot,
-    MapDimensions, MapOracle, MapSnapshot, OracleError, OracleSnapshot, PcgRng, RngOracle,
-    SnapshotActorOracle, SnapshotConfigOracle, SnapshotItemOracle, SnapshotMapOracle,
-    SnapshotOracleBundle, SnapshotTablesOracle, SpeedParams, StaticTile, TablesOracle,
-    TablesSnapshot, TerrainKind, WeaponData, compute_seed,
+    ActionOracle, ActionSnapshot, ActorOracle, ActorTemplate, ActorTemplateBuilder, ActorsSnapshot,
+    ArmorData, ConfigOracle, ConfigSnapshot, ConsumableData, ConsumableEffect, Env, GameEnv,
+    ItemDefinition, ItemKind, ItemOracle, ItemsSnapshot, MapDimensions, MapOracle, MapSnapshot,
+    OracleError, OracleSnapshot, PcgRng, RngOracle, SnapshotActionOracle, SnapshotActorOracle,
+    SnapshotConfigOracle, SnapshotItemOracle, SnapshotMapOracle, SnapshotOracleBundle, StaticTile,
+    TerrainKind, WeaponData, compute_seed,
 };
 pub use error::{ErrorContext, ErrorSeverity, GameError, NeverError};
 pub use state::{
