@@ -99,6 +99,46 @@ impl EntitiesState {
     pub fn position(&self, id: EntityId) -> Option<Position> {
         self.actor(id)?.position
     }
+
+    /// Returns a reference to an item by ID.
+    pub fn item(&self, id: EntityId) -> Option<&ItemState> {
+        self.items.iter().find(|i| i.id == id)
+    }
+
+    /// Returns a mutable reference to an item by ID.
+    pub fn item_mut(&mut self, id: EntityId) -> Option<&mut ItemState> {
+        self.items.iter_mut().find(|i| i.id == id)
+    }
+
+    /// Returns an iterator over all items.
+    pub fn all_items(&self) -> impl Iterator<Item = &ItemState> {
+        self.items.iter()
+    }
+
+    /// Returns a mutable iterator over all items.
+    pub fn all_items_mut(&mut self) -> impl Iterator<Item = &mut ItemState> {
+        self.items.iter_mut()
+    }
+
+    /// Returns a reference to a prop by ID.
+    pub fn prop(&self, id: EntityId) -> Option<&PropState> {
+        self.props.iter().find(|p| p.id == id)
+    }
+
+    /// Returns a mutable reference to a prop by ID.
+    pub fn prop_mut(&mut self, id: EntityId) -> Option<&mut PropState> {
+        self.props.iter_mut().find(|p| p.id == id)
+    }
+
+    /// Returns an iterator over all props.
+    pub fn all_props(&self) -> impl Iterator<Item = &PropState> {
+        self.props.iter()
+    }
+
+    /// Returns a mutable iterator over all props.
+    pub fn all_props_mut(&mut self) -> impl Iterator<Item = &mut PropState> {
+        self.props.iter_mut()
+    }
 }
 
 impl EntitiesState {
@@ -109,9 +149,11 @@ impl EntitiesState {
         // Create default player template
         let template = ActorTemplate::builder()
             .provider_kind(ProviderKind::Interactive(InteractiveKind::CliInput))
-            .trait_profile(TraitProfile::default())
             .species(Species::Human)
             .faction(Faction::Player)
+            .archetype("none")
+            .temperament("neutral")
+            .trait_profile(TraitProfile::default())
             .build();
 
         // Convert to ActorState with PLAYER id and default position

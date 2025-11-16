@@ -22,7 +22,7 @@ impl ActorOracleImpl {
     /// # Arguments
     ///
     /// * `id` - Actor definition ID (e.g., "goblin_scout", "player")
-    /// * `template` - Actor template with provider_kind and trait_profile
+    /// * `template` - Actor template with resolved trait_profile
     pub fn add(&mut self, id: impl Into<String>, template: ActorTemplate) {
         let id = id.into();
         self.templates.insert(id, template);

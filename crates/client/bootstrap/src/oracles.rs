@@ -145,12 +145,10 @@ impl OracleFactory for ContentOracleFactory {
             )
         });
 
-        // Build actor oracle with templates
+        // Build actor oracle with templates (trait profiles already resolved by ActorLoader)
         let mut actor_oracle = ActorOracleImpl::new();
-        for (actor_id, mut template, trait_profile) in actor_data {
-            // Set the resolved trait_profile (ActorLoader determined this from either
-            // template.trait_profile or TraitRegistry.resolve())
-            template.trait_profile = Some(trait_profile);
+        for (actor_id, template) in actor_data {
+            // ActorLoader has already resolved trait_profile and set it in template
             actor_oracle.add(actor_id, template);
         }
 

@@ -65,6 +65,10 @@ pub enum ActionError {
     #[error("Map not available")]
     MapNotAvailable,
 
+    /// Items oracle not available.
+    #[error("Items oracle not available")]
+    ItemsNotAvailable,
+
     /// Insufficient resources (lucidity, mana).
     #[error("Insufficient resources")]
     InsufficientResources,
@@ -102,7 +106,7 @@ impl GameError for ActionError {
             ActorDead | NotActorsTurn | ActorNotReady => ErrorSeverity::Recoverable,
             InvalidTarget | OutOfRange | OutOfBounds => ErrorSeverity::Validation,
             InvalidPosition | Blocked | Occupied => ErrorSeverity::Recoverable,
-            MapNotAvailable => ErrorSeverity::Fatal,
+            MapNotAvailable | ItemsNotAvailable => ErrorSeverity::Fatal,
             InsufficientResources | OnCooldown | ActionNotAvailable => ErrorSeverity::Recoverable,
             RequirementsNotMet(_) => ErrorSeverity::Validation,
             EffectFailed(_) | FormulaEvaluationFailed(_) => ErrorSeverity::Internal,
@@ -126,6 +130,7 @@ impl GameError for ActionError {
             Blocked => "ACTION_BLOCKED",
             Occupied => "ACTION_OCCUPIED",
             MapNotAvailable => "ACTION_MAP_NOT_AVAILABLE",
+            ItemsNotAvailable => "ACTION_ITEMS_NOT_AVAILABLE",
             InsufficientResources => "ACTION_INSUFFICIENT_RESOURCES",
             OnCooldown => "ACTION_ON_COOLDOWN",
             ActionNotAvailable => "ACTION_NOT_AVAILABLE",

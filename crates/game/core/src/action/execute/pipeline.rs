@@ -146,7 +146,7 @@ fn resolve_targets(
         TargetingMode::SelfOnly => Ok(vec![action.actor]),
 
         TargetingMode::SingleTarget { .. } => {
-            if let ActionInput::Entity(target) = action.input {
+            if let ActionInput::Target(target) = action.input {
                 Ok(vec![target])
             } else {
                 Err(ActionError::InvalidTarget)

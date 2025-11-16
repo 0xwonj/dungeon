@@ -112,15 +112,25 @@ where
                 if *require_entity {
                     // Must have an entity at cursor position
                     if let Some(entity_id) = self.app_state.highlighted_entity {
-                        // Verify entity is not the player and is alive
-                        let is_valid = self.view_model.actors.iter().any(|actor| {
+                        // Verify entity exists in the world (check all entity types)
+                        let is_actor = self.view_model.actors.iter().any(|actor| {
                             actor.id == entity_id
                                 && actor.id != EntityId::PLAYER
                                 && actor.stats.resource_current.hp > 0
                         });
+                        let is_item = self
+                            .view_model
+                            .items
+                            .iter()
+                            .any(|item| item.id == entity_id);
+                        let is_prop = self
+                            .view_model
+                            .props
+                            .iter()
+                            .any(|prop| prop.id == entity_id);
 
-                        if is_valid {
-                            Some(ActionInput::Entity(entity_id))
+                        if is_actor || is_item || is_prop {
+                            Some(ActionInput::Target(entity_id))
                         } else {
                             // Invalid entity
                             self.consumer.message_log_mut().push_text(format!(
@@ -186,7 +196,7 @@ where
                 let action = CharacterAction::new(
                     EntityId::PLAYER,
                     action_kind,
-                    ActionInput::Entity(EntityId::PLAYER),
+                    ActionInput::Target(EntityId::PLAYER),
                 );
                 self.tx_action.send(Action::Character(action)).await?;
             }

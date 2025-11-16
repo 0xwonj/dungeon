@@ -167,7 +167,7 @@ impl GameState {
     ///
     /// # Arguments
     ///
-    /// * `template` - Actor template defining stats, equipment, abilities
+    /// * `template` - Actor template with resolved trait_profile
     /// * `position` - Starting position on the map
     ///
     /// # Returns
@@ -208,7 +208,7 @@ impl GameState {
     ///
     /// # Arguments
     ///
-    /// * `template` - Actor template defining stats, equipment, abilities
+    /// * `template` - Actor template with resolved trait_profile
     /// * `position` - Starting position on the map
     ///
     /// # Returns

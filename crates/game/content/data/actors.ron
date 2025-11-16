@@ -1,9 +1,10 @@
 // Actor catalog - both players and NPCs
-// Format: Vec<(String, ActorTemplate, TraitProfileSpec)>
+// Format: Vec<(String, ActorTemplate)>
 //
-// Trait Profile Resolution:
-// - trait_profile: None => Resolved from TraitProfileSpec (species/archetype/faction/temperament)
-// - trait_profile: Some(...) => Explicitly specified (overrides TraitProfileSpec)
+// Trait Resolution by ActorLoader:
+// - species/faction: Enum values (Human, Goblin, etc. / Player, Hostile, etc.)
+// - archetype/temperament: String references to trait layer catalogs
+// - ActorLoader combines all four to build the final TraitProfile
 
 [
     // Player character
@@ -27,18 +28,16 @@
             status_effects: StatusEffects(effects: []),
             actions: [
                 ActionAbility(kind: Move, enabled: true, cooldown_until: 0),
+                ActionAbility(kind: PickupItem, enabled: true, cooldown_until: 0),
                 ActionAbility(kind: MeleeAttack, enabled: true, cooldown_until: 0),
                 ActionAbility(kind: Wait, enabled: true, cooldown_until: 0),
             ],
             passives: [],
             inventory: InventoryState(items: []),
             provider_kind: Interactive(CliInput),
-            trait_profile: None, // Resolved from TraitProfileSpec below
-        ),
-        (
-            species: "human",
+            species: Human,
+            faction: Player,
             archetype: "none",
-            faction: "player",
             temperament: "neutral",
         ),
     ),
@@ -72,12 +71,9 @@
             ],
             inventory: InventoryState(items: []),
             provider_kind: Ai(Utility),
-            trait_profile: None, // Resolved from TraitProfileSpec below
-        ),
-        (
-            species: "goblin",
+            species: Goblin,
+            faction: GoblinClan,
             archetype: "scout",
-            faction: "goblin_clan",
             temperament: "cowardly",
         ),
     ),
@@ -109,12 +105,9 @@
             passives: [],
             inventory: InventoryState(items: []),
             provider_kind: Ai(Utility),
-            trait_profile: None, // Resolved from TraitProfileSpec below
-        ),
-        (
-            species: "orc",
+            species: Orc,
+            faction: OrcHorde,
             archetype: "warrior",
-            faction: "orc_horde",
             temperament: "aggressive",
         ),
     ),
@@ -146,12 +139,9 @@
             passives: [],
             inventory: InventoryState(items: []),
             provider_kind: Ai(Utility),
-            trait_profile: None, // Resolved from TraitProfileSpec below
-        ),
-        (
-            species: "boss",
+            species: Boss,
+            faction: Hostile,
             archetype: "leader",
-            faction: "hostile",
             temperament: "fearless",
         ),
     ),
@@ -185,12 +175,9 @@
             ],
             inventory: InventoryState(items: []),
             provider_kind: Ai(Utility),
-            trait_profile: None, // Resolved from TraitProfileSpec below
-        ),
-        (
-            species: "skeleton",
+            species: Skeleton,
+            faction: UndeadLegion,
             archetype: "warrior",
-            faction: "undead_legion",
             temperament: "fearless",
         ),
     ),
@@ -222,12 +209,9 @@
             passives: [],
             inventory: InventoryState(items: []),
             provider_kind: Ai(Utility),
-            trait_profile: None, // Resolved from TraitProfileSpec below
-        ),
-        (
-            species: "human",
+            species: Human,
+            faction: Friendly,
             archetype: "archer",
-            faction: "friendly",
             temperament: "cautious",
         ),
     ),

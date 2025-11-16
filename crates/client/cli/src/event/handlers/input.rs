@@ -157,6 +157,11 @@ where
                 self.render(terminal)?;
                 Ok(false)
             }
+            KeyAction::PickupItem => {
+                self.handle_pickup_item().await?;
+                self.render(terminal)?;
+                Ok(false)
+            }
             KeyAction::None => Ok(false),
         }
     }
@@ -186,7 +191,7 @@ where
             CharacterAction::new(
                 EntityId::PLAYER,
                 ActionKind::MeleeAttack,
-                ActionInput::Entity(enemy.id),
+                ActionInput::Target(enemy.id),
             )
         } else {
             // No enemy: Just move
@@ -198,6 +203,40 @@ where
         };
 
         self.tx_action.send(Action::Character(action)).await?;
+        Ok(())
+    }
+
+    /// Handle picking up an item at the player's position.
+    pub(in crate::event) async fn handle_pickup_item(&mut self) -> Result<()> {
+        use game_core::{ActionInput, ActionKind, CharacterAction};
+
+        let Some(player_pos) = self.view_model.player.position else {
+            return Ok(());
+        };
+
+        // Find item at player's position
+        let item_at_pos = self
+            .view_model
+            .items
+            .iter()
+            .find(|item| item.position == player_pos);
+
+        if let Some(item) = item_at_pos {
+            // Create PickupItem action with Target input (item entity ID)
+            let action = CharacterAction::new(
+                EntityId::PLAYER,
+                ActionKind::PickupItem,
+                ActionInput::Target(item.id),
+            );
+
+            self.tx_action.send(Action::Character(action)).await?;
+        } else {
+            // No item at player's position - optionally show a message
+            self.consumer
+                .message_log_mut()
+                .push_text("No item here to pick up.".to_string());
+        }
+
         Ok(())
     }
 }

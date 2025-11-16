@@ -63,7 +63,7 @@ impl ActionCandidateGenerator {
                     let targets = Self::find_valid_targets(ctx.entity, *range, *requires_los, ctx);
 
                     for target in targets {
-                        candidates.push((kind, ActionInput::Entity(target)));
+                        candidates.push((kind, ActionInput::Target(target)));
                     }
 
                     // If no valid targets found, still generate a candidate

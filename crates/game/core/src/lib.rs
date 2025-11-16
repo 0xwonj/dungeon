@@ -13,12 +13,14 @@ pub mod provider;
 pub mod state;
 pub mod stats;
 pub mod traits;
+#[cfg(feature = "serde")]
+pub use action::compute_actions_root;
 pub use action::{
     Action, ActionEffect, ActionError, ActionInput, ActionKind, ActionProfile, ActionResult,
     ActionTag, ActionTransition, ActivationAction, ActivationError, CardinalDirection,
     CharacterAction, DamageType, DeactivateAction, EffectContext, EffectKind, ExecutionPhase,
     Formula, PrepareTurnAction, RemoveFromWorldAction, RemoveFromWorldError, ResourceCost,
-    SystemActionKind, TargetingMode, TurnError, compute_actions_root, get_available_actions,
+    RestoreResourceEffect, SystemActionKind, TargetingMode, TurnError, get_available_actions,
 };
 pub use config::GameConfig;
 pub use engine::{
@@ -26,12 +28,11 @@ pub use engine::{
 };
 pub use env::{
     ActionOracle, ActionSnapshot, ActorOracle, ActorTemplate, ActorTemplateBuilder, ActorsSnapshot,
-    ArmorData, ArmorKind, AttackType, ConfigOracle, ConfigSnapshot, ConsumableData,
-    ConsumableEffect, Env, GameEnv, ItemDefinition, ItemKind, ItemOracle, ItemsSnapshot,
-    MapDimensions, MapOracle, MapSnapshot, OracleError, OracleSnapshot, PcgRng, RngOracle,
-    SnapshotActionOracle, SnapshotActorOracle, SnapshotConfigOracle, SnapshotItemOracle,
-    SnapshotMapOracle, SnapshotOracleBundle, StaticTile, TerrainKind, WeaponData, WeaponKind,
-    compute_seed,
+    ArmorData, ArmorKind, AttackType, ConfigOracle, ConfigSnapshot, ConsumableData, Env, GameEnv,
+    ItemDefinition, ItemKind, ItemOracle, ItemsSnapshot, MapDimensions, MapOracle, MapSnapshot,
+    OracleError, OracleSnapshot, PcgRng, RngOracle, SnapshotActionOracle, SnapshotActorOracle,
+    SnapshotConfigOracle, SnapshotItemOracle, SnapshotMapOracle, SnapshotOracleBundle, StaticTile,
+    TerrainKind, WeaponData, WeaponKind, compute_seed,
 };
 pub use error::{ErrorContext, ErrorSeverity, GameError, NeverError};
 pub use provider::{AiKind, InteractiveKind, ProviderKind};

@@ -3,13 +3,10 @@
 //! This module provides functionality to compute a cryptographic commitment
 //! to a sequence of actions, used for ZK proof generation and verification.
 
+#[cfg(feature = "serde")]
 use super::Action;
 
-/// Computes actions root for ZK proofs - simulates Walrus blob_id.
-///
-/// This function creates a cryptographic commitment to a sequence of actions.
-/// In production, this would be replaced by the actual Walrus blob_id where
-/// the action sequence is stored on decentralized storage.
+/// Computes actions root for ZK proofs
 ///
 /// # Arguments
 ///
@@ -18,30 +15,6 @@ use super::Action;
 /// # Returns
 ///
 /// A 32-byte SHA-256 hash of the serialized actions
-///
-/// # Design
-///
-/// - Uses bincode for deterministic serialization
-/// - SHA-256 provides cryptographic commitment to the entire sequence
-/// - Hardware-accelerated in RISC0 zkVM (when using RISC0's sha2 fork)
-/// - Order matters: Hash is computed sequentially over actions
-///
-/// # Usage
-///
-/// This function is designed to work in both host and guest (zkVM) environments:
-///
-/// ```ignore
-/// use game_core::action::compute_actions_root;
-///
-/// // Host side (runtime)
-/// let actions = vec![action1, action2, action3];
-/// let actions_root = compute_actions_root(&actions);
-///
-/// // Guest side (zkVM)
-/// let actions: Vec<Action> = env::read();
-/// let actions_root = compute_actions_root(&actions);
-/// env::commit(&actions_root);
-/// ```
 ///
 /// # Production Migration
 ///

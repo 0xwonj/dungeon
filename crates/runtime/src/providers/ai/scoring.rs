@@ -25,7 +25,7 @@ pub fn score_for_attack(
     if profile.tags.contains(&game_core::ActionTag::Attack) {
         // Check if input targets the right entity/direction
         match input {
-            ActionInput::Entity(id) if *id == target => 100, // Perfect match
+            ActionInput::Target(id) if *id == target => 100, // Perfect match
             ActionInput::Direction(dir) => {
                 // Check if direction points towards target
                 if let Some(my_pos) = ctx.my_position() {
@@ -214,7 +214,7 @@ pub fn score_for_protect_ally(
     // // Healing the ally
     // if kind == ActionKind::Heal {
     //     match input {
-    //         ActionInput::Entity(id) if *id == ally => 100,
+    //         ActionInput::Target(id) if *id == ally => 100,
     //         _ => 50,
     //     }
     // }

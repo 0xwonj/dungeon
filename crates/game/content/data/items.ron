@@ -7,7 +7,17 @@ ItemCatalog(
         ItemDefinition(
             handle: ItemHandle(1),
             kind: Consumable(ConsumableData(
-                effect: HealHealth(50),
+                effects: [
+                    ActionEffect(
+                        kind: RestoreResource(RestoreResourceEffect(
+                            resource: Hp,
+                            formula: Constant(50),
+                            overfill_allowed: false,
+                        )),
+                        phase: Primary,
+                        priority: 0,
+                    ),
+                ],
                 use_cost: 100,
             )),
             max_stack: 99,
@@ -17,7 +27,17 @@ ItemCatalog(
         ItemDefinition(
             handle: ItemHandle(2),
             kind: Consumable(ConsumableData(
-                effect: RestoreMana(30),
+                effects: [
+                    ActionEffect(
+                        kind: RestoreResource(RestoreResourceEffect(
+                            resource: Mp,
+                            formula: Constant(30),
+                            overfill_allowed: false,
+                        )),
+                        phase: Primary,
+                        priority: 0,
+                    ),
+                ],
                 use_cost: 100,
             )),
             max_stack: 99,

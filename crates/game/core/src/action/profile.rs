@@ -27,9 +27,12 @@ pub enum ActionKind {
     /// Wait and do nothing.
     Wait,
 
-    // /// Use an item from inventory.
-    // UseItem,
-    //
+    /// Pick up an item from the ground.
+    PickupItem,
+
+    /// Use an item from inventory.
+    UseItem,
+
     // /// Interact with props (doors, levers, etc.).
     // Interact,
 
@@ -114,6 +117,8 @@ impl ActionKind {
             // Basic Actions
             ActionKind::Move => "move",
             ActionKind::Wait => "wait",
+            ActionKind::PickupItem => "pickup_item",
+            ActionKind::UseItem => "use_item",
 
             // Combat - Melee
             ActionKind::MeleeAttack => "melee_attack",
@@ -128,6 +133,8 @@ impl ActionKind {
             // Basic Actions
             ActionKind::Move,
             ActionKind::Wait,
+            ActionKind::PickupItem,
+            ActionKind::UseItem,
             // Combat - Melee
             ActionKind::MeleeAttack,
         ]

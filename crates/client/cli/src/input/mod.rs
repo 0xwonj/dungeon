@@ -37,6 +37,8 @@ pub enum KeyAction {
     SelectAbilityForSlot(usize),
     /// Confirm target selection in targeting mode.
     ConfirmTarget,
+    /// Pick up item at player's position.
+    PickupItem,
     /// No meaningful command was produced.
     None,
 }
@@ -109,6 +111,7 @@ impl InputHandler {
             // Commands
             KeyCode::Char('a') => KeyAction::OpenAbilityMenu,
             KeyCode::Char('x') => KeyAction::ToggleExamine,
+            KeyCode::Char('g') => KeyAction::PickupItem,
             KeyCode::Char(' ') | KeyCode::Char('.') => self.wait(),
             KeyCode::Char('q') => KeyAction::Quit,
 

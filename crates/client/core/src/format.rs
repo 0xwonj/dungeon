@@ -23,10 +23,12 @@ pub fn format_action_message(action: &Action, actor_name: &str) -> String {
                 ActionKind::MeleeAttack => "attacks",
                 ActionKind::Move => "moves",
                 ActionKind::Wait => "waits",
+                ActionKind::PickupItem => "picks up",
+                ActionKind::UseItem => "uses",
             };
 
             match &char_action.input {
-                ActionInput::Entity(target_id) => {
+                ActionInput::Target(target_id) => {
                     let target_name = entity_name(*target_id);
                     format!("{} {} {}", actor_name, kind_verb, target_name)
                 }
@@ -40,7 +42,7 @@ pub fn format_action_message(action: &Action, actor_name: &str) -> String {
                 ActionInput::None => {
                     format!("{} {}", actor_name, kind_verb)
                 }
-                ActionInput::Entities(targets) => {
+                ActionInput::Targets(targets) => {
                     if targets.is_empty() {
                         format!("{} {}", actor_name, kind_verb)
                     } else if targets.len() == 1 {
@@ -49,6 +51,9 @@ pub fn format_action_message(action: &Action, actor_name: &str) -> String {
                     } else {
                         format!("{} {} {} targets", actor_name, kind_verb, targets.len())
                     }
+                }
+                ActionInput::InventorySlot(slot) => {
+                    format!("{} {} item from slot {}", actor_name, kind_verb, slot)
                 }
             }
         }
@@ -143,6 +148,18 @@ where
                     let summoned_name = entity_name(*entity_id);
                     Some(format!("{} summons {}", target_name, summoned_name))
                 }
+
+                AppliedValue::ItemAcquired {
+                    handle, quantity, ..
+                } => Some(format!(
+                    "{} acquires {} x{} (handle: {:?})",
+                    target_name, "item", quantity, handle
+                )),
+
+                AppliedValue::ItemUsed { slot, handle } => Some(format!(
+                    "{} uses item from slot {} (handle: {:?})",
+                    target_name, slot, handle
+                )),
 
                 AppliedValue::None => None, // No message for empty effects
             }

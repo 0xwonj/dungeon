@@ -1,13 +1,14 @@
 //! Actor catalog loader.
 //!
-//! Loads actors (both players and NPCs) from RON files with trait profile specs.
+//! Loads actors (both players and NPCs) from RON files.
+//! Trait profiles are resolved from species/faction/archetype/temperament fields.
 
 use std::path::Path;
 
 use game_core::ActorTemplate;
 
 use crate::loaders::{LoadResult, read_file};
-use crate::traits::{TraitProfile, TraitProfileSpec, TraitRegistry};
+use crate::traits::TraitRegistry;
 
 /// Loader for actor catalog from RON files.
 pub struct ActorLoader;
@@ -15,12 +16,19 @@ pub struct ActorLoader;
 impl ActorLoader {
     /// Load actor catalog from a RON file with trait registry.
     ///
-    /// RON format: Vec<(String, ActorTemplate, TraitProfileSpec)>
+    /// RON format: Vec<(String, ActorTemplate)>
     ///
     /// # Trait Profile Resolution
     ///
-    /// - If `ActorTemplate.trait_profile` is `None`: Resolved from TraitProfileSpec
-    /// - If `ActorTemplate.trait_profile` is `Some(...)`: Used directly (TraitProfileSpec ignored)
+    /// Each ActorTemplate contains:
+    /// - `species`: Species enum (e.g., Human, Goblin)
+    /// - `faction`: Faction enum (e.g., Player, Hostile)
+    /// - `archetype`: String reference to archetype trait layer
+    /// - `temperament`: String reference to temperament trait layer
+    /// - `trait_profile`: Optional explicit trait profile
+    ///
+    /// If `trait_profile` is `None`, the loader resolves it from the four components.
+    /// After loading, all templates have `trait_profile` set to `Some(...)`.
     ///
     /// # Arguments
     ///
@@ -29,71 +37,41 @@ impl ActorLoader {
     ///
     /// # Returns
     ///
-    /// Returns a Vec of (actor_id, ActorTemplate, TraitProfile).
+    /// Returns a Vec of (actor_id, ActorTemplate) with trait_profile resolved.
     pub fn load(
         path: &Path,
         trait_registry: &TraitRegistry,
-    ) -> LoadResult<Vec<(String, ActorTemplate, TraitProfile)>> {
+    ) -> LoadResult<Vec<(String, ActorTemplate)>> {
         let content = read_file(path)?;
 
-        // Deserialize as Vec<(String, ActorTemplate, TraitProfileSpec)>
-        let raw_data: Vec<(String, ActorTemplate, TraitProfileSpec)> = ron::from_str(&content)
+        // Deserialize as Vec<(String, ActorTemplate)>
+        let raw_data: Vec<(String, ActorTemplate)> = ron::from_str(&content)
             .map_err(|e| anyhow::anyhow!("Failed to parse actor catalog RON: {}", e))?;
 
-        // Resolve TraitProfileSpec to TraitProfile, Species, and Faction
+        // Resolve trait profile if not explicitly specified
         let mut actors = Vec::new();
-        for (actor_id, mut template, trait_spec) in raw_data {
-            // Resolve trait profile
-            let final_trait_profile = if let Some(explicit_profile) = template.trait_profile {
-                // Case 1: Explicitly specified in template - use it directly
-                explicit_profile
-            } else {
-                // Case 2: Not specified (None) - resolve from TraitProfileSpec
-                trait_registry.resolve(&trait_spec).map_err(|e| {
-                    anyhow::anyhow!(
-                        "Failed to resolve trait profile for actor '{}': {}",
-                        actor_id,
-                        e
+        for (actor_id, mut template) in raw_data {
+            if template.trait_profile.is_none() {
+                // Build trait profile from the four components
+                let trait_profile = trait_registry
+                    .resolve_from_components(
+                        template.species,
+                        template.faction,
+                        &template.archetype,
+                        &template.temperament,
                     )
-                })?
-            };
+                    .map_err(|e| {
+                        anyhow::anyhow!(
+                            "Failed to resolve trait profile for actor '{}': {}",
+                            actor_id,
+                            e
+                        )
+                    })?;
 
-            // Resolve species
-            let final_species = if let Some(explicit_species) = template.species {
-                // Case 1: Explicitly specified in template - use it directly
-                explicit_species
-            } else {
-                // Case 2: Not specified (None) - resolve from TraitProfileSpec.species string
-                trait_spec.species.parse().map_err(|_| {
-                    anyhow::anyhow!(
-                        "Failed to resolve species '{}' for actor '{}': unknown species",
-                        trait_spec.species,
-                        actor_id
-                    )
-                })?
-            };
+                template.trait_profile = Some(trait_profile);
+            }
 
-            // Resolve faction
-            let final_faction = if let Some(explicit_faction) = template.faction {
-                // Case 1: Explicitly specified in template - use it directly
-                explicit_faction
-            } else {
-                // Case 2: Not specified (None) - resolve from TraitProfileSpec.faction string
-                trait_spec.faction.parse().map_err(|_| {
-                    anyhow::anyhow!(
-                        "Failed to resolve faction '{}' for actor '{}': unknown faction",
-                        trait_spec.faction,
-                        actor_id
-                    )
-                })?
-            };
-
-            // Update template with resolved values
-            template.trait_profile = Some(final_trait_profile);
-            template.species = Some(final_species);
-            template.faction = Some(final_faction);
-
-            actors.push((actor_id, template, final_trait_profile));
+            actors.push((actor_id, template));
         }
 
         Ok(actors)

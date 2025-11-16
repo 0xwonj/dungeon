@@ -1,0 +1,45 @@
+// Item actions - actions for interacting with items
+//
+// - PickupItem: Pick up an item from the ground (requires ActionInput::Target with item entity ID)
+// - UseItem: Use a consumable item from inventory (requires ActionInput::InventorySlot)
+
+[
+    // Pick up item from ground
+    ActionProfile(
+        kind: PickupItem,
+        tags: [Utility],
+        targeting: SingleTarget(
+            range: 0,  // Must be at same position
+            requires_los: false,
+        ),
+        base_cost: 50,  // Faster than normal actions
+        resource_costs: [],
+        effects: [
+            ActionEffect(
+                kind: AcquireItem(AcquireItemEffect),
+                phase: Primary,
+                priority: 0,
+            ),
+        ],
+        requirements: [],
+        cooldown: None,
+    ),
+
+    // Use item from inventory
+    ActionProfile(
+        kind: UseItem,
+        tags: [Utility],
+        targeting: None,  // Inventory slot is specified in ActionInput::InventorySlot
+        base_cost: 100,
+        resource_costs: [],
+        effects: [
+            ActionEffect(
+                kind: UseConsumable(UseConsumableEffect),
+                phase: Primary,
+                priority: 0,
+            ),
+        ],
+        requirements: [],
+        cooldown: None,
+    ),
+]

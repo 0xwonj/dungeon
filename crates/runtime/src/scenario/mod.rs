@@ -227,7 +227,7 @@ impl Scenario {
                 EntityKind::Player => {
                     // Player always gets EntityId::PLAYER (0)
                     tracing::info!("Processing Player placement at {:?}", placement.position);
-                    let template = oracles.actors().template("player").ok_or_else(|| {
+                    let template = oracles.actors.template("player").ok_or_else(|| {
                         RuntimeError::InvalidConfig(
                             "Player template 'player' not found".to_string(),
                         )
@@ -245,7 +245,7 @@ impl Scenario {
                 }
 
                 EntityKind::Actor { def_id } => {
-                    let template = oracles.actors().template(def_id).ok_or_else(|| {
+                    let template = oracles.actors.template(def_id).ok_or_else(|| {
                         RuntimeError::InvalidConfig(format!(
                             "Actor template '{}' not found",
                             def_id

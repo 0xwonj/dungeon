@@ -43,12 +43,28 @@ pub fn render<T: PresentationMapper<Style = Style>>(
 
     // Determine tile position to display
     let tile_position = if let Some(entity_id) = ctx.highlighted_entity {
-        // Show tile info for highlighted entity's position
+        // Show tile info for highlighted entity's position (try all entity types)
         view_model
             .actors
             .iter()
             .find(|a| a.id == entity_id)
             .and_then(|a| a.position)
+            .or_else(|| {
+                // Not an actor - try item
+                view_model
+                    .items
+                    .iter()
+                    .find(|i| i.id == entity_id)
+                    .map(|i| i.position)
+            })
+            .or_else(|| {
+                // Not an item - try prop
+                view_model
+                    .props
+                    .iter()
+                    .find(|p| p.id == entity_id)
+                    .map(|p| p.position)
+            })
             .or(ctx.cursor_position)
             .or(view_model.player.position)
             .unwrap_or_else(|| game_core::Position::new(0, 0))

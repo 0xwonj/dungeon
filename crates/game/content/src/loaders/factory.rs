@@ -67,13 +67,7 @@ impl ContentFactory {
     pub fn load_actors(
         &self,
         trait_registry: &TraitRegistry,
-    ) -> LoadResult<
-        Vec<(
-            String,
-            game_core::ActorTemplate,
-            crate::traits::TraitProfile,
-        )>,
-    > {
+    ) -> LoadResult<Vec<(String, game_core::ActorTemplate)>> {
         let path = self.data_dir.join("actors.ron");
         ActorLoader::load(&path, trait_registry)
     }

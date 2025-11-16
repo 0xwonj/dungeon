@@ -172,7 +172,7 @@ impl MapSnapshot {
 }
 
 /// Snapshot of items oracle data
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ItemsSnapshot {
     pub items: Vec<(ItemHandle, ItemDefinition)>,

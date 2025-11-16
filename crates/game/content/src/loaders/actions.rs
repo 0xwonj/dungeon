@@ -43,6 +43,14 @@ impl ActionProfileRegistry {
             profiles.insert(profile.kind, profile);
         }
 
+        // Load item actions (PickupItem, UseItem, etc.)
+        let items_ron = include_str!("../../data/actions/items.ron");
+        let items_profiles: Vec<ActionProfile> =
+            ron::from_str(items_ron).map_err(|e| format!("Failed to parse items.ron: {}", e))?;
+        for profile in items_profiles {
+            profiles.insert(profile.kind, profile);
+        }
+
         Ok(Self { profiles })
     }
 

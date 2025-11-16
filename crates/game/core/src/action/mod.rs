@@ -36,11 +36,13 @@ pub mod types;
 // Re-export commonly used types
 pub use effect::{
     ActionEffect, Condition, Displacement, EffectKind, ExecutionPhase, InteractionType,
+    RestoreResourceEffect,
 };
 pub use error::{ActionError, ActivationError, DeactivateError, RemoveFromWorldError, TurnError};
 pub use execute::{EffectContext, apply, post_validate, pre_validate};
 pub use formula::Formula;
 pub use profile::{ActionKind, ActionProfile, ActionTag, Requirement, ResourceCost};
+#[cfg(feature = "serde")]
 pub use root::compute_actions_root;
 pub use system::{ActivationAction, DeactivateAction, PrepareTurnAction, RemoveFromWorldAction};
 pub use targeting::TargetingMode;

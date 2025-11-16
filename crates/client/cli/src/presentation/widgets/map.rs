@@ -30,12 +30,28 @@ pub fn render<T: PresentationMapper<Style = Style>>(
 ) {
     // Get highlighted position from highlighted entity or cursor
     let highlighted_pos = if let Some(entity_id) = app_state.highlighted_entity {
-        // Find the position of the highlighted entity
+        // Find the position of the highlighted entity (check all entity types)
         view_model
             .actors
             .iter()
             .find(|a| a.id == entity_id)
             .and_then(|a| a.position)
+            .or_else(|| {
+                // Not an actor - try item
+                view_model
+                    .items
+                    .iter()
+                    .find(|i| i.id == entity_id)
+                    .map(|i| i.position)
+            })
+            .or_else(|| {
+                // Not an item - try prop
+                view_model
+                    .props
+                    .iter()
+                    .find(|p| p.id == entity_id)
+                    .map(|p| p.position)
+            })
     } else {
         // Fallback: cursor position in manual mode
         app_state.examine_position()

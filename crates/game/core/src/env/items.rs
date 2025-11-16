@@ -103,7 +103,7 @@ pub enum ArmorKind {
 /// - Weapons/Armor: max_stack=1 (cannot stack)
 /// - Consumables: max_stack=99 (stackable)
 /// - Keys: max_stack=1 (unique keys don't stack)
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ItemDefinition {
     pub handle: ItemHandle,
@@ -122,7 +122,7 @@ impl ItemDefinition {
 }
 
 /// Item type with type-specific data.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ItemKind {
     /// Equippable weapon.
@@ -161,26 +161,14 @@ pub struct ArmorData {
 }
 
 /// Consumable-specific data.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// Consumables use the same ActionEffect system as actions.
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ConsumableData {
-    pub effect: ConsumableEffect,
+    /// Effects applied when this consumable is used.
+    pub effects: Vec<crate::action::ActionEffect>,
+
+    /// Action cost to use this consumable (0 = free action).
     pub use_cost: u32,
-}
-
-/// Consumable effects.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ConsumableEffect {
-    /// Restore health.
-    HealHealth(u16),
-
-    /// Restore mana.
-    RestoreMana(u16),
-
-    /// Teleport to specific location.
-    Teleport,
-
-    /// Custom effect.
-    Custom(u16),
 }

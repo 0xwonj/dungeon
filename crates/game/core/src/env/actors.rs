@@ -24,17 +24,14 @@ use crate::traits::{Faction, Species, TraitProfile};
 /// actors with proper initialization. Resources are derived from core_stats
 /// at spawn time.
 ///
-/// # Trait Profile Resolution
+/// # Trait Resolution
 ///
-/// - `trait_profile: None` - Trait profile will be resolved from TraitProfileSpec during loading
-/// - `trait_profile: Some(...)` - Explicitly specified trait profile (overrides TraitProfileSpec)
-///
-/// # Species and Faction
-///
-/// - `species: None` - Species will be resolved from TraitProfileSpec during loading
-/// - `species: Some(...)` - Explicitly specified species
-/// - `faction: None` - Faction will be resolved from TraitProfileSpec during loading
-/// - `faction: Some(...)` - Explicitly specified faction
+/// - `species` and `faction` are always explicitly specified (enums)
+/// - `archetype` and `temperament` are string references to trait layer catalogs
+/// - `trait_profile`:
+///   - `None`: ActorLoader resolves from species/faction/archetype/temperament
+///   - `Some(...)`: Explicitly specified (overrides resolution)
+/// - After loading, `trait_profile` is always `Some(...)`
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ActorTemplate {
@@ -46,29 +43,27 @@ pub struct ActorTemplate {
     pub inventory: InventoryState,
     pub provider_kind: ProviderKind,
 
-    /// Behavioral trait profile for AI decision making.
-    ///
-    /// - `None`: Profile will be resolved from TraitProfileSpec by ActorLoader
-    /// - `Some(profile)`: Explicitly specified profile (overrides TraitProfileSpec)
-    ///
-    /// When spawned into ActorState, this must be `Some(...)`.
-    pub trait_profile: Option<TraitProfile>,
-
     /// Species (biological/existential identity).
-    ///
-    /// - `None`: Species will be resolved from TraitProfileSpec by ActorLoader
-    /// - `Some(species)`: Explicitly specified species
-    ///
-    /// When spawned into ActorState, this must be `Some(...)`.
-    pub species: Option<Species>,
+    pub species: Species,
 
     /// Faction (relationship/allegiance).
+    pub faction: Faction,
+
+    /// Archetype trait layer reference (e.g., "warrior", "scout", "mage").
+    /// Resolved by ActorLoader from archetype trait catalog.
+    pub archetype: String,
+
+    /// Temperament trait layer reference (e.g., "aggressive", "cowardly", "cautious").
+    /// Resolved by ActorLoader from temperament trait catalog.
+    pub temperament: String,
+
+    /// Behavioral trait profile for AI decision making.
     ///
-    /// - `None`: Faction will be resolved from TraitProfileSpec by ActorLoader
-    /// - `Some(faction)`: Explicitly specified faction
+    /// - `None`: Will be resolved by ActorLoader from species/faction/archetype/temperament
+    /// - `Some(...)`: Explicitly specified (overrides automatic resolution)
     ///
-    /// When spawned into ActorState, this must be `Some(...)`.
-    pub faction: Option<Faction>,
+    /// After loading via ActorLoader, this is always `Some(...)`.
+    pub trait_profile: Option<TraitProfile>,
 }
 
 impl ActorTemplate {
@@ -77,10 +72,15 @@ impl ActorTemplate {
     /// Resources are automatically derived from core_stats.
     /// Bonuses are computed from equipment, status effects, and passives.
     ///
+    /// # Arguments
+    ///
+    /// * `id` - The entity ID for the new actor
+    /// * `position` - The spawn position
+    ///
     /// # Panics
     ///
-    /// Panics if `trait_profile` is `None`. Templates in the oracle must have
-    /// resolved trait profiles before spawning.
+    /// Panics if `trait_profile` is `None`. Templates must have resolved trait profiles
+    /// before spawning (typically done by ActorLoader).
     pub fn to_actor(&self, id: EntityId, position: Position) -> ActorState {
         // Compute bonuses from equipment, status effects, actions, and passives
         let bonuses = compute_actor_bonuses();
@@ -108,16 +108,10 @@ impl ActorTemplate {
             provider_kind: self.provider_kind,
             trait_profile: self.trait_profile.expect(
                 "ActorTemplate.trait_profile must be Some(...) when spawning. \
-                 This should have been resolved by ActorLoader from TraitProfileSpec.",
+                 This should have been resolved by ActorLoader.",
             ),
-            species: self.species.expect(
-                "ActorTemplate.species must be Some(...) when spawning. \
-                 This should have been resolved by ActorLoader from TraitProfileSpec.",
-            ),
-            faction: self.faction.expect(
-                "ActorTemplate.faction must be Some(...) when spawning. \
-                 This should have been resolved by ActorLoader from TraitProfileSpec.",
-            ),
+            species: self.species,
+            faction: self.faction,
             ready_at: None,
         }
     }
@@ -143,9 +137,11 @@ pub struct ActorTemplateBuilder {
     actions: Option<ArrayVec<ActionAbility, { GameConfig::MAX_ACTIONS }>>,
     passives: Option<ArrayVec<PassiveAbility, { GameConfig::MAX_PASSIVES }>>,
     provider_kind: Option<ProviderKind>,
-    trait_profile: Option<TraitProfile>,
     species: Option<Species>,
     faction: Option<Faction>,
+    archetype: Option<String>,
+    temperament: Option<String>,
+    trait_profile: Option<TraitProfile>,
 }
 
 impl ActorTemplateBuilder {
@@ -197,12 +193,6 @@ impl ActorTemplateBuilder {
         self
     }
 
-    /// Set trait profile
-    pub fn trait_profile(mut self, trait_profile: TraitProfile) -> Self {
-        self.trait_profile = Some(trait_profile);
-        self
-    }
-
     /// Set species
     pub fn species(mut self, species: Species) -> Self {
         self.species = Some(species);
@@ -212,6 +202,24 @@ impl ActorTemplateBuilder {
     /// Set faction
     pub fn faction(mut self, faction: Faction) -> Self {
         self.faction = Some(faction);
+        self
+    }
+
+    /// Set archetype
+    pub fn archetype(mut self, archetype: impl Into<String>) -> Self {
+        self.archetype = Some(archetype.into());
+        self
+    }
+
+    /// Set temperament
+    pub fn temperament(mut self, temperament: impl Into<String>) -> Self {
+        self.temperament = Some(temperament.into());
+        self
+    }
+
+    /// Set trait profile
+    pub fn trait_profile(mut self, trait_profile: TraitProfile) -> Self {
+        self.trait_profile = Some(trait_profile);
         self
     }
 
@@ -226,10 +234,12 @@ impl ActorTemplateBuilder {
             actions: self.actions.unwrap_or_default(),
             passives: self.passives.unwrap_or_default(),
             inventory: self.inventory.unwrap_or_default(),
-            provider_kind: self.provider_kind.unwrap_or(ProviderKind::Ai(AiKind::Wait)), // Default: Wait AI
-            trait_profile: self.trait_profile.map(Some).unwrap_or(None), // Default: None (will be resolved from TraitProfileSpec)
-            species: self.species.map(Some).unwrap_or(None), // Default: None (will be resolved from TraitProfileSpec)
-            faction: self.faction.map(Some).unwrap_or(None), // Default: None (will be resolved from TraitProfileSpec)
+            provider_kind: self.provider_kind.unwrap_or(ProviderKind::Ai(AiKind::Wait)),
+            species: self.species.unwrap_or_default(),
+            faction: self.faction.unwrap_or_default(),
+            archetype: self.archetype.unwrap_or_else(|| "none".to_string()),
+            temperament: self.temperament.unwrap_or_else(|| "neutral".to_string()),
+            trait_profile: self.trait_profile,
         }
     }
 }

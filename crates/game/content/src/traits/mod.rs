@@ -360,6 +360,74 @@ impl TraitRegistry {
             &self.weights,
         ))
     }
+
+    /// Resolves a trait profile from individual components.
+    ///
+    /// This method builds a TraitProfile by looking up the species and faction trait layers,
+    /// then combining them with archetype and temperament string references.
+    ///
+    /// # Arguments
+    ///
+    /// * `species` - Species enum to look up in species registry
+    /// * `faction` - Faction enum to look up in faction registry
+    /// * `archetype` - String reference to archetype layer
+    /// * `temperament` - String reference to temperament layer
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any of the referenced preset names are not found.
+    pub fn resolve_from_components(
+        &self,
+        species: Species,
+        faction: Faction,
+        archetype: &str,
+        temperament: &str,
+    ) -> Result<TraitProfile, String> {
+        // Convert Species enum to string key
+        let species_key = format!("{:?}", species).to_lowercase();
+        let species_layer = self
+            .species
+            .get(&species_key)
+            .ok_or_else(|| format!("Species preset '{}' not found", species_key))?;
+
+        // Convert Faction enum to string key and look up faction layer
+        let faction_key = match faction {
+            Faction::None => "none",
+            Faction::Player => "player",
+            Faction::Friendly => "friendly",
+            Faction::Neutral => "neutral",
+            Faction::Hostile => "hostile",
+            Faction::GoblinClan => "goblin_clan",
+            Faction::OrcHorde => "orc_horde",
+            Faction::UndeadLegion => "undead_legion",
+            Faction::Wildlife => "wildlife",
+        };
+
+        // Use an empty layer as fallback if faction is not registered
+        let empty_faction_layer = TraitLayer::zero();
+        let faction_layer = self
+            .factions
+            .get(faction_key)
+            .unwrap_or(&empty_faction_layer);
+
+        let archetype_layer = self
+            .archetypes
+            .get(archetype)
+            .ok_or_else(|| format!("Archetype preset '{}' not found", archetype))?;
+
+        let temperament_layer = self
+            .temperaments
+            .get(temperament)
+            .ok_or_else(|| format!("Temperament preset '{}' not found", temperament))?;
+
+        Ok(compose_trait_profile(
+            species_layer,
+            archetype_layer,
+            faction_layer,
+            temperament_layer,
+            &self.weights,
+        ))
+    }
 }
 
 impl Default for TraitRegistry {

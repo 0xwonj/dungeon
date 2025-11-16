@@ -178,7 +178,9 @@ impl EffectVisibility {
             }
             AppliedValue::ResourceChange { .. } => self.show_resource,
             AppliedValue::Summon { .. } => self.show_summon,
-            AppliedValue::None => false, // Never show empty effects
+            AppliedValue::ItemAcquired { .. } => true, // Show item acquisitions
+            AppliedValue::ItemUsed { .. } => true,     // Show item usage
+            AppliedValue::None => false,               // Never show empty effects
         }
     }
 }

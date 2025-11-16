@@ -79,18 +79,40 @@ where
     /// Cycle through entities at cursor position in Manual mode (Tab key).
     ///
     /// Direction: +1 for next, -1 for previous.
-    /// Only cycles through NPCs at the current cursor position.
+    /// Cycles through all entity types: NPCs, Items, and Props at the current cursor position.
     pub(in crate::event) fn cycle_entities_at_cursor(&mut self, direction: i32) {
         let Some(cursor_pos) = self.app_state.manual_cursor.as_ref().map(|c| c.position) else {
             return;
         };
 
-        // Collect all NPCs at cursor position
-        let entities_here: Vec<_> = self
-            .view_model
-            .npcs()
-            .filter(|npc| npc.position == Some(cursor_pos))
-            .collect();
+        // Collect all entities at cursor position (NPCs, Items, Props)
+        let mut entities_here: Vec<EntityId> = Vec::new();
+
+        // Add NPCs
+        entities_here.extend(
+            self.view_model
+                .npcs()
+                .filter(|npc| npc.position == Some(cursor_pos))
+                .map(|npc| npc.id),
+        );
+
+        // Add Items
+        entities_here.extend(
+            self.view_model
+                .items
+                .iter()
+                .filter(|item| item.position == cursor_pos)
+                .map(|item| item.id),
+        );
+
+        // Add Props
+        entities_here.extend(
+            self.view_model
+                .props
+                .iter()
+                .filter(|prop| prop.position == cursor_pos)
+                .map(|prop| prop.id),
+        );
 
         if entities_here.is_empty() {
             // No entities at cursor - clear highlight
@@ -102,7 +124,7 @@ where
         let current_idx = self
             .app_state
             .highlighted_entity
-            .and_then(|id| entities_here.iter().position(|npc| npc.id == id))
+            .and_then(|id| entities_here.iter().position(|&eid| eid == id))
             .unwrap_or(0);
 
         // Cycle with wrapping
@@ -110,23 +132,38 @@ where
             (current_idx as i32 + direction).rem_euclid(entities_here.len() as i32) as usize;
 
         self.app_state
-            .set_highlighted_entity(Some(entities_here[new_idx].id));
+            .set_highlighted_entity(Some(entities_here[new_idx]));
     }
 
     /// Update highlighted entity when cursor moves in Manual mode.
     ///
-    /// Highlights the first NPC at the new cursor position, or None if no entities.
+    /// Highlights the first entity at the new cursor position, prioritizing NPCs > Items > Props.
+    /// Returns None if no entities at cursor.
     pub(in crate::event) fn update_highlighted_at_cursor(&mut self) {
         let Some(cursor_pos) = self.app_state.manual_cursor.as_ref().map(|c| c.position) else {
             return;
         };
 
-        // Find first NPC at cursor position
+        // Priority: NPCs first, then Items, then Props
         let entity_at_cursor = self
             .view_model
             .npcs()
             .find(|npc| npc.position == Some(cursor_pos))
-            .map(|npc| npc.id);
+            .map(|npc| npc.id)
+            .or_else(|| {
+                self.view_model
+                    .items
+                    .iter()
+                    .find(|item| item.position == cursor_pos)
+                    .map(|item| item.id)
+            })
+            .or_else(|| {
+                self.view_model
+                    .props
+                    .iter()
+                    .find(|prop| prop.position == cursor_pos)
+                    .map(|prop| prop.id)
+            });
 
         self.app_state.set_highlighted_entity(entity_at_cursor);
     }
