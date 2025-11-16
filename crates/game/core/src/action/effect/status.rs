@@ -5,7 +5,7 @@ use crate::action::error::ActionError;
 use crate::action::execute::EffectContext;
 use crate::action::types::AppliedValue;
 use crate::state::Tick;
-use crate::state::types::status::StatusEffectKind;
+use crate::state::types::StatusEffectKind;
 
 /// Apply status effect to target.
 #[derive(Clone, Debug, PartialEq, Eq)]

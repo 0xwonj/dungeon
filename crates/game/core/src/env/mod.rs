@@ -17,7 +17,8 @@ pub use actors::{ActorOracle, ActorTemplate, ActorTemplateBuilder};
 pub use config::ConfigOracle;
 pub use error::OracleError;
 pub use items::{
-    ArmorData, ConsumableData, ConsumableEffect, ItemDefinition, ItemKind, ItemOracle, WeaponData,
+    ArmorData, ArmorKind, AttackType, ConsumableData, ConsumableEffect, ItemDefinition, ItemKind,
+    ItemOracle, WeaponData, WeaponKind,
 };
 pub use map::{MapDimensions, MapOracle, StaticTile, TerrainKind};
 pub use rng::{PcgRng, RngOracle, compute_seed};

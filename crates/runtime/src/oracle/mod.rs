@@ -14,7 +14,7 @@ use game_core::{Env, GameEnv, PcgRng};
 use std::sync::Arc;
 
 pub use actions::ActionOracleImpl;
-pub use actors::{ActorOracleImpl, AiConfig};
+pub use actors::ActorOracleImpl;
 pub use config::ConfigOracleImpl;
 pub use items::ItemOracleImpl;
 pub use map::MapOracleImpl;

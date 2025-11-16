@@ -10,17 +10,31 @@
 use arrayvec::ArrayVec;
 
 use crate::config::GameConfig;
+use crate::provider::ProviderKind;
 use crate::state::{
     ActionAbility, ActorState, EntityId, Equipment, InventoryState, PassiveAbility, Position,
     StatusEffects,
 };
 use crate::stats::{CoreStats, ResourceCurrent, StatsSnapshot, compute_actor_bonuses};
+use crate::traits::{Faction, Species, TraitProfile};
 
 /// Actor template defining all ActorState fields except id/position/scheduling.
 ///
 /// This type can be serialized directly from RON files and used to spawn
 /// actors with proper initialization. Resources are derived from core_stats
 /// at spawn time.
+///
+/// # Trait Profile Resolution
+///
+/// - `trait_profile: None` - Trait profile will be resolved from TraitProfileSpec during loading
+/// - `trait_profile: Some(...)` - Explicitly specified trait profile (overrides TraitProfileSpec)
+///
+/// # Species and Faction
+///
+/// - `species: None` - Species will be resolved from TraitProfileSpec during loading
+/// - `species: Some(...)` - Explicitly specified species
+/// - `faction: None` - Faction will be resolved from TraitProfileSpec during loading
+/// - `faction: Some(...)` - Explicitly specified faction
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ActorTemplate {
@@ -30,6 +44,31 @@ pub struct ActorTemplate {
     pub actions: ArrayVec<ActionAbility, { GameConfig::MAX_ACTIONS }>,
     pub passives: ArrayVec<PassiveAbility, { GameConfig::MAX_PASSIVES }>,
     pub inventory: InventoryState,
+    pub provider_kind: ProviderKind,
+
+    /// Behavioral trait profile for AI decision making.
+    ///
+    /// - `None`: Profile will be resolved from TraitProfileSpec by ActorLoader
+    /// - `Some(profile)`: Explicitly specified profile (overrides TraitProfileSpec)
+    ///
+    /// When spawned into ActorState, this must be `Some(...)`.
+    pub trait_profile: Option<TraitProfile>,
+
+    /// Species (biological/existential identity).
+    ///
+    /// - `None`: Species will be resolved from TraitProfileSpec by ActorLoader
+    /// - `Some(species)`: Explicitly specified species
+    ///
+    /// When spawned into ActorState, this must be `Some(...)`.
+    pub species: Option<Species>,
+
+    /// Faction (relationship/allegiance).
+    ///
+    /// - `None`: Faction will be resolved from TraitProfileSpec by ActorLoader
+    /// - `Some(faction)`: Explicitly specified faction
+    ///
+    /// When spawned into ActorState, this must be `Some(...)`.
+    pub faction: Option<Faction>,
 }
 
 impl ActorTemplate {
@@ -37,6 +76,11 @@ impl ActorTemplate {
     ///
     /// Resources are automatically derived from core_stats.
     /// Bonuses are computed from equipment, status effects, and passives.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `trait_profile` is `None`. Templates in the oracle must have
+    /// resolved trait profiles before spawning.
     pub fn to_actor(&self, id: EntityId, position: Position) -> ActorState {
         // Compute bonuses from equipment, status effects, actions, and passives
         let bonuses = compute_actor_bonuses();
@@ -61,6 +105,19 @@ impl ActorTemplate {
             passives: self.passives.clone(),
             bonuses,
             inventory: self.inventory.clone(),
+            provider_kind: self.provider_kind,
+            trait_profile: self.trait_profile.expect(
+                "ActorTemplate.trait_profile must be Some(...) when spawning. \
+                 This should have been resolved by ActorLoader from TraitProfileSpec.",
+            ),
+            species: self.species.expect(
+                "ActorTemplate.species must be Some(...) when spawning. \
+                 This should have been resolved by ActorLoader from TraitProfileSpec.",
+            ),
+            faction: self.faction.expect(
+                "ActorTemplate.faction must be Some(...) when spawning. \
+                 This should have been resolved by ActorLoader from TraitProfileSpec.",
+            ),
             ready_at: None,
         }
     }
@@ -85,6 +142,10 @@ pub struct ActorTemplateBuilder {
     inventory: Option<InventoryState>,
     actions: Option<ArrayVec<ActionAbility, { GameConfig::MAX_ACTIONS }>>,
     passives: Option<ArrayVec<PassiveAbility, { GameConfig::MAX_PASSIVES }>>,
+    provider_kind: Option<ProviderKind>,
+    trait_profile: Option<TraitProfile>,
+    species: Option<Species>,
+    faction: Option<Faction>,
 }
 
 impl ActorTemplateBuilder {
@@ -130,8 +191,34 @@ impl ActorTemplateBuilder {
         self
     }
 
+    /// Set provider kind
+    pub fn provider_kind(mut self, provider_kind: ProviderKind) -> Self {
+        self.provider_kind = Some(provider_kind);
+        self
+    }
+
+    /// Set trait profile
+    pub fn trait_profile(mut self, trait_profile: TraitProfile) -> Self {
+        self.trait_profile = Some(trait_profile);
+        self
+    }
+
+    /// Set species
+    pub fn species(mut self, species: Species) -> Self {
+        self.species = Some(species);
+        self
+    }
+
+    /// Set faction
+    pub fn faction(mut self, faction: Faction) -> Self {
+        self.faction = Some(faction);
+        self
+    }
+
     /// Build the actor template
     pub fn build(self) -> ActorTemplate {
+        use crate::provider::{AiKind, ProviderKind};
+
         ActorTemplate {
             core_stats: self.stats.unwrap_or_default(),
             equipment: self.equipment.unwrap_or_else(Equipment::empty),
@@ -139,6 +226,10 @@ impl ActorTemplateBuilder {
             actions: self.actions.unwrap_or_default(),
             passives: self.passives.unwrap_or_default(),
             inventory: self.inventory.unwrap_or_default(),
+            provider_kind: self.provider_kind.unwrap_or(ProviderKind::Ai(AiKind::Wait)), // Default: Wait AI
+            trait_profile: self.trait_profile.map(Some).unwrap_or(None), // Default: None (will be resolved from TraitProfileSpec)
+            species: self.species.map(Some).unwrap_or(None), // Default: None (will be resolved from TraitProfileSpec)
+            faction: self.faction.map(Some).unwrap_or(None), // Default: None (will be resolved from TraitProfileSpec)
         }
     }
 }

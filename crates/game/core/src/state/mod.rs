@@ -16,10 +16,10 @@ pub use delta::{
 };
 pub use error::StateError;
 pub use types::{
-    ActionAbilities, ActionAbility, ActorState, ArmorKind, AttackType, EntitiesState, EntityId,
-    Equipment, EquipmentBuilder, InventorySlot, InventoryState, ItemHandle, ItemState,
-    PassiveAbilities, PassiveAbility, PassiveKind, Position, PropKind, PropState, StatusEffect,
-    StatusEffectKind, StatusEffects, Tick, TileMap, TileView, TurnState, WeaponKind, WorldState,
+    ActionAbilities, ActionAbility, ActorState, EntitiesState, EntityId, Equipment,
+    EquipmentBuilder, InventorySlot, InventoryState, ItemHandle, ItemState, PassiveAbilities,
+    PassiveAbility, PassiveKind, Position, PropKind, PropState, StatusEffect, StatusEffectKind,
+    StatusEffects, Tick, TileMap, TileView, TurnState, WorldState,
 };
 
 /// Canonical snapshot of the deterministic game state.

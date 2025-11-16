@@ -1,9 +1,9 @@
-//! Goal-based AI action provider.
+//! Utility-based AI action provider.
 //!
-//! This provider uses a simple goal-oriented approach:
+//! This provider uses a goal-directed utility approach:
 //! 1. Select a goal based on current situation and traits
 //! 2. Generate all possible action candidates
-//! 3. Score each candidate by how well it serves the goal
+//! 3. Score each candidate by utility (how well it serves the goal)
 //! 4. Execute the highest-scoring candidate
 
 use async_trait::async_trait;
@@ -14,13 +14,15 @@ use super::generator::ActionCandidateGenerator;
 use super::goal::GoalSelector;
 use crate::api::{ActionProvider, Result};
 
-/// Goal-based AI provider.
+/// Utility-based AI provider with goal-directed decision making.
 ///
-/// This is a simpler alternative to the layered Intent→Tactic→Action system.
-/// Instead of abstract strategic/tactical layers, it:
-/// 1. Picks a concrete goal (e.g., "Attack Player", "Flee from Player")
-/// 2. Evaluates all possible actions by how well they serve that goal
-/// 3. Executes the best action
+/// # Algorithm
+///
+/// 1. **Goal Selection**: Pick a concrete goal based on situation and traits
+///    - Examples: "Attack Player", "Flee from Player", "Heal Self", "Idle"
+/// 2. **Candidate Generation**: Generate all possible (Action, Input) pairs
+/// 3. **Utility Scoring**: Score each candidate by how well it serves the goal (0-100)
+/// 4. **Selection**: Execute the highest-scoring candidate
 ///
 /// # Design Philosophy
 ///
@@ -29,17 +31,17 @@ use crate::api::{ActionProvider, Result};
 /// - **Flexible**: Easy to add new goals without restructuring layers
 /// - **Debuggable**: Clear trace of goal → action → score
 #[derive(Debug, Clone, Default)]
-pub struct GoalBasedAiProvider;
+pub struct UtilityAiProvider;
 
-impl GoalBasedAiProvider {
-    /// Creates a new goal-based AI provider.
+impl UtilityAiProvider {
+    /// Creates a new utility-based AI provider.
     pub fn new() -> Self {
         Self
     }
 }
 
 #[async_trait]
-impl ActionProvider for GoalBasedAiProvider {
+impl ActionProvider for UtilityAiProvider {
     async fn provide_action(
         &self,
         entity: EntityId,
@@ -56,7 +58,7 @@ impl ActionProvider for GoalBasedAiProvider {
         let available_kinds = game_core::get_available_actions(entity, state, &env);
 
         tracing::debug!(
-            "GoalBasedAI: entity={:?} has {} available actions",
+            "UtilityAI: entity={:?} has {} available actions",
             entity,
             available_kinds.len()
         );
@@ -71,7 +73,7 @@ impl ActionProvider for GoalBasedAiProvider {
 
         let goal = GoalSelector::select(&ctx);
 
-        tracing::debug!("GoalBasedAI: entity={:?} selected goal: {:?}", entity, goal);
+        tracing::debug!("UtilityAI: entity={:?} selected goal: {:?}", entity, goal);
 
         // ====================================================================
         // Step 2: Generate Candidates
@@ -81,7 +83,7 @@ impl ActionProvider for GoalBasedAiProvider {
 
         if candidates.is_empty() {
             tracing::debug!(
-                "GoalBasedAI: entity={:?} has no action candidates, falling back to Wait",
+                "UtilityAI: entity={:?} has no action candidates, falling back to Wait",
                 entity
             );
             return Ok(Action::Character(CharacterAction::new(
@@ -92,7 +94,7 @@ impl ActionProvider for GoalBasedAiProvider {
         }
 
         tracing::debug!(
-            "GoalBasedAI: entity={:?} evaluating {} candidates",
+            "UtilityAI: entity={:?} evaluating {} candidates",
             entity,
             candidates.len()
         );
@@ -123,7 +125,7 @@ impl ActionProvider for GoalBasedAiProvider {
             best_candidate.unwrap_or((game_core::ActionKind::Wait, game_core::ActionInput::None));
 
         tracing::debug!(
-            "GoalBasedAI: entity={:?} selected action: {:?} with input {:?} (score={})",
+            "UtilityAI: entity={:?} selected action: {:?} with input {:?} (score={})",
             entity,
             kind,
             input,

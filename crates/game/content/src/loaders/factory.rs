@@ -57,7 +57,9 @@ impl ContentFactory {
 
     /// Load actor catalog from `actors.ron`.
     ///
-    /// Loads both players and NPCs with their templates, providers, and trait profiles.
+    /// Loads both players and NPCs with their templates and trait profiles.
+    ///
+    /// Note: ActorTemplate now contains provider_kind field directly.
     ///
     /// # Arguments
     ///
@@ -69,7 +71,6 @@ impl ContentFactory {
         Vec<(
             String,
             game_core::ActorTemplate,
-            crate::loaders::ProviderKindSpec,
             crate::traits::TraitProfile,
         )>,
     > {

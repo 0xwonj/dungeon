@@ -6,7 +6,7 @@
 use crate::action::formula::Formula;
 use crate::action::types::DamageType;
 use crate::state::Tick;
-use crate::state::types::status::StatusEffectKind;
+use crate::state::types::StatusEffectKind;
 use crate::stats::ResourceKind;
 
 use super::condition::Condition;

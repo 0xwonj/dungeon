@@ -146,7 +146,7 @@ impl Sp1Prover {
         if fields.new_state_root != expected_new_state_root {
             return Err(ProofError::StateInconsistency(format!(
                 "new_state_root mismatch: zkVM computed {:?}, expected {:?}. \
-                 This indicates non-determinism. zkVM nonce={}, expected nonce={}."
+                 This indicates non-determinism. zkVM nonce={}, expected nonce={}.",
                 fields.new_state_root,
                 expected_new_state_root,
                 fields.new_nonce,
@@ -221,14 +221,25 @@ impl Prover for Sp1Prover {
                         ProofError::ZkvmError(format!("SP1 PLONK proof generation failed: {}", e))
                     })?
             }
-            "compressed" | _ => {
-                if proof_mode != "compressed" {
-                    tracing::warn!(
-                        "Invalid SP1_PROOF_MODE '{}', defaulting to 'compressed'. \
-                         Valid options: compressed, groth16, plonk",
-                        proof_mode
-                    );
-                }
+            "compressed" => {
+                tracing::info!("Generating Compressed proof (SP1_PROOF_MODE=compressed)");
+                self.client
+                    .prove(&self.pk, &stdin)
+                    .compressed()
+                    .run()
+                    .map_err(|e| {
+                        ProofError::ZkvmError(format!(
+                            "SP1 Compressed proof generation failed: {}",
+                            e
+                        ))
+                    })?
+            }
+            _ => {
+                tracing::warn!(
+                    "Invalid SP1_PROOF_MODE '{}', defaulting to 'compressed'. \
+                     Valid options: compressed, groth16, plonk",
+                    proof_mode
+                );
                 tracing::info!("Generating Compressed proof (SP1_PROOF_MODE=compressed)");
                 self.client
                     .prove(&self.pk, &stdin)

@@ -37,10 +37,10 @@ pub use events::{
 };
 pub use handlers::{ActivationHandler, DeathHandler, EventContext, HandlerCriticality};
 pub use oracle::{
-    ActionOracleImpl, ActorOracleImpl, AiConfig, ConfigOracleImpl, ItemOracleImpl, MapOracleImpl,
+    ActionOracleImpl, ActorOracleImpl, ConfigOracleImpl, ItemOracleImpl, MapOracleImpl,
     OracleBundle,
 };
-pub use providers::ai::{AiContext, GoalBasedAiProvider};
+pub use providers::ai::{AiContext, UtilityAiProvider};
 pub use providers::{SystemActionHandler, SystemActionProvider};
 pub use repository::{
     ActionBatch, ActionBatchRepository, ActionBatchStatus, ActionLogEntry, ActionLogReader,

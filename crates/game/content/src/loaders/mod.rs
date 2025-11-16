@@ -12,7 +12,7 @@ pub mod map;
 pub mod traits;
 
 pub use actions::ActionProfileRegistry;
-pub use actors::{ActorLoader, AiKindSpec, InteractiveKindSpec, ProviderKindSpec};
+pub use actors::ActorLoader;
 pub use config::ConfigLoader;
 pub use factory::ContentFactory;
 pub use item::ItemLoader;

@@ -1,6 +1,6 @@
 //! Conditions for conditional effects.
 
-use crate::state::types::status::StatusEffectKind;
+use crate::state::types::StatusEffectKind;
 use crate::stats::ResourceKind;
 
 /// Condition for conditional effects.

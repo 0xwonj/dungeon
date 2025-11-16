@@ -1,5 +1,9 @@
 // Actor catalog - both players and NPCs
-// Format: Vec<(String, ActorTemplate, ProviderKind, TraitProfileSpec)>
+// Format: Vec<(String, ActorTemplate, TraitProfileSpec)>
+//
+// Trait Profile Resolution:
+// - trait_profile: None => Resolved from TraitProfileSpec (species/archetype/faction/temperament)
+// - trait_profile: Some(...) => Explicitly specified (overrides TraitProfileSpec)
 
 [
     // Player character
@@ -28,12 +32,13 @@
             ],
             passives: [],
             inventory: InventoryState(items: []),
+            provider_kind: Interactive(CliInput),
+            trait_profile: None, // Resolved from TraitProfileSpec below
         ),
-        Interactive(CliInput),
         (
             species: "human",
             archetype: "none",
-            faction: "none",
+            faction: "player",
             temperament: "neutral",
         ),
     ),
@@ -66,12 +71,13 @@
                 PassiveAbility(kind: Darkvision, enabled: true),
             ],
             inventory: InventoryState(items: []),
+            provider_kind: Ai(Utility),
+            trait_profile: None, // Resolved from TraitProfileSpec below
         ),
-        Ai(Utility),
         (
             species: "goblin",
             archetype: "scout",
-            faction: "none",
+            faction: "goblin_clan",
             temperament: "cowardly",
         ),
     ),
@@ -102,12 +108,13 @@
             ],
             passives: [],
             inventory: InventoryState(items: []),
+            provider_kind: Ai(Utility),
+            trait_profile: None, // Resolved from TraitProfileSpec below
         ),
-        Ai(Utility),
         (
             species: "orc",
             archetype: "warrior",
-            faction: "none",
+            faction: "orc_horde",
             temperament: "aggressive",
         ),
     ),
@@ -138,12 +145,13 @@
             ],
             passives: [],
             inventory: InventoryState(items: []),
+            provider_kind: Ai(Utility),
+            trait_profile: None, // Resolved from TraitProfileSpec below
         ),
-        Ai(Utility),
         (
             species: "boss",
             archetype: "leader",
-            faction: "none",
+            faction: "hostile",
             temperament: "fearless",
         ),
     ),
@@ -176,12 +184,13 @@
                 PassiveAbility(kind: Darkvision, enabled: true),
             ],
             inventory: InventoryState(items: []),
+            provider_kind: Ai(Utility),
+            trait_profile: None, // Resolved from TraitProfileSpec below
         ),
-        Ai(Utility),
         (
             species: "skeleton",
             archetype: "warrior",
-            faction: "none",
+            faction: "undead_legion",
             temperament: "fearless",
         ),
     ),
@@ -212,12 +221,13 @@
             ],
             passives: [],
             inventory: InventoryState(items: []),
+            provider_kind: Ai(Utility),
+            trait_profile: None, // Resolved from TraitProfileSpec below
         ),
-        Ai(Utility),
         (
             species: "human",
             archetype: "archer",
-            faction: "none",
+            faction: "friendly",
             temperament: "cautious",
         ),
     ),

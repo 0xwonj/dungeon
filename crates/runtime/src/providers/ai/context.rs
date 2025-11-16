@@ -7,8 +7,7 @@
 //! - Helper methods for situation assessment
 //! - Access to trait profiles
 
-use game_content::traits::TraitProfile;
-use game_core::{ActionKind, EntityId, GameEnv, GameState};
+use game_core::{ActionKind, EntityId, GameEnv, GameState, TraitProfile};
 
 /// Context for AI decision-making.
 ///
@@ -282,21 +281,18 @@ impl<'a> AiContext<'a> {
 
     /// Gets the trait profile for the current entity.
     ///
-    /// This method looks up the entity's template_id from the game state,
-    /// then queries the NpcOracle for the corresponding trait profile.
+    /// Traits are now stored directly in ActorState for challenge verification support.
+    /// This enables deterministic re-execution in zkVM for fraud proof generation.
     ///
     /// # Returns
     ///
-    /// - `Some(&TraitProfile)` if the entity is an actor with a registered trait profile
-    /// - `None` if:
-    ///   - Entity is not an actor (e.g., prop, item)
-    ///   - NPC oracle is not available
-    ///   - Template has no trait profile registered
+    /// - `Some(&TraitProfile)` if the entity is an actor
+    /// - `None` if the entity is not an actor (e.g., prop, item)
     pub fn trait_profile(&self) -> Option<&TraitProfile> {
-        // TODO: Restore trait profile lookup after actor system migration
-        // Previously: Retrieved template_id from ActorState and looked up trait profile
-        // Next: Need to track def_id -> template_id mapping in runtime or store def_id in ActorState
-        None
+        self.state
+            .entities
+            .actor(self.entity)
+            .map(|actor| &actor.trait_profile)
     }
 
     // ========================================================================

@@ -3126,6 +3126,7 @@ dependencies = [
  "hex",
  "serde",
  "sha2",
+ "strum 0.26.3",
  "thiserror 2.0.17",
 ]
 

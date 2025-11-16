@@ -50,6 +50,7 @@ bounded-vector = { workspace = true }
 arrayvec = { workspace = true }
 thiserror = { workspace = true }
 bitflags = { workspace = true }
+strum = { workspace = true }
 # serde from workspace already has default-features = false with derive + alloc
 serde = { workspace = true, optional = true }
 # bincode for deterministic binary serialization (used with serde feature)

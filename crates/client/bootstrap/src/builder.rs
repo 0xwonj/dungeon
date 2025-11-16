@@ -112,20 +112,17 @@ impl RuntimeBuilder {
         // Register AI providers
         let handle = runtime.handle();
 
-        // Register GoalBasedAiProvider (recommended)
-        // This provider uses goal-oriented decision making (Goal → Evaluate candidates → Select best)
-        // Simpler and more natural than the layered Intent → Tactic → Action approach
-        let goal_based_kind = ProviderKind::Ai(AiKind::GoalBased);
-        handle.register_provider(goal_based_kind, runtime::GoalBasedAiProvider::new())?;
+        // Register UtilityAiProvider (goal-directed with utility scoring)
+        // This provider uses:
+        // 1. Goal Selection (Attack, Flee, Heal, Idle, etc.)
+        // 2. Candidate Generation (all possible actions)
+        // 3. Utility Scoring (0-100 based on goal relevance)
+        // 4. Best Selection (highest score wins)
+        let utility_ai_kind = ProviderKind::Ai(AiKind::Utility);
+        handle.register_provider(utility_ai_kind, runtime::UtilityAiProvider::new())?;
 
-        // Register UtilityAiProvider (legacy, for comparison)
-        // This provider uses 3-layer decision making (Intent → Tactic → Action)
-        // Note: Currently has compilation errors due to old action system
-        // let utility_ai_kind = ProviderKind::Ai(AiKind::Utility);
-        // handle.register_provider(utility_ai_kind, runtime::UtilityAiProvider::new())?;
-
-        // Set GoalBased as default for all NPCs
-        handle.set_default_provider(goal_based_kind)?;
+        // Set Utility AI as default for all NPCs
+        handle.set_default_provider(utility_ai_kind)?;
 
         Ok(RuntimeSetup {
             config: self.config,

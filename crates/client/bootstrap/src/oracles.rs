@@ -80,32 +80,9 @@ impl ContentOracleFactory {
     }
 }
 
-// Convert game-content's ProviderKindSpec to runtime's ProviderKind
-fn convert_provider_kind(spec: game_content::ProviderKindSpec) -> runtime::ProviderKind {
-    use game_content::{AiKindSpec, InteractiveKindSpec, ProviderKindSpec};
-    use runtime::{AiKind, InteractiveKind, ProviderKind};
-
-    match spec {
-        ProviderKindSpec::Interactive(i) => ProviderKind::Interactive(match i {
-            InteractiveKindSpec::CliInput => InteractiveKind::CliInput,
-            InteractiveKindSpec::NetworkInput => InteractiveKind::NetworkInput,
-            InteractiveKindSpec::Replay => InteractiveKind::Replay,
-        }),
-        ProviderKindSpec::Ai(a) => ProviderKind::Ai(match a {
-            AiKindSpec::Wait => AiKind::Wait,
-            AiKindSpec::Aggressive => AiKind::Aggressive,
-            AiKindSpec::Passive => AiKind::Passive,
-            AiKindSpec::Scripted => AiKind::Scripted,
-            AiKindSpec::Utility => AiKind::Utility,
-        }),
-        ProviderKindSpec::Custom(id) => ProviderKind::Custom(id),
-    }
-}
-
 impl OracleFactory for ContentOracleFactory {
     fn build(&self) -> OracleBundle {
         use game_content::ContentFactory;
-        use runtime::AiConfig;
 
         // Verify data directory exists
         if !self.data_dir.exists() {
@@ -168,17 +145,13 @@ impl OracleFactory for ContentOracleFactory {
             )
         });
 
-        // Build actor oracle with templates and AI configs
+        // Build actor oracle with templates
         let mut actor_oracle = ActorOracleImpl::new();
-        for (actor_id, template, provider_spec, trait_profile) in actor_data {
-            // Convert ProviderKindSpec to runtime::ProviderKind
-            let provider = convert_provider_kind(provider_spec);
-
-            let ai_config = AiConfig {
-                traits: trait_profile,
-                default_provider: provider,
-            };
-            actor_oracle.add(actor_id, template, ai_config);
+        for (actor_id, mut template, trait_profile) in actor_data {
+            // Set the resolved trait_profile (ActorLoader determined this from either
+            // template.trait_profile or TraitRegistry.resolve())
+            template.trait_profile = Some(trait_profile);
+            actor_oracle.add(actor_id, template);
         }
 
         // Build item oracle
