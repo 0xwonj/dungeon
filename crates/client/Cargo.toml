@@ -1,0 +1,38 @@
+[package]
+name = "dungeon-client"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "dungeon"
+path = "src/main.rs"
+
+[features]
+default = ["frontend-cli", "zkvm-stub"]
+
+# Frontend selection (choose one)
+frontend-cli = ["dep:client-frontend-cli"]
+# frontend-gui = []  # Future: Graphical UI
+
+# Blockchain selection (optional)
+blockchain-sui = ["dep:client-blockchain-sui", "dep:client-blockchain-core"]
+# blockchain-ethereum = []  # Future
+
+# ZK backend (propagate to bootstrap)
+zkvm-risc0 = ["client-frontend-cli?/risc0"]
+zkvm-sp1 = ["client-frontend-cli?/sp1"]
+zkvm-stub = ["client-frontend-cli?/stub"]
+zkvm-arkworks = ["client-frontend-cli?/arkworks"]
+
+[dependencies]
+# Always included
+anyhow = { workspace = true }
+tokio = { workspace = true }
+dotenvy = { workspace = true }
+
+# Feature-gated frontends
+client-frontend-cli = { workspace = true, optional = true }
+
+# Feature-gated blockchains
+client-blockchain-core = { workspace = true, optional = true }
+client-blockchain-sui = { workspace = true, optional = true }

@@ -5,7 +5,8 @@ members = [
     "crates/runtime",
     "crates/zk",
 
-    # Client sub-crates
+    # Client binary and sub-crates
+    "crates/client",
     "crates/client/bootstrap",
     "crates/client/frontend/core",
     "crates/client/frontend/cli",

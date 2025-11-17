@@ -147,7 +147,7 @@ build-guest:
 
 # Run CLI client with specified backend
 run backend=default_backend *args='':
-    @just _exec {{backend}} run -p client-cli {{args}}
+    @just _exec {{backend}} run -p dungeon-client --no-default-features --features "frontend-cli,zkvm-{{backend}}" {{args}}
 
 alias r := run
 
@@ -159,11 +159,17 @@ run-fast backend=default_backend *args='':
     export ENABLE_PERSISTENCE=false
     backend="$1"
     shift
-    just _exec "$backend" run -p client-cli "$@"
+    just _exec "$backend" run -p dungeon-client --no-default-features --features "frontend-cli,zkvm-$backend" "$@"
 
 # Run CLI in release mode
 run-release backend=default_backend *args='':
-    @just _exec {{backend}} run -p client-cli --release {{args}}
+    @just _exec {{backend}} run -p dungeon-client --no-default-features --features "frontend-cli,zkvm-{{backend}}" --release {{args}}
+
+# Run CLI with Sui blockchain integration
+run-sui backend=default_backend *args='':
+    @just _exec {{backend}} run -p dungeon-client --no-default-features --features "frontend-cli,blockchain-sui,zkvm-{{backend}}" {{args}}
+
+alias rs := run-sui
 
 # ============================================================================
 # Test Commands
