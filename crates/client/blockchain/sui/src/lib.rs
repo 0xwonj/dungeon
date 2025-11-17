@@ -12,7 +12,7 @@
 //! keeping the `zk` crate pure and blockchain-agnostic:
 //!
 //! ```text
-//! zk crate (ProofData) → client-sui → Sui blockchain
+//! zk crate (ProofData) → client-blockchain-sui → Sui blockchain
 //!                          ↓
 //!                     gnark→arkworks
 //!                     conversion
@@ -21,20 +21,25 @@
 //! # Usage
 //!
 //! ```ignore
-//! use client_sui::SuiProofSubmitter;
-//! use zk::ProofData;
+//! use client_blockchain_sui::{SuiBlockchainClient, SuiConfig};
+//! use client_blockchain_core::BlockchainClient;
 //!
-//! // Load proof from persistence
-//! let proof_data = load_proof_from_disk()?;
+//! // Create Sui client
+//! let config = SuiConfig::from_env()?;
+//! let client = SuiBlockchainClient::new(config).await?;
 //!
-//! // Convert and submit to Sui
-//! let submitter = SuiProofSubmitter::new(sui_client).await?;
-//! let tx_digest = submitter.submit_proof(vk_object_id, proof_data).await?;
+//! // Use blockchain-agnostic interface
+//! let session_id = client.create_session(oracle_root).await?;
+//! let result = client.submit_proof(&session_id, proof_data).await?;
 //! ```
 
+pub mod client;
+pub mod config;
 pub mod converter;
 pub mod submitter;
 
+pub use client::SuiBlockchainClient;
+pub use config::{SuiConfig, SuiNetwork};
 pub use converter::SuiProofConverter;
 pub use submitter::SuiProofSubmitter;
 

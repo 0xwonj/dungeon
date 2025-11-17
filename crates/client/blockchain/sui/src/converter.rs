@@ -65,7 +65,10 @@ impl SuiProofConverter {
     pub fn convert(proof_data: ProofData) -> Result<SuiProof, ConversionError> {
         // Verify this is an SP1 proof
         if !matches!(proof_data.backend, zk::ProofBackend::Sp1) {
-            return Err(ConversionError::InvalidBackend(format!("{:?}", proof_data.backend)));
+            return Err(ConversionError::InvalidBackend(format!(
+                "{:?}",
+                proof_data.backend
+            )));
         }
 
         // Deserialize SP1 proof
