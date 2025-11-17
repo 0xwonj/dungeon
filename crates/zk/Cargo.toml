@@ -34,7 +34,7 @@ edition = "2024"
 # Implementation Status:
 # ──────────────────────
 # ✅ risc0  - Fully implemented
-# ⚠️  sp1    - Feature exists but no implementation or dependencies
+# ✅ sp1    - Fully implemented with groth16 support
 # ⚠️  arkworks - Feature exists but no implementation or dependencies
 # ✅ stub   - Implemented for development/testing
 #
@@ -49,7 +49,6 @@ edition = "2024"
 
 [features]
 # No default backend - explicitly select via workspace or binary crate
-# This follows Rust best practices for library crates (like tokio, serde)
 default = []
 
 # Meta-feature enabled by all zkVM backends
@@ -73,7 +72,6 @@ sp1 = ["zkvm", "dep:sp1-sdk", "dep:sp1-build"]
 
 # Stub prover (development only)
 # Returns dummy proofs instantly without real cryptographic proving
-# ⚠️  WARNING: No security guarantees! For development and testing only!
 stub = ["zkvm"]
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -81,9 +79,6 @@ stub = ["zkvm"]
 # ────────────────────────────────────────────────────────────────────────────
 
 # Arkworks Groth16 circuit (not implemented - placeholder for future)
-# Will provide EVM-compatible proofs using BN254 curve
-# Requires implementing state transitions as R1CS constraints
-# Dependencies will be added when implementation begins
 arkworks = []
 
 [build-dependencies]

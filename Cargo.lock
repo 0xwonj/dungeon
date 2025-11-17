@@ -3922,13 +3922,17 @@ name = "dungeon-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "client-blockchain-core",
  "client-blockchain-sui",
+ "client-bootstrap",
  "client-frontend-cli",
  "client-frontend-core",
  "dotenvy",
+ "runtime",
  "tokio",
  "tracing",
+ "zk",
 ]
 
 [[package]]
