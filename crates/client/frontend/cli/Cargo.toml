@@ -3,6 +3,8 @@ name = "client-frontend-cli"
 version = "0.1.0"
 edition = "2024"
 
+# No [[bin]] section - this is now a library crate
+
 [features]
 # ZK backend features (propagate to client-bootstrap)
 default = ["risc0"]
