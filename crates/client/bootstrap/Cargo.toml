@@ -5,7 +5,8 @@ edition = "2024"
 
 [features]
 # ZK backend features (propagate to runtime)
-default = ["risc0"]
+# No default - backend must be explicitly selected
+default = []
 risc0 = ["runtime/risc0"]
 stub = ["runtime/stub"]
 sp1 = ["runtime/sp1"]

@@ -5,7 +5,8 @@ edition = "2024"
 
 [features]
 # ZK backend features (mutually exclusive - inherit from zk crate)
-default = ["risc0"]
+# No default - backend must be explicitly selected
+default = []
 risc0 = ["zk/risc0"]
 stub = ["zk/stub"]
 sp1 = ["zk/sp1"]

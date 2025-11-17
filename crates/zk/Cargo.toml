@@ -48,8 +48,9 @@ edition = "2024"
 # ============================================================================
 
 [features]
-# Default: Production-ready RISC0 zkVM backend
-default = ["risc0"]
+# No default backend - explicitly select via workspace or binary crate
+# This follows Rust best practices for library crates (like tokio, serde)
+default = []
 
 # Meta-feature enabled by all zkVM backends
 zkvm = []

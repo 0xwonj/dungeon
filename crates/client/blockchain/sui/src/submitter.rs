@@ -2,14 +2,14 @@
 //!
 //! Handles transaction construction and submission to Sui blockchain.
 
+use sui_sdk::SuiClient;
 use sui_sdk::types::base_types::ObjectID;
 use sui_sdk::types::transaction::TransactionDigest;
-use sui_sdk::SuiClient;
 
 use zk::ProofData;
 
-use crate::converter::SuiProofConverter;
 use crate::SuiProof;
+use crate::converter::SuiProofConverter;
 
 /// Errors that can occur during proof submission.
 #[derive(Debug, thiserror::Error)]

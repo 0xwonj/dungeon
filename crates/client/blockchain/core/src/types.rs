@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 /// - Sui: ObjectID (32 bytes)
 /// - Ethereum: Contract address (20 bytes)
 /// - StarkNet: Felt (32 bytes)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SessionId(pub Vec<u8>);
 
 impl SessionId {

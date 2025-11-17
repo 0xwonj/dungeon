@@ -170,10 +170,7 @@ impl BlockchainClient for SuiBlockchainClient {
         // self.sui_client.health_check().await
         //     .map_err(|e| BlockchainError::NetworkError(e.to_string()))?;
 
-        tracing::info!(
-            "Health check: connected to {}",
-            self.config.network_name()
-        );
+        tracing::info!("Health check: connected to {}", self.config.network_name());
         Ok(())
     }
 }

@@ -115,10 +115,16 @@ pub enum StateError {
 #[async_trait]
 pub trait BlockchainTransport: Send + Sync {
     /// Submit a transaction to the blockchain.
-    async fn submit_transaction(&self, tx_data: TransactionData) -> Result<TransactionId, TransportError>;
+    async fn submit_transaction(
+        &self,
+        tx_data: TransactionData,
+    ) -> Result<TransactionId, TransportError>;
 
     /// Query transaction status.
-    async fn query_transaction(&self, tx_id: &TransactionId) -> Result<TransactionStatus, TransportError>;
+    async fn query_transaction(
+        &self,
+        tx_id: &TransactionId,
+    ) -> Result<TransactionStatus, TransportError>;
 
     /// Query on-chain object/state.
     async fn query_object(&self, object_id: &ObjectId) -> Result<ObjectData, TransportError>;
@@ -150,7 +156,8 @@ pub trait SessionManager: Send + Sync {
     async fn get_session(&self, session_id: &SessionId) -> Result<OnChainSession, SessionError>;
 
     /// Finalize a session (mark as complete).
-    async fn finalize_session(&self, session_id: &SessionId) -> Result<TransactionId, SessionError>;
+    async fn finalize_session(&self, session_id: &SessionId)
+    -> Result<TransactionId, SessionError>;
 
     /// Check if a session is active and accepting proofs.
     async fn is_session_active(&self, session_id: &SessionId) -> Result<bool, SessionError>;
@@ -196,7 +203,10 @@ pub trait ProofSubmitter: Send + Sync {
 #[async_trait]
 pub trait StateVerifier: Send + Sync {
     /// Get the latest verified state root from blockchain.
-    async fn get_verified_state_root(&self, session_id: &SessionId) -> Result<StateRoot, StateError>;
+    async fn get_verified_state_root(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<StateRoot, StateError>;
 
     /// Get the nonce (action counter) for a session.
     async fn get_session_nonce(&self, session_id: &SessionId) -> Result<u64, StateError>;

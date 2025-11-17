@@ -35,7 +35,9 @@ async fn main() -> Result<()> {
 
     #[cfg(not(any(feature = "frontend-cli", feature = "frontend-gui")))]
     {
-        compile_error!("At least one frontend feature must be enabled (frontend-cli, frontend-gui)");
+        compile_error!(
+            "At least one frontend feature must be enabled (frontend-cli, frontend-gui)"
+        );
     }
 
     Ok(())
@@ -43,7 +45,7 @@ async fn main() -> Result<()> {
 
 #[cfg(feature = "frontend-cli")]
 async fn run_cli() -> Result<()> {
-    use client_frontend_cli::{logging, CliApp, CliConfig, FrontendConfig, RuntimeConfig};
+    use client_frontend_cli::{CliApp, CliConfig, FrontendConfig, RuntimeConfig, logging};
     use client_frontend_core::frontend::FrontendApp;
 
     // Load configuration from environment

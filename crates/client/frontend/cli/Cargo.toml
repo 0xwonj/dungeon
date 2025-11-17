@@ -7,7 +7,8 @@ edition = "2024"
 
 [features]
 # ZK backend features (propagate to client-bootstrap)
-default = ["risc0"]
+# No default - backend must be explicitly selected by binary crate
+default = []
 risc0 = ["client-bootstrap/risc0"]
 stub = ["client-bootstrap/stub"]
 sp1 = ["client-bootstrap/sp1"]

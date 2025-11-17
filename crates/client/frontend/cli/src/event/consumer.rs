@@ -2,10 +2,10 @@
 use runtime::{Event, GameStateEvent};
 
 use client_frontend_core::{
+    EffectVisibility,
     event::{EventConsumer, EventImpact},
     format::format_action_and_effects,
     message::{MessageEntry, MessageLevel, MessageLog},
-    EffectVisibility,
 };
 
 pub struct CliEventConsumer {

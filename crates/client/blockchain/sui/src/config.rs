@@ -70,7 +70,7 @@ impl SuiConfig {
                 return Err(format!(
                     "Invalid SUI_NETWORK: {}. Must be mainnet, testnet, or local",
                     other
-                ))
+                ));
             }
         };
 

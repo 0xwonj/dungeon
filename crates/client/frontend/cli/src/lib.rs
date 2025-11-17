@@ -16,5 +16,5 @@ pub use app::{CliApp, CliAppBuilder};
 pub use config::CliConfig;
 
 // Re-export for convenience
-pub use client_frontend_core::FrontendConfig;
 pub use client_bootstrap::RuntimeConfig;
+pub use client_frontend_core::FrontendConfig;

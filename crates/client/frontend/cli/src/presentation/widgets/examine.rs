@@ -269,7 +269,9 @@ fn render_actor_details<'a, T: PresentationMapper<Style = Style>>(
 }
 
 /// Render prop details.
-fn render_prop_details<'a>(prop: &'a client_frontend_core::view_model::entities::PropView) -> Vec<Line<'a>> {
+fn render_prop_details<'a>(
+    prop: &'a client_frontend_core::view_model::entities::PropView,
+) -> Vec<Line<'a>> {
     vec![
         Line::from(vec![
             Span::styled("Type: ", Style::default().fg(Color::White)),
@@ -295,7 +297,9 @@ fn render_prop_details<'a>(prop: &'a client_frontend_core::view_model::entities:
 }
 
 /// Render item details.
-fn render_item_details<'a>(item: &'a client_frontend_core::view_model::entities::ItemView) -> Vec<Line<'a>> {
+fn render_item_details<'a>(
+    item: &'a client_frontend_core::view_model::entities::ItemView,
+) -> Vec<Line<'a>> {
     vec![
         Line::from(vec![
             Span::styled("Type: ", Style::default().fg(Color::White)),

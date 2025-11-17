@@ -10,11 +10,11 @@ use crate::event::{CliEventConsumer, EventLoop};
 use crate::input::CliActionProvider;
 use crate::presentation::terminal;
 use client_bootstrap::{
+    RuntimeConfig,
     builder::{RuntimeBuilder, RuntimeSetup},
     oracles::OracleBundle,
-    RuntimeConfig,
 };
-use client_frontend_core::{frontend::FrontendApp, message::MessageLog, FrontendConfig};
+use client_frontend_core::{FrontendConfig, frontend::FrontendApp, message::MessageLog};
 
 pub struct CliApp {
     runtime_config: RuntimeConfig,

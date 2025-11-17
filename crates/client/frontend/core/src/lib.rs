@@ -12,4 +12,4 @@ pub mod view_model;
 
 pub use config::{ChannelConfig, EffectVisibility, FrontendConfig, MessageConfig};
 pub use event::{EventConsumer, EventImpact};
-pub use services::{targeting, UpdateScope, ViewModelUpdater};
+pub use services::{UpdateScope, ViewModelUpdater, targeting};
