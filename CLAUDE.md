@@ -103,10 +103,10 @@ If you prefer not to use Just, you can use cargo directly:
 
 ```bash
 # CLI only (no blockchain)
-cargo run -p dungeon-client --no-default-features --features "frontend-cli,zkvm-stub"
+cargo run -p dungeon-client --no-default-features --features "cli,stub"
 
 # CLI + Sui blockchain
-cargo run -p dungeon-client --no-default-features --features "frontend-cli,blockchain-sui,zkvm-sp1"
+cargo run -p dungeon-client --no-default-features --features "cli,sui,sp1"
 
 # Test workspace
 cargo test --workspace --no-default-features --features stub

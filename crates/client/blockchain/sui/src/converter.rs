@@ -3,7 +3,9 @@
 //! Handles the gnark → arkworks conversion for SP1 proofs to make them
 //! compatible with Sui's Groth16 verifier.
 
+#[cfg(feature = "sp1")]
 use sp1_sdk::SP1ProofWithPublicValues;
+#[cfg(feature = "sp1")]
 use sp1_sui::convert_sp1_gnark_to_ark;
 
 use zk::ProofData;
@@ -63,35 +65,47 @@ impl SuiProofConverter {
     /// let (vk, digest, journal, proof) = sui_proof.export_for_transaction();
     /// ```
     pub fn convert(proof_data: ProofData) -> Result<SuiProof, ConversionError> {
-        // Verify this is an SP1 proof
-        if !matches!(proof_data.backend, zk::ProofBackend::Sp1) {
-            return Err(ConversionError::InvalidBackend(format!(
-                "{:?}",
-                proof_data.backend
-            )));
+        #[cfg(not(feature = "sp1"))]
+        {
+            let _ = proof_data; // Suppress unused variable warning
+            Err(ConversionError::InvalidBackend(
+                "SP1 backend not enabled. Enable 'sp1' feature to use SuiProofConverter"
+                    .to_string(),
+            ))
         }
 
-        // Deserialize SP1 proof
-        let sp1_proof: SP1ProofWithPublicValues = bincode::deserialize(&proof_data.bytes)
-            .map_err(|e| ConversionError::DeserializationError(e.to_string()))?;
+        #[cfg(feature = "sp1")]
+        {
+            // Verify this is an SP1 proof
+            if !matches!(proof_data.backend, zk::ProofBackend::Sp1) {
+                return Err(ConversionError::InvalidBackend(format!(
+                    "{:?}",
+                    proof_data.backend
+                )));
+            }
 
-        // Convert SP1 gnark proof to arkworks format
-        // This handles:
-        // - Endianness conversion (big → little)
-        // - Compression flag adjustment
-        // - Negative flag handling
-        //
-        // Note: convert_sp1_gnark_to_ark returns (Vec<u8>, Vec<u8>, Vec<u8>), not Result
-        // It panics on errors internally, which is acceptable for proof conversion
-        let (verifying_key, public_inputs, proof_points) = convert_sp1_gnark_to_ark(sp1_proof);
+            // Deserialize SP1 proof
+            let sp1_proof: SP1ProofWithPublicValues = bincode::deserialize(&proof_data.bytes)
+                .map_err(|e| ConversionError::DeserializationError(e.to_string()))?;
 
-        Ok(SuiProof {
-            verifying_key,
-            public_inputs,
-            proof_points,
-            journal: proof_data.journal,
-            journal_digest: proof_data.journal_digest,
-        })
+            // Convert SP1 gnark proof to arkworks format
+            // This handles:
+            // - Endianness conversion (big → little)
+            // - Compression flag adjustment
+            // - Negative flag handling
+            //
+            // Note: convert_sp1_gnark_to_ark returns (Vec<u8>, Vec<u8>, Vec<u8>), not Result
+            // It panics on errors internally, which is acceptable for proof conversion
+            let (verifying_key, public_inputs, proof_points) = convert_sp1_gnark_to_ark(sp1_proof);
+
+            Ok(SuiProof {
+                verifying_key,
+                public_inputs,
+                proof_points,
+                journal: proof_data.journal,
+                journal_digest: proof_data.journal_digest,
+            })
+        }
     }
 }
 

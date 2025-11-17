@@ -14,6 +14,12 @@ pub struct RuntimeBuilder {
     config: RuntimeConfig,
 }
 
+impl Default for RuntimeBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RuntimeBuilder {
     /// Create a new RuntimeBuilder with default configuration.
     ///

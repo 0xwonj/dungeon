@@ -3,7 +3,7 @@
 //! This module defines a layered blockchain abstraction:
 //! - Layer 0: BlockchainTransport (pure infrastructure)
 //! - Layer 1: SessionManager, ProofSubmitter, StateVerifier (game domain)
-//! - Layer 2: GameBlockchain (composite trait)
+//! - Layer 2: BlockchainClient (composite trait)
 
 use async_trait::async_trait;
 use zk::ProofData;
@@ -226,11 +226,17 @@ pub trait StateVerifier: Send + Sync {
 // Layer 2: Composite Trait
 // ============================================================================
 
-/// Core game blockchain operations.
+/// Complete blockchain client interface.
 ///
-/// All game-compatible blockchains must implement this trait.
-/// This is a composite of required domain traits.
-pub trait GameBlockchain: SessionManager + ProofSubmitter + StateVerifier + Send + Sync {
+/// Represents a fully-featured blockchain client capable of managing game sessions,
+/// submitting ZK proofs, and verifying state. This is a composite trait that combines
+/// all Layer 1 domain traits into a single interface.
+///
+/// Implementors must provide all three Layer 1 capabilities:
+/// - `SessionManager`: Session lifecycle management
+/// - `ProofSubmitter`: ZK proof submission
+/// - `StateVerifier`: State verification and synchronization
+pub trait BlockchainClient: SessionManager + ProofSubmitter + StateVerifier + Send + Sync {
     /// Get the blockchain name (e.g., "Sui", "Ethereum").
     fn name(&self) -> &str;
 

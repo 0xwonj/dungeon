@@ -8,19 +8,10 @@ use std::env;
 /// Frontend-specific configuration.
 ///
 /// This contains UI-related settings like message filtering and channel buffers.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct FrontendConfig {
     pub channels: ChannelConfig,
     pub messages: MessageConfig,
-}
-
-impl Default for FrontendConfig {
-    fn default() -> Self {
-        Self {
-            channels: ChannelConfig::default(),
-            messages: MessageConfig::default(),
-        }
-    }
 }
 
 impl FrontendConfig {

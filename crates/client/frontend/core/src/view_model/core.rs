@@ -1,6 +1,6 @@
 //! Core ViewModel structure.
 
-use game_core::{EntityId, GameState, env::MapOracle};
+use game_core::{GameState, env::MapOracle};
 
 use super::entities::{
     ActorView, ItemView, PropView, collect_actors, collect_items, collect_props,
@@ -126,6 +126,7 @@ impl ViewModel {
     /// Panics if any invariant is violated (debug builds only).
     #[cfg(debug_assertions)]
     pub(crate) fn validate_invariants(&self) {
+        use game_core::EntityId;
         debug_assert!(
             !self.actors.is_empty(),
             "ViewModel invariant broken: actors list must not be empty"

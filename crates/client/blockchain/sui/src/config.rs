@@ -35,6 +35,12 @@ pub struct SuiConfig {
     /// Package ID of the deployed game contract
     pub package_id: Option<String>,
 
+    /// Shared VerifyingKey object ID for proof verification
+    pub verifying_key_id: Option<String>,
+
+    /// Seed commitment for RNG (32 bytes hex-encoded)
+    pub seed_commitment: [u8; 32],
+
     /// Gas budget for transactions (in MIST)
     pub gas_budget: u64,
 }
@@ -46,6 +52,8 @@ impl SuiConfig {
             network,
             rpc_url: None,
             package_id: None,
+            verifying_key_id: None,
+            seed_commitment: [0u8; 32],
             gas_budget: 100_000_000, // 0.1 SUI
         }
     }
@@ -56,6 +64,8 @@ impl SuiConfig {
     /// - `SUI_NETWORK` - Network name (mainnet, testnet, local) (default: testnet)
     /// - `SUI_RPC_URL` - Custom RPC endpoint URL
     /// - `SUI_PACKAGE_ID` - Deployed game package ID
+    /// - `SUI_VERIFYING_KEY_ID` - Shared VerifyingKey object ID
+    /// - `SUI_SEED_COMMITMENT` - Hex-encoded 32-byte seed commitment (default: zeros)
     /// - `SUI_GAS_BUDGET` - Gas budget in MIST (default: 100000000)
     pub fn from_env() -> Result<Self, String> {
         let network = match env::var("SUI_NETWORK")
@@ -76,6 +86,26 @@ impl SuiConfig {
 
         let rpc_url = env::var("SUI_RPC_URL").ok();
         let package_id = env::var("SUI_PACKAGE_ID").ok();
+        let verifying_key_id = env::var("SUI_VERIFYING_KEY_ID").ok();
+
+        // Parse seed commitment from hex string
+        let seed_commitment = env::var("SUI_SEED_COMMITMENT")
+            .ok()
+            .and_then(|s| {
+                // Remove 0x prefix if present
+                let s = s.strip_prefix("0x").unwrap_or(&s);
+                hex::decode(s).ok()
+            })
+            .and_then(|v| {
+                if v.len() == 32 {
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&v);
+                    Some(arr)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or([0u8; 32]);
 
         let gas_budget = env::var("SUI_GAS_BUDGET")
             .ok()
@@ -86,6 +116,8 @@ impl SuiConfig {
             network,
             rpc_url,
             package_id,
+            verifying_key_id,
+            seed_commitment,
             gas_budget,
         })
     }
@@ -102,6 +134,18 @@ impl SuiConfig {
         self
     }
 
+    /// Set verifying key ID.
+    pub fn with_verifying_key_id(mut self, vk_id: String) -> Self {
+        self.verifying_key_id = Some(vk_id);
+        self
+    }
+
+    /// Set seed commitment.
+    pub fn with_seed_commitment(mut self, seed: [u8; 32]) -> Self {
+        self.seed_commitment = seed;
+        self
+    }
+
     /// Set gas budget.
     pub fn with_gas_budget(mut self, budget: u64) -> Self {
         self.gas_budget = budget;
@@ -113,6 +157,11 @@ impl SuiConfig {
         self.rpc_url
             .as_deref()
             .unwrap_or_else(|| self.network.default_rpc_url())
+    }
+
+    /// Validate configuration.
+    pub fn validate(&self) -> Result<(), String> {
+        <Self as BlockchainConfig>::validate(self)
     }
 }
 
@@ -142,10 +191,10 @@ impl BlockchainConfig for SuiConfig {
         }
 
         // Package ID is optional (may not be deployed yet)
-        if let Some(ref pkg_id) = self.package_id {
-            if pkg_id.is_empty() {
-                return Err("Package ID cannot be empty".to_string());
-            }
+        if let Some(ref pkg_id) = self.package_id
+            && pkg_id.is_empty()
+        {
+            return Err("Package ID cannot be empty".to_string());
         }
 
         Ok(())

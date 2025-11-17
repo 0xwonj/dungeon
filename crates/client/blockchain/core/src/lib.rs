@@ -5,7 +5,7 @@
 //! # Architecture
 //!
 //! ```text
-//! Layer 2: GameBlockchain (composite trait)
+//! Layer 2: BlockchainClient (composite trait)
 //!          ├── SessionManager
 //!          ├── ProofSubmitter
 //!          └── StateVerifier
@@ -19,15 +19,15 @@
 //!
 //! - **Layer 0 (Transport)**: Pure blockchain operations, no game knowledge
 //! - **Layer 1 (Domain)**: Game-specific traits (sessions, proofs, state)
-//! - **Layer 2 (Composite)**: Required combination for game compatibility
+//! - **Layer 2 (Composite)**: Complete client interface combining all capabilities
 //!
 //! # Usage
 //!
 //! ```ignore
-//! use client_blockchain_core::{GameBlockchain, SessionManager, ProofSubmitter, StateVerifier};
+//! use client_blockchain_core::{BlockchainClient, SessionManager, ProofSubmitter, StateVerifier};
 //!
 //! // Use the high-level composite trait
-//! async fn play_game(blockchain: &dyn GameBlockchain) {
+//! async fn play_game(blockchain: &dyn BlockchainClient) {
 //!     let session = blockchain.create_session(oracle_root, initial_state).await?;
 //!     let receipt = blockchain.submit_proof(&session, proof).await?;
 //!     blockchain.finalize_session(&session).await?;
@@ -42,8 +42,8 @@ pub mod mock;
 
 // Re-export all traits
 pub use traits::{
-    BlockchainTransport, GameBlockchain, ProofError, ProofSubmitter, SessionError, SessionManager,
-    StateError, StateVerifier, TransportError,
+    BlockchainClient, BlockchainTransport, ProofError, ProofSubmitter, SessionError,
+    SessionManager, StateError, StateVerifier, TransportError,
 };
 
 // Re-export all types

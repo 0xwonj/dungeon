@@ -3,26 +3,39 @@ name = "client-blockchain-sui"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+
+# ZK backend propagation (required by zk dependency)
+risc0 = ["zk/risc0"]
+sp1 = ["zk/sp1"]
+stub = ["zk/stub"]
+arkworks = ["zk/arkworks"]
+
 [dependencies]
 # Internal dependencies
 client-blockchain-core = { workspace = true }
 zk = { workspace = true }
 game-core = { workspace = true }
 
+# Sui SDK
+sui-sdk = { git = "https://github.com/mystenlabs/sui", package = "sui-sdk" }
+sui-types = { git = "https://github.com/mystenlabs/sui", package = "sui-types" }
+sui-json-rpc-types = { git = "https://github.com/mystenlabs/sui", package = "sui-json-rpc-types" }
+sui-keys = { git = "https://github.com/mystenlabs/sui", package = "sui-keys" }
+
 # SP1-Sui conversion
 sp1-sui = { git = "https://github.com/SoundnessLabs/sp1-sui" }
 sp1-sdk = { workspace = true }
 
-# Sui SDK
-# TODO: Add correct sui-sdk version when available
-# sui-sdk = "0.68"
-
 # Serialization
 bincode = { workspace = true }
 serde = { workspace = true }
+bcs = "0.1"  # Binary Canonical Serialization for Sui
 
 # Error handling
 thiserror = { workspace = true }
+anyhow = "1.0"
 
 # Async runtime
 tokio = { workspace = true }
@@ -30,3 +43,6 @@ async-trait = "0.1"
 
 # Logging
 tracing = { workspace = true }
+
+# Utilities
+hex = "0.4"

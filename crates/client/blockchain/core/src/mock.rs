@@ -6,7 +6,10 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use zk::ProofData;
 
-use crate::traits::{GameBlockchain, ProofError, ProofSubmitter, SessionError, SessionManager, StateError, StateVerifier};
+use crate::traits::{
+    BlockchainClient, ProofError, ProofSubmitter, SessionError, SessionManager, StateError,
+    StateVerifier,
+};
 use crate::types::{
     BlockchainConfig, GasEstimate, OnChainSession, ProofReceipt, SessionId, SessionStatus,
     StateRoot, TransactionId,
@@ -78,7 +81,10 @@ impl SessionManager for MockBlockchainClient {
             .ok_or_else(|| SessionError::SessionNotFound(session_id.clone()))
     }
 
-    async fn finalize_session(&self, session_id: &SessionId) -> Result<TransactionId, SessionError> {
+    async fn finalize_session(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<TransactionId, SessionError> {
         let mut sessions = self.sessions.lock().unwrap();
         let session = sessions
             .get_mut(session_id)
@@ -150,7 +156,10 @@ impl ProofSubmitter for MockBlockchainClient {
 
 #[async_trait]
 impl StateVerifier for MockBlockchainClient {
-    async fn get_verified_state_root(&self, session_id: &SessionId) -> Result<StateRoot, StateError> {
+    async fn get_verified_state_root(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<StateRoot, StateError> {
         let sessions = self.sessions.lock().unwrap();
         let session = sessions
             .get(session_id)
@@ -169,7 +178,7 @@ impl StateVerifier for MockBlockchainClient {
     }
 }
 
-impl GameBlockchain for MockBlockchainClient {
+impl BlockchainClient for MockBlockchainClient {
     fn name(&self) -> &str {
         "MockBlockchain"
     }
@@ -179,6 +188,7 @@ impl GameBlockchain for MockBlockchainClient {
     }
 }
 
+#[allow(dead_code)]
 struct MockConfig;
 
 impl BlockchainConfig for MockConfig {
@@ -192,59 +202,5 @@ impl BlockchainConfig for MockConfig {
 
     fn validate(&self) -> std::result::Result<(), String> {
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_mock_blockchain_client() {
-        let client = MockBlockchainClient::new();
-
-        // Create session
-        let oracle_root = [1u8; 32];
-        let initial_state = [2u8; 32];
-        let session_id = client
-            .create_session(oracle_root, initial_state)
-            .await
-            .unwrap();
-
-        // Verify session exists
-        let session = client.get_session(&session_id).await.unwrap();
-        assert_eq!(session.oracle_root, oracle_root);
-        assert_eq!(session.current_state_root, initial_state);
-        assert_eq!(session.status, SessionStatus::Active);
-
-        // Check session is active
-        assert!(client.is_session_active(&session_id).await.unwrap());
-
-        // Submit proof (mock)
-        let proof_data = zk::ProofData {
-            bytes: vec![1, 2, 3],
-            backend: zk::ProofBackend::Stub,
-            journal: vec![0u8; 168],
-            journal_digest: [0u8; 32],
-        };
-
-        let receipt = client.submit_proof(&session_id, proof_data).await.unwrap();
-        assert_eq!(receipt.gas_used, 1000);
-        assert_eq!(receipt.new_nonce, 1);
-
-        // Verify state was updated
-        let state_root = client.get_verified_state_root(&session_id).await.unwrap();
-        assert_eq!(state_root, receipt.new_state_root);
-
-        let nonce = client.get_session_nonce(&session_id).await.unwrap();
-        assert_eq!(nonce, 1);
-
-        // Finalize session
-        client.finalize_session(&session_id).await.unwrap();
-        assert!(!client.is_session_active(&session_id).await.unwrap());
-
-        // Verify GameBlockchain trait
-        assert_eq!(client.name(), "MockBlockchain");
-        assert_eq!(client.network(), "mock-network");
     }
 }

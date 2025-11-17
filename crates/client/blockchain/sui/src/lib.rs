@@ -3,12 +3,10 @@
 pub mod client;
 pub mod config;
 pub mod converter;
-pub mod submitter;
 
 pub use client::SuiBlockchainClient;
 pub use config::{SuiConfig, SuiNetwork};
 pub use converter::SuiProofConverter;
-pub use submitter::SuiProofSubmitter;
 
 /// Sui-compatible proof components ready for on-chain submission.
 #[derive(Debug, Clone)]

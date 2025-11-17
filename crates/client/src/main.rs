@@ -1,49 +1,38 @@
 //! Dungeon game client binary.
 //!
-//! This is a composable binary that can be built with different features:
-//! - Frontend: CLI (more to come)
-//! - Blockchain: Sui (optional)
-//! - ZK backend: RISC0, SP1, Stub, Arkworks
+//! Main entry point for the Dungeon game client.
+//!
+//! # Features
+//!
+//! - `cli`: Terminal-based UI (default)
+//! - `risc0`, `sp1`, `stub`, `arkworks`: ZK backend selection
 //!
 //! # Examples
 //!
 //! ```bash
-//! # CLI only, stub prover (fast development)
-//! cargo run -p dungeon-client --features "frontend-cli,zkvm-stub"
-//!
-//! # CLI + Sui blockchain, SP1 prover
-//! cargo run -p dungeon-client --features "frontend-cli,blockchain-sui,zkvm-sp1"
+//! cargo run -p dungeon-client --features "cli,sp1"
 //! ```
 
 use anyhow::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Load .env file if it exists (silently ignore if not found)
-    let _ = dotenvy::dotenv();
+    dotenvy::dotenv().ok();
 
-    // Run the selected frontend
-    #[cfg(feature = "frontend-cli")]
+    #[cfg(feature = "cli")]
     {
         run_cli().await?;
     }
 
-    #[cfg(feature = "frontend-gui")]
+    #[cfg(not(feature = "cli"))]
     {
-        run_gui().await?;
-    }
-
-    #[cfg(not(any(feature = "frontend-cli", feature = "frontend-gui")))]
-    {
-        compile_error!(
-            "At least one frontend feature must be enabled (frontend-cli, frontend-gui)"
-        );
+        compile_error!("CLI frontend feature must be enabled");
     }
 
     Ok(())
 }
 
-#[cfg(feature = "frontend-cli")]
+#[cfg(feature = "cli")]
 async fn run_cli() -> Result<()> {
     use client_frontend_cli::{CliApp, CliConfig, FrontendConfig, RuntimeConfig, logging};
     use client_frontend_core::frontend::FrontendApp;
@@ -56,44 +45,10 @@ async fn run_cli() -> Result<()> {
     // Setup logging
     logging::setup_logging(&runtime_config.session_id)?;
 
-    // Build CLI app
-    let builder = CliApp::builder(runtime_config, frontend_config, cli_config);
+    // Build and run the app
+    let app = CliApp::builder(runtime_config, frontend_config, cli_config)
+        .build()
+        .await?;
 
-    // Optionally attach blockchain client
-    #[cfg(feature = "blockchain-sui")]
-    {
-        use client_blockchain_core::BlockchainClient;
-        use client_blockchain_sui::{SuiBlockchainClient, SuiConfig};
-
-        match SuiConfig::from_env() {
-            Ok(sui_config) => {
-                match SuiBlockchainClient::new(sui_config).await {
-                    Ok(sui_client) => {
-                        tracing::info!("Sui blockchain client initialized");
-                        // TODO: Attach to builder when CliApp supports blockchain integration
-                        // builder = builder.blockchain(sui_client);
-                        let _ = sui_client; // Silence unused warning
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to initialize Sui client: {}", e);
-                        tracing::warn!("Continuing without blockchain integration");
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::warn!("Failed to load Sui config: {}", e);
-                tracing::warn!("Continuing without blockchain integration");
-            }
-        }
-    }
-
-    // Build and run
-    let app = builder.build().await?;
     app.run().await
-}
-
-#[cfg(feature = "frontend-gui")]
-async fn run_gui() -> Result<()> {
-    // TODO: Implement GUI frontend
-    anyhow::bail!("GUI frontend not implemented yet");
 }

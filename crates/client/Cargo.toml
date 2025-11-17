@@ -8,34 +8,18 @@ name = "dungeon"
 path = "src/main.rs"
 
 [features]
-# Default features for binary crate (library crates have no defaults)
-# - frontend-cli: Terminal UI
-# - zkvm-stub: Fast development with instant fake proofs
-default = ["frontend-cli", "zkvm-stub"]
+default = ["cli", "stub"]
 
-# ============================================================================
-# Frontend Selection (choose one)
-# ============================================================================
-frontend-cli = ["dep:client-frontend-cli"]
-# frontend-gui = []  # Future: Graphical UI
+# Frontend
+cli = ["dep:client-frontend-cli"]
 
-# ============================================================================
-# Blockchain Integration (optional)
-# ============================================================================
-blockchain-sui = ["dep:client-blockchain-sui", "dep:client-blockchain-core"]
-# blockchain-ethereum = []  # Future: EVM-based chains
-
-# ============================================================================
-# ZK Backend Selection (mutually exclusive - choose ONE)
-# ============================================================================
-# These propagate to frontend-cli → bootstrap → runtime → zk
-zkvm-risc0 = ["client-frontend-cli?/risc0"]
-zkvm-sp1 = ["client-frontend-cli?/sp1"]
-zkvm-stub = ["client-frontend-cli?/stub"]
-zkvm-arkworks = ["client-frontend-cli?/arkworks"]
+# ZK Backend (mutually exclusive - choose ONE)
+risc0 = ["client-frontend-cli?/risc0"]
+sp1 = ["client-frontend-cli?/sp1"]
+stub = ["client-frontend-cli?/stub"]
+arkworks = ["client-frontend-cli?/arkworks"]
 
 [dependencies]
-# Always included
 anyhow = { workspace = true }
 tokio = { workspace = true }
 dotenvy = { workspace = true }
@@ -47,6 +31,6 @@ client-frontend-core = { workspace = true }
 # Feature-gated frontends
 client-frontend-cli = { workspace = true, optional = true }
 
-# Feature-gated blockchains
+# Blockchain integration (optional, future)
 client-blockchain-core = { workspace = true, optional = true }
 client-blockchain-sui = { workspace = true, optional = true }
