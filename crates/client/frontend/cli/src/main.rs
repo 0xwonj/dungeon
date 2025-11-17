@@ -9,8 +9,8 @@ mod state;
 
 use anyhow::Result;
 use app::CliApp;
-use client_bootstrap::ClientConfig;
-use client_frontend_core::frontend::FrontendApp;
+use client_bootstrap::RuntimeConfig;
+use client_frontend_core::{frontend::FrontendApp, FrontendConfig};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -19,13 +19,14 @@ async fn main() -> Result<()> {
     // Load .env file if it exists (silently ignore if not found)
     let _ = dotenvy::dotenv();
 
-    let client_config = ClientConfig::from_env();
+    let runtime_config = RuntimeConfig::from_env();
+    let frontend_config = FrontendConfig::from_env();
     let cli_config = config::CliConfig::from_env();
 
     // Setup logging: both to stderr and to file
-    setup_logging(&client_config.session_id)?;
+    setup_logging(&runtime_config.session_id)?;
 
-    CliApp::builder(client_config, cli_config)
+    CliApp::builder(runtime_config, frontend_config, cli_config)
         .build()
         .await?
         .run()

@@ -10,55 +10,76 @@ use crate::event::{CliEventConsumer, EventLoop};
 use crate::input::CliActionProvider;
 use crate::presentation::terminal;
 use client_bootstrap::{
-    ClientConfig,
     builder::{RuntimeBuilder, RuntimeSetup},
     oracles::OracleBundle,
+    RuntimeConfig,
 };
-use client_frontend_core::{frontend::FrontendApp, message::MessageLog};
+use client_frontend_core::{frontend::FrontendApp, message::MessageLog, FrontendConfig};
 
 pub struct CliApp {
-    client_config: ClientConfig,
+    runtime_config: RuntimeConfig,
+    frontend_config: FrontendConfig,
     cli_config: crate::config::CliConfig,
     oracles: OracleBundle,
     runtime: Runtime,
 }
 
 pub struct CliAppBuilder {
+    runtime_config: RuntimeConfig,
+    frontend_config: FrontendConfig,
     cli_config: crate::config::CliConfig,
-    bootstrap: RuntimeBuilder,
 }
 
 impl CliAppBuilder {
-    pub fn new(client_config: ClientConfig, cli_config: crate::config::CliConfig) -> Self {
+    pub fn new(
+        runtime_config: RuntimeConfig,
+        frontend_config: FrontendConfig,
+        cli_config: crate::config::CliConfig,
+    ) -> Self {
         Self {
+            runtime_config,
+            frontend_config,
             cli_config,
-            bootstrap: RuntimeBuilder::new(client_config),
         }
     }
 
     pub async fn build(self) -> Result<CliApp> {
-        let setup = self.bootstrap.build().await?;
-        Ok(CliApp::from_runtime_setup(setup, self.cli_config))
+        let setup = RuntimeBuilder::new()
+            .config(self.runtime_config.clone())
+            .build()
+            .await?;
+
+        Ok(CliApp::from_runtime_setup(
+            setup,
+            self.frontend_config,
+            self.cli_config,
+        ))
     }
 }
 
 impl CliApp {
     pub fn builder(
-        client_config: ClientConfig,
+        runtime_config: RuntimeConfig,
+        frontend_config: FrontendConfig,
         cli_config: crate::config::CliConfig,
     ) -> CliAppBuilder {
-        CliAppBuilder::new(client_config, cli_config)
+        CliAppBuilder::new(runtime_config, frontend_config, cli_config)
     }
 
-    fn from_runtime_setup(setup: RuntimeSetup, cli_config: crate::config::CliConfig) -> Self {
+    fn from_runtime_setup(
+        setup: RuntimeSetup,
+        frontend_config: FrontendConfig,
+        cli_config: crate::config::CliConfig,
+    ) -> Self {
         let RuntimeSetup {
-            config: client_config,
+            config: runtime_config,
             oracles,
             runtime,
         } = setup;
 
         Self {
-            client_config,
+            runtime_config,
+            frontend_config,
             cli_config,
             oracles,
             runtime,
@@ -70,7 +91,7 @@ impl CliApp {
 
         // Setup CLI-specific provider (interactive input)
         let (tx_action, rx_action) =
-            mpsc::channel::<Action>(self.client_config.channels.action_buffer);
+            mpsc::channel::<Action>(self.frontend_config.channels.action_buffer);
 
         let handle = self.runtime.handle();
         let cli_kind = ProviderKind::Interactive(InteractiveKind::CliInput);
@@ -85,7 +106,8 @@ impl CliApp {
         // NPCs will use the AggressiveAiProvider configured in bootstrap
 
         let CliApp {
-            client_config,
+            runtime_config: _runtime_config,
+            frontend_config,
             cli_config,
             oracles,
             mut runtime,
@@ -96,14 +118,14 @@ impl CliApp {
         let subscriptions = handle.subscribe_multiple(&[Topic::GameState, Topic::Proof]);
         let initial_state = handle.query_state().await?;
 
-        let mut messages = MessageLog::new(client_config.messages.capacity);
+        let mut messages = MessageLog::new(frontend_config.messages.capacity);
         messages.push_text(format!(
             "[{}] Welcome to the dungeon.",
             initial_state.turn.clock
         ));
 
         let consumer =
-            CliEventConsumer::new(messages, client_config.messages.effect_visibility.clone());
+            CliEventConsumer::new(messages, frontend_config.messages.effect_visibility.clone());
 
         let event_loop = EventLoop::new(
             subscriptions,

@@ -5,26 +5,33 @@ use std::sync::Arc;
 use anyhow::Result;
 use runtime::{AiKind, ProviderKind, Runtime, Scenario};
 
-use crate::config::ClientConfig;
+use crate::config::RuntimeConfig;
 use crate::oracles::{ContentOracleFactory, OracleBundle, OracleFactory};
 
 /// Builder that assembles runtime state, oracles, and configuration for clients.
 pub struct RuntimeBuilder {
-    config: ClientConfig,
     oracle_factory: Arc<dyn OracleFactory>,
+    config: RuntimeConfig,
 }
 
 impl RuntimeBuilder {
-    /// Create a new RuntimeBuilder with data-driven content from game-content.
+    /// Create a new RuntimeBuilder with default configuration.
     ///
     /// This uses ContentOracleFactory by default, loading content from RON/TOML files.
     /// Use `oracle_factory()` to override with a custom factory.
-    pub fn new(config: ClientConfig) -> Self {
+    /// Use `config()` to provide runtime configuration.
+    pub fn new() -> Self {
         let default_factory = ContentOracleFactory::default_paths();
         Self {
-            config,
             oracle_factory: Arc::new(default_factory),
+            config: RuntimeConfig::default(),
         }
+    }
+
+    /// Provide runtime configuration.
+    pub fn config(mut self, config: RuntimeConfig) -> Self {
+        self.config = config;
+        self
     }
 
     /// Provide a custom oracle factory (e.g., game-content backed implementation).
@@ -133,7 +140,7 @@ impl RuntimeBuilder {
 }
 
 pub struct RuntimeSetup {
-    pub config: ClientConfig,
+    pub config: RuntimeConfig,
     pub oracles: OracleBundle,
     pub runtime: Runtime,
 }
