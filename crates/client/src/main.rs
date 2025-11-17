@@ -44,6 +44,7 @@ async fn main() -> Result<()> {
 #[cfg(feature = "frontend-cli")]
 async fn run_cli() -> Result<()> {
     use client_frontend_cli::{logging, CliApp, CliConfig, FrontendConfig, RuntimeConfig};
+    use client_frontend_core::frontend::FrontendApp;
 
     // Load configuration from environment
     let runtime_config = RuntimeConfig::from_env();
@@ -54,7 +55,7 @@ async fn run_cli() -> Result<()> {
     logging::setup_logging(&runtime_config.session_id)?;
 
     // Build CLI app
-    let mut builder = CliApp::builder(runtime_config, frontend_config, cli_config);
+    let builder = CliApp::builder(runtime_config, frontend_config, cli_config);
 
     // Optionally attach blockchain client
     #[cfg(feature = "blockchain-sui")]

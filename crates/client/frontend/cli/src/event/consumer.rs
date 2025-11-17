@@ -1,11 +1,11 @@
 //! Maintains the CLI message log in response to runtime events.
 use runtime::{Event, GameStateEvent};
 
-use client_bootstrap::config::EffectVisibility;
 use client_frontend_core::{
     event::{EventConsumer, EventImpact},
     format::format_action_and_effects,
     message::{MessageEntry, MessageLevel, MessageLog},
+    EffectVisibility,
 };
 
 pub struct CliEventConsumer {

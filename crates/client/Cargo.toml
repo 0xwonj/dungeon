@@ -29,6 +29,10 @@ zkvm-arkworks = ["client-frontend-cli?/arkworks"]
 anyhow = { workspace = true }
 tokio = { workspace = true }
 dotenvy = { workspace = true }
+tracing = { workspace = true }
+
+# Frontend core (for FrontendApp trait)
+client-frontend-core = { workspace = true }
 
 # Feature-gated frontends
 client-frontend-cli = { workspace = true, optional = true }

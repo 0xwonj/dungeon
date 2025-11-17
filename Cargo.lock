@@ -2718,8 +2718,10 @@ dependencies = [
  "client-blockchain-core",
  "client-blockchain-sui",
  "client-frontend-cli",
+ "client-frontend-core",
  "dotenvy",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

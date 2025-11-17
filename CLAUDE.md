@@ -77,7 +77,8 @@ just help
 ### Common Just Commands
 
 - `just build [backend]` - Build workspace with specified backend
-- `just run [backend]` - Run CLI client
+- `just run [backend]` - Run CLI client (no blockchain)
+- `just run-sui [backend]` - Run CLI client with Sui blockchain integration
 - `just run-fast [backend]` - Run in fast mode (no proof generation, no persistence)
 - `just test [backend]` - Run all tests
 - `just lint [backend]` - Run clippy lints
@@ -101,22 +102,17 @@ just help
 If you prefer not to use Just, you can use cargo directly:
 
 ```bash
-# Stub backend (fast development)
-cargo build --workspace --no-default-features --features stub
-cargo run -p client-cli --no-default-features --features stub
+# CLI only (no blockchain)
+cargo run -p dungeon-client --no-default-features --features "frontend-cli,zkvm-stub"
+
+# CLI + Sui blockchain
+cargo run -p dungeon-client --no-default-features --features "frontend-cli,blockchain-sui,zkvm-sp1"
+
+# Test workspace
 cargo test --workspace --no-default-features --features stub
 
-# RISC0 backend (default)
-cargo build --workspace
-RISC0_SKIP_BUILD=1 cargo build --workspace  # skip guest builds
-
-# SP1 backend
-cargo build --workspace --no-default-features --features sp1
-cargo run -p client-cli --no-default-features --features sp1
-cargo test --workspace --no-default-features --features sp1
-
 # Lint and format
-cargo lint  # uses default backend (risc0)
+cargo clippy --workspace --all-targets --no-default-features --features stub
 cargo fmt --all
 ```
 
@@ -156,10 +152,14 @@ crates/
 │   └── content/     # Static content and fixtures exposed through oracle adapters
 ├── runtime/         # Public API (RuntimeHandle), orchestrator, workers, oracles, repositories
 ├── zk/              # Proving utilities reused by prover worker and off-chain services
-├── client/
-│   ├── core/        # Cross-frontend primitives: event handling, message logging, view models (crate: client-core)
-│   ├── bootstrap/   # Bootstrap utilities: configuration, oracle factories, runtime setup (crate: client-bootstrap)
-│   └── cli/         # Async terminal application with cursor system and examine UI (crate: client-cli)
+├── client/          # Composable binary (dungeon-client)
+│   ├── bootstrap/   # Runtime initialization (proving, persistence, oracles)
+│   ├── frontend/
+│   │   ├── core/    # UI primitives (events, messages, view models) - client-frontend-core
+│   │   └── cli/     # Terminal UI library - client-frontend-cli
+│   └── blockchain/
+│       ├── core/    # Blockchain abstraction (traits) - client-blockchain-core
+│       └── sui/     # Sui implementation - client-blockchain-sui
 └── xtask/           # Development tools (cargo xtask pattern): tail-logs, clean-data
 ```
 
@@ -291,9 +291,9 @@ pub struct ProofData {
 - **Hook System**: Post-execution hooks with priority ordering, chaining support, and criticality levels (Critical, Important, Optional)
 - **AI System**: 3-layer utility-based AI (Intent → Tactic → Action) using TraitProfile composition (Species × Archetype × Faction × Temperament)
 
-### client/core: Cross-Frontend Primitives
+### client/frontend/core: Cross-Frontend Primitives
 
-- **Crate name**: `client-core` (located at `crates/client/core/`)
+- **Crate name**: `client-frontend-core` (located at `crates/client/frontend/core/`)
 - **Responsibility**: Shared UX glue for presenting the game across different frontend implementations
 - **Modules**:
   - `event`: Event handling and consumption (`EventConsumer`, `EventImpact`)
@@ -301,8 +301,9 @@ pub struct ProofData {
   - `message`: Message logging and formatting
   - `targeting`: Targeting system for tactical interactions
   - `view_model`: View models for rendering game state
+  - `config`: Frontend configuration (`FrontendConfig` with channel and message settings)
 - **Purpose**: Reusable presentation logic shared across CLI, GUI, and other frontend crates
-- **Exports**: `EventConsumer`, `EventImpact`, frontend abstractions, view models
+- **Exports**: `EventConsumer`, `EventImpact`, `FrontendConfig`, frontend abstractions, view models
 
 ### client/bootstrap: Runtime Setup & Configuration
 
@@ -315,17 +316,122 @@ pub struct ProofData {
 - **Purpose**: Reusable setup code shared across CLI, UI, and other front-end crates
 - **Exports**: `RuntimeBuilder`, `RuntimeSetup`, `CliConfig`, `OracleBundle`, `OracleFactory`, `ContentOracleFactory`
 
-### client/cli: Terminal Interface
+### client/frontend/cli: Terminal Interface
 
-- **Crate name**: `client-cli` (located at `crates/client/cli/`)
+- **Crate name**: `client-frontend-cli` (located at `crates/client/frontend/cli/`)
 - **Responsibility**: Async terminal application with cursor system, examine UI, and tactical interactions
-- **Architecture**: Consumes `client-core` and `client-bootstrap`, subscribes to runtime events, renders state
+- **Architecture**: Consumes `client-frontend-core` and `client-bootstrap`, subscribes to runtime events, renders state
 - **Modules**:
-  - `app`: Main application loop and state management
+  - `app`: Main application loop and state management (`CliApp`, `CliAppBuilder`)
+  - `config`: CLI-specific configuration (`CliConfig`)
   - `cursor`: Cursor system for examine mode and targeting
   - `input`: User input handling and command parsing
   - `presentation`: Terminal rendering and UI components
+  - `logging`: Platform-specific log directory setup
 - **Interaction**: Collects player commands, validates entity/turn alignment, forwards actions to runtime
+- **Exports**: `CliApp`, `CliAppBuilder`, `CliConfig`, `FrontendConfig`, `RuntimeConfig`, `setup_logging`
+
+### client/blockchain: Blockchain Integration Layer
+
+The blockchain subsystem provides a pluggable abstraction for submitting ZK proofs to various blockchain networks. It follows the same trait-based pattern as the `zk` crate, allowing multiple blockchain implementations behind a common interface.
+
+#### client/blockchain/core: Blockchain Abstraction
+
+- **Crate name**: `client-blockchain-core` (located at `crates/client/blockchain/core/`)
+- **Responsibility**: Trait definitions and types for blockchain-agnostic proof submission
+- **Architecture**: Trait-based abstraction similar to `zk::Prover` pattern
+- **Core Modules**:
+  - `traits`: Blockchain client trait definitions
+  - `types`: Common blockchain types (session, transaction, proof metadata)
+  - `mock`: Mock implementation for testing
+- **Trait Hierarchy**:
+  ```rust
+  // Core trait composition
+  pub trait BlockchainClient: ProofSubmitter + SessionManager + Send + Sync {
+      async fn list_pending_proofs(&self) -> Result<Vec<ProofMetadata>>;
+      async fn submit_all_pending(&self, session_id: &SessionId) -> Result<Vec<SubmissionResult>>;
+      fn config(&self) -> &dyn BlockchainConfig;
+      async fn health_check(&self) -> Result<()>;
+  }
+
+  // Proof submission operations
+  pub trait ProofSubmitter {
+      async fn submit_proof(&self, session_id: &SessionId, proof_data: ProofData) -> Result<SubmissionResult>;
+      async fn query_transaction(&self, tx_id: &TransactionId) -> Result<TransactionStatus>;
+  }
+
+  // Session lifecycle management
+  pub trait SessionManager {
+      async fn create_session(&self, initial_state_root: [u8; 32]) -> Result<SessionId>;
+      async fn get_session_state(&self, session_id: &SessionId) -> Result<SessionState>;
+      async fn finalize_session(&self, session_id: &SessionId) -> Result<TransactionId>;
+  }
+
+  // Blockchain-specific configuration
+  pub trait BlockchainConfig {
+      fn network_name(&self) -> &str;
+      fn rpc_url(&self) -> &str;
+      fn validate(&self) -> Result<(), String>;
+  }
+  ```
+- **Common Types**:
+  - `SessionId`: Opaque session identifier
+  - `TransactionId`: Blockchain transaction hash/ID
+  - `TransactionStatus`: Pending, Confirmed, or Failed
+  - `ProofMetadata`: Proof tracking info (session, nonce, timestamp)
+  - `SubmissionResult`: Transaction result with ID and status
+- **Design Principles**:
+  - Blockchain-agnostic abstractions (no Sui/Ethereum-specific types)
+  - Async-first API using `#[async_trait]`
+  - Explicit session management for multi-proof workflows
+  - Network-based errors with context preservation
+
+#### client/blockchain/sui: Sui Implementation
+
+- **Crate name**: `client-blockchain-sui` (located at `crates/client/blockchain/sui/`)
+- **Responsibility**: Sui-specific blockchain client implementation
+- **Architecture**: Implements `BlockchainClient` trait using Sui SDK
+- **Core Modules**:
+  - `client`: `SuiBlockchainClient` implementation
+  - `config`: Sui network configuration (`SuiConfig`, `SuiNetwork`)
+  - `converter`: Proof format conversion for Sui Move contracts
+  - `session`: Session state management and transaction building
+- **Sui Networks**:
+  - `Mainnet`: Production Sui network (`https://fullnode.mainnet.sui.io:443`)
+  - `Testnet`: Testing network (`https://fullnode.testnet.sui.io:443`)
+  - `Local`: Local development network (`http://127.0.0.1:9000`)
+- **Configuration**:
+  ```rust
+  pub struct SuiConfig {
+      pub network: SuiNetwork,
+      pub rpc_url: Option<String>,       // Custom RPC override
+      pub package_id: Option<String>,    // Deployed game contract
+      pub gas_budget: u64,               // Transaction gas budget (MIST)
+  }
+
+  // Environment variable loading
+  SUI_NETWORK=testnet        # Network selection (default: testnet)
+  SUI_RPC_URL=<custom-url>   # Custom RPC endpoint
+  SUI_PACKAGE_ID=0x...       # Game package ID
+  SUI_GAS_BUDGET=100000000   # Gas budget in MIST (default: 0.1 SUI)
+  ```
+- **Proof Submission Flow**:
+  1. Convert `ProofData` to Sui format via `SuiProofConverter`
+  2. Build Move transaction calling verification contract
+  3. Estimate gas and submit transaction
+  4. Track transaction status until confirmation
+- **Session Management**:
+  - Sessions map to on-chain game state objects
+  - Session creation initializes state with `initial_state_root`
+  - Proof submissions update session state progressively
+  - Session finalization locks the session and returns final transaction
+- **Status**: Placeholder implementation (Sui SDK integration pending)
+
+#### Future Blockchain Implementations
+
+- **Ethereum**: Planned support for EVM-based chains (Ethereum, Polygon, etc.)
+- **Feature Flags**: Each blockchain backend is feature-gated for optional compilation
+- **Composability**: Frontends can be built with or without blockchain integration
 
 ## Code Organization Patterns
 

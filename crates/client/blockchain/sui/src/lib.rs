@@ -1,37 +1,4 @@
 //! Sui blockchain integration for Dungeon game.
-//!
-//! This crate handles proof submission to Sui blockchain, including:
-//! - SP1 proof format conversion (gnark → arkworks)
-//! - Verifying key deployment
-//! - Proof verification transaction construction
-//! - Game session management on-chain
-//!
-//! # Architecture
-//!
-//! The conversion from SP1 to Sui format happens at the client layer,
-//! keeping the `zk` crate pure and blockchain-agnostic:
-//!
-//! ```text
-//! zk crate (ProofData) → client-blockchain-sui → Sui blockchain
-//!                          ↓
-//!                     gnark→arkworks
-//!                     conversion
-//! ```
-//!
-//! # Usage
-//!
-//! ```ignore
-//! use client_blockchain_sui::{SuiBlockchainClient, SuiConfig};
-//! use client_blockchain_core::BlockchainClient;
-//!
-//! // Create Sui client
-//! let config = SuiConfig::from_env()?;
-//! let client = SuiBlockchainClient::new(config).await?;
-//!
-//! // Use blockchain-agnostic interface
-//! let session_id = client.create_session(oracle_root).await?;
-//! let result = client.submit_proof(&session_id, proof_data).await?;
-//! ```
 
 pub mod client;
 pub mod config;

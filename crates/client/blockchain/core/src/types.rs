@@ -1,7 +1,8 @@
 //! Common types for blockchain interactions.
+//!
+//! This module defines blockchain-agnostic types used across all layers of the blockchain abstraction.
 
 use serde::{Deserialize, Serialize};
-use zk::ProofData;
 
 /// Generic session identifier (blockchain-specific object ID or address).
 ///
@@ -36,6 +37,36 @@ impl TransactionId {
     }
 }
 
+// ============================================================================
+// Layer 0: Pure Infrastructure Types (BlockchainTransport)
+// ============================================================================
+
+/// Generic object identifier on the blockchain.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObjectId(pub Vec<u8>);
+
+impl ObjectId {
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        Self(bytes)
+    }
+}
+
+/// Transaction data (opaque blockchain-specific bytes).
+#[derive(Debug, Clone)]
+pub struct TransactionData {
+    pub payload: Vec<u8>,
+}
+
+/// Object data from blockchain (opaque bytes).
+#[derive(Debug, Clone)]
+pub struct ObjectData {
+    pub data: Vec<u8>,
+}
+
 /// Transaction status on the blockchain.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransactionStatus {
@@ -49,55 +80,75 @@ pub enum TransactionStatus {
     Failed { error: String },
 }
 
-/// Result of proof submission.
-#[derive(Debug, Clone)]
-pub struct SubmissionResult {
-    /// Transaction ID on the blockchain
-    pub transaction_id: TransactionId,
+// ============================================================================
+// Layer 1: Game Domain Types (SessionManager, ProofSubmitter, StateVerifier)
+// ============================================================================
 
-    /// Gas cost in native currency
-    pub gas_cost: u64,
-
-    /// Transaction status
-    pub status: TransactionStatus,
-}
-
-/// Metadata about a proof pending submission.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProofMetadata {
-    /// Action nonce from game state
-    pub nonce: u64,
-
-    /// Proof data from zkVM
-    pub proof_data: ProofData,
-
-    /// Estimated gas cost for submission
-    pub estimated_gas: Option<u64>,
-
-    /// Whether this proof has been submitted
-    pub submitted: bool,
-
-    /// Transaction ID if submitted
-    pub transaction_id: Option<TransactionId>,
-}
+/// State root (SHA-256 hash of game state).
+pub type StateRoot = [u8; 32];
 
 /// On-chain game session state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionState {
+pub struct OnChainSession {
     /// Session identifier
     pub session_id: SessionId,
 
     /// Oracle root commitment
     pub oracle_root: [u8; 32],
 
-    /// Latest state root on-chain
-    pub latest_state_root: [u8; 32],
+    /// Current verified state root
+    pub current_state_root: StateRoot,
 
-    /// Latest action nonce on-chain
-    pub latest_nonce: u64,
+    /// Current action nonce
+    pub nonce: u64,
 
-    /// Whether the session is finalized
-    pub finalized: bool,
+    /// Session status
+    pub status: SessionStatus,
+
+    /// Creation timestamp
+    pub created_at: u64,
+
+    /// Finalization timestamp (if finalized)
+    pub finalized_at: Option<u64>,
+}
+
+/// Session status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SessionStatus {
+    /// Session is active and accepting proofs
+    Active,
+
+    /// Session is finalized, no more proofs accepted
+    Finalized,
+}
+
+/// Proof submission receipt.
+#[derive(Debug, Clone)]
+pub struct ProofReceipt {
+    /// Transaction ID on the blockchain
+    pub transaction_id: TransactionId,
+
+    /// Gas used for this submission
+    pub gas_used: u64,
+
+    /// New state root after this proof
+    pub new_state_root: StateRoot,
+
+    /// New nonce after this proof
+    pub new_nonce: u64,
+}
+
+/// Gas estimation result.
+#[derive(Debug, Clone)]
+pub struct GasEstimate {
+    /// Estimated gas amount
+    pub amount: u64,
+
+    /// Gas unit (e.g., "MIST", "wei", "lamports")
+    pub unit: String,
+
+    /// Estimated cost in USD (if available)
+    pub estimated_cost_usd: Option<f64>,
 }
 
 /// Blockchain-specific configuration.

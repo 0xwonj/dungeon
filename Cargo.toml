@@ -36,7 +36,7 @@ runtime = { path = "crates/runtime", default-features = false }
 zk = { path = "crates/zk", default-features = false }
 client-bootstrap = { path = "crates/client/bootstrap", default-features = false }
 client-frontend-core = { path = "crates/client/frontend/core" }
-client-frontend-cli = { path = "crates/client/frontend/cli" }
+client-frontend-cli = { path = "crates/client/frontend/cli", default-features = false }
 client-blockchain-core = { path = "crates/client/blockchain/core" }
 client-blockchain-sui = { path = "crates/client/blockchain/sui" }
 

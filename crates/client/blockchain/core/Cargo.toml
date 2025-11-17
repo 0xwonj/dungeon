@@ -3,6 +3,14 @@ name = "client-blockchain-core"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+# ZK backend features (propagate to zk crate)
+default = []
+risc0 = ["zk/risc0"]
+sp1 = ["zk/sp1"]
+stub = ["zk/stub"]
+arkworks = ["zk/arkworks"]
+
 [dependencies]
 # Internal dependencies
 zk = { workspace = true }
