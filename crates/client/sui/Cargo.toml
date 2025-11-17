@@ -1,0 +1,29 @@
+[package]
+name = "client-sui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Internal dependencies
+zk = { workspace = true }
+game-core = { workspace = true }
+
+# SP1-Sui conversion
+sp1-sui = { git = "https://github.com/SoundnessLabs/sp1-sui" }
+sp1-sdk = { workspace = true }
+
+# Sui SDK
+sui-sdk = "0.68"  # Use latest compatible version
+
+# Serialization
+bincode = { workspace = true }
+serde = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
