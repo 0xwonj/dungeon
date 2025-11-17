@@ -568,6 +568,7 @@ dependencies = [
  "digest 0.10.7",
  "fnv",
  "merlin",
+ "rayon",
  "sha2",
 ]
 
@@ -600,6 +601,7 @@ dependencies = [
  "num-bigint 0.4.6",
  "num-integer",
  "num-traits",
+ "rayon",
  "zeroize",
 ]
 
@@ -658,6 +660,7 @@ dependencies = [
  "num-bigint 0.4.6",
  "num-traits",
  "paste",
+ "rayon",
  "zeroize",
 ]
 
@@ -742,6 +745,7 @@ dependencies = [
  "ark-relations",
  "ark-serialize 0.5.0",
  "ark-std 0.5.0",
+ "rayon",
 ]
 
 [[package]]
@@ -757,6 +761,7 @@ dependencies = [
  "educe",
  "fnv",
  "hashbrown 0.15.5",
+ "rayon",
 ]
 
 [[package]]
@@ -820,6 +825,7 @@ dependencies = [
  "arrayvec",
  "digest 0.10.7",
  "num-bigint 0.4.6",
+ "rayon",
 ]
 
 [[package]]
@@ -873,6 +879,7 @@ checksum = "246a225cc6131e9ee4f24619af0f19d67761fff15d7ccc22e42b80846e69449a"
 dependencies = [
  "num-traits",
  "rand 0.8.5",
+ "rayon",
 ]
 
 [[package]]
@@ -1939,6 +1946,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1d728cc89cf3aee9ff92b05e62b19ee65a02b5702cff7d5a377e32c6ae29d8d"
 
 [[package]]
+name = "client-blockchain-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "game-core",
+ "serde",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "zk",
+]
+
+[[package]]
+name = "client-blockchain-sui"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bincode",
+ "client-blockchain-core",
+ "game-core",
+ "serde",
+ "sp1-sdk",
+ "sp1-sui",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "zk",
+]
+
+[[package]]
 name = "client-bootstrap"
 version = "0.1.0"
 dependencies = [
@@ -1951,13 +1988,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "client-cli"
+name = "client-frontend-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "client-bootstrap",
- "client-core",
+ "client-frontend-core",
  "crossterm 0.29.0",
  "dotenvy",
  "game-core",
@@ -1971,7 +2008,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "client-core"
+name = "client-frontend-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -2744,6 +2781,7 @@ dependencies = [
  "ff 0.13.1",
  "generic-array 0.14.9",
  "group 0.13.0",
+ "hkdf",
  "pem-rfc7468",
  "pkcs8",
  "rand_core 0.6.4",
@@ -3371,6 +3409,15 @@ name = "hex-literal"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
+
+[[package]]
+name = "hkdf"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b5f8eb2ad728638ea2c7d47a21db23b7b58a72ed6a38256b8a1849f15fbbdf7"
+dependencies = [
+ "hmac",
+]
 
 [[package]]
 name = "hmac"
@@ -6677,6 +6724,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp1-lib"
+version = "5.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fce8ad0f153443d09d398eccb650a0b2dcbf829470e394e4bf60ec4379c7af93"
+dependencies = [
+ "bincode",
+ "elliptic-curve",
+ "serde",
+ "sp1-primitives",
+]
+
+[[package]]
 name = "sp1-primitives"
 version = "5.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6965,6 +7024,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp1-sui"
+version = "0.1.0"
+source = "git+https://github.com/SoundnessLabs/sp1-sui#15d84fd54f8127c4a5c5fac6fad75eb888d46fa2"
+dependencies = [
+ "ark-bn254",
+ "ark-ec",
+ "ark-ff 0.5.0",
+ "ark-groth16",
+ "ark-serialize 0.5.0",
+ "ark-snark",
+ "clap",
+ "hex",
+ "num-bigint 0.4.6",
+ "num-traits",
+ "sp1-sdk",
+ "sp1-verifier",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "sp1-verifier"
+version = "5.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e697f43289347aedf378f1c74674ad3e7db16d133b48f04ab3008ca911fe79fa"
+dependencies = [
+ "blake3",
+ "cfg-if",
+ "hex",
+ "lazy_static",
+ "sha2",
+ "substrate-bn-succinct",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7061,6 +7155,23 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.110",
+]
+
+[[package]]
+name = "substrate-bn-succinct"
+version = "0.6.0-v5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ba32f1b74728f92887c3ad17c42bf82998eb52c9091018f35294e9cd388b0c8"
+dependencies = [
+ "bytemuck",
+ "byteorder",
+ "cfg-if",
+ "crunchy",
+ "lazy_static",
+ "num-bigint 0.4.6",
+ "rand 0.8.5",
+ "rustc-hex",
+ "sp1-lib",
 ]
 
 [[package]]

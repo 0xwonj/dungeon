@@ -4,9 +4,14 @@ members = [
     "crates/game/content",
     "crates/runtime",
     "crates/zk",
+
+    # Client sub-crates
     "crates/client/bootstrap",
-    "crates/client/core",
-    "crates/client/cli",
+    "crates/client/frontend/core",
+    "crates/client/frontend/cli",
+    "crates/client/blockchain/core",
+    "crates/client/blockchain/sui",
+
     "crates/xtask",
     "crates/behavior-tree",
 ]
@@ -29,7 +34,10 @@ behavior-tree = { path = "crates/behavior-tree" }
 runtime = { path = "crates/runtime", default-features = false }
 zk = { path = "crates/zk", default-features = false }
 client-bootstrap = { path = "crates/client/bootstrap", default-features = false }
-client-core = { path = "crates/client/core" }
+client-frontend-core = { path = "crates/client/frontend/core" }
+client-frontend-cli = { path = "crates/client/frontend/cli" }
+client-blockchain-core = { path = "crates/client/blockchain/core" }
+client-blockchain-sui = { path = "crates/client/blockchain/sui" }
 
 # ----------------------------------------------------------------------------
 # Async Runtime

@@ -1,0 +1,32 @@
+[package]
+name = "client-blockchain-sui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Internal dependencies
+client-blockchain-core = { workspace = true }
+zk = { workspace = true }
+game-core = { workspace = true }
+
+# SP1-Sui conversion
+sp1-sui = { git = "https://github.com/SoundnessLabs/sp1-sui" }
+sp1-sdk = { workspace = true }
+
+# Sui SDK
+# TODO: Add correct sui-sdk version when available
+# sui-sdk = "0.68"
+
+# Serialization
+bincode = { workspace = true }
+serde = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = "0.1"
+
+# Logging
+tracing = { workspace = true }
