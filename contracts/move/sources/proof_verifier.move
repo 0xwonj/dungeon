@@ -105,31 +105,32 @@ module dungeon::proof_verifier {
 
     // ===== Admin Functions =====
 
-    /// Initialize a new verifying key
+    /// Initialize a new verifying key as a shared object
     ///
     /// This should be called once to prepare the verifying key for the game circuit.
     /// The verifying key comes from the RISC0 Groth16 trusted setup.
+    /// The created VerifyingKey is shared globally so all users can verify proofs.
     ///
     /// # Arguments
     /// * `vk_bytes` - Raw verifying key bytes from RISC0
     /// * `version` - Circuit version identifier
     /// * `ctx` - Transaction context
-    ///
-    /// # Returns
-    /// A VerifyingKey object that should be shared or transferred to a registry
-    public fun create_verifying_key(
+    entry fun create_verifying_key(
         vk_bytes: vector<u8>,
         version: u64,
         ctx: &mut TxContext,
-    ): VerifyingKey {
+    ) {
         let curve = groth16::bn254();
         let prepared_vk = groth16::prepare_verifying_key(&curve, &vk_bytes);
 
-        VerifyingKey {
+        let vk = VerifyingKey {
             id: object::new(ctx),
             prepared_vk,
             version,
-        }
+        };
+
+        // Share the VK so everyone can use it for proof verification
+        transfer::share_object(vk);
     }
 
     // ===== Public Functions =====
