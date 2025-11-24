@@ -5,7 +5,9 @@
 pub mod builder;
 pub mod config;
 pub mod oracles;
+pub mod session;
 
 pub use builder::{RuntimeBuilder, RuntimeSetup};
-pub use config::ClientConfig;
+pub use config::RuntimeConfig;
 pub use oracles::{ContentOracleFactory, OracleBundle, OracleFactory};
+pub use session::{SessionInfo, find_latest_session, list_sessions, load_latest_state};

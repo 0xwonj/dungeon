@@ -5,8 +5,7 @@ use std::sync::RwLock;
 
 use game_core::GameState;
 
-use crate::api::Result;
-use crate::repository::{RepositoryError, StateRepository};
+use crate::repository::{RepositoryError, Result, StateRepository};
 
 /// In-memory implementation of StateRepository.
 ///

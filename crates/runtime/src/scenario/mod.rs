@@ -8,11 +8,13 @@
 
 use std::path::Path;
 
-use game_core::{GameState, ItemHandle, ItemState, Position, PropKind, PropState};
+use game_core::{
+    GameState, ItemHandle, ItemOracle, ItemState, MapOracle, Position, PropKind, PropState,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::api::{Result, RuntimeError};
-use crate::oracle::OracleManager;
+use crate::oracle::OracleBundle;
 
 /// Entity placement specification for scenario setup.
 ///
@@ -57,16 +59,166 @@ impl Scenario {
         Self { map_id, placements }
     }
 
+    /// Validate scenario against oracles and map.
+    ///
+    /// Checks:
+    /// - Exactly one Player placement
+    /// - All positions are within map bounds
+    /// - All positions are passable (not walls)
+    /// - No duplicate positions
+    /// - All actor def_ids exist in ActorOracle
+    /// - All item handles exist in ItemOracle
+    ///
+    /// # Arguments
+    ///
+    /// * `oracles` - Oracle bundle containing map, actors, items
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(())` if scenario is valid
+    /// - `Err(RuntimeError::InvalidConfig)` with detailed error message
+    pub fn validate(&self, oracles: &OracleBundle) -> Result<()> {
+        use std::collections::HashSet;
+
+        // 1. Check player count
+        let player_count = self
+            .placements
+            .iter()
+            .filter(|p| matches!(p.kind, EntityKind::Player))
+            .count();
+
+        if player_count == 0 {
+            return Err(RuntimeError::InvalidConfig(
+                "Scenario must have exactly one Player placement".to_string(),
+            ));
+        }
+        if player_count > 1 {
+            return Err(RuntimeError::InvalidConfig(format!(
+                "Scenario has {} Player placements (must be exactly 1)",
+                player_count
+            )));
+        }
+
+        // 2. Get map dimensions
+        let map = &oracles.map;
+        let dimensions = map.dimensions();
+
+        tracing::debug!(
+            "Validating scenario with {} placements against map {:?}",
+            self.placements.len(),
+            dimensions
+        );
+
+        // 3. Check all placements
+        let mut used_positions = HashSet::new();
+
+        for (idx, placement) in self.placements.iter().enumerate() {
+            let pos = placement.position;
+
+            // Check bounds
+            if !dimensions.contains(pos) {
+                return Err(RuntimeError::InvalidConfig(format!(
+                    "Placement #{}: Position {:?} is outside map bounds (width={}, height={})",
+                    idx, pos, dimensions.width, dimensions.height
+                )));
+            }
+
+            // Check passability
+            if let Some(tile) = map.tile(pos) {
+                if !tile.is_passable() {
+                    return Err(RuntimeError::InvalidConfig(format!(
+                        "Placement #{}: Position {:?} is not passable (terrain: {:?})",
+                        idx,
+                        pos,
+                        tile.terrain()
+                    )));
+                }
+            } else {
+                return Err(RuntimeError::InvalidConfig(format!(
+                    "Placement #{}: Position {:?} has no tile data",
+                    idx, pos
+                )));
+            }
+
+            // Check duplicates
+            if !used_positions.insert(pos) {
+                return Err(RuntimeError::InvalidConfig(format!(
+                    "Placement #{}: Duplicate entity at position {:?}",
+                    idx, pos
+                )));
+            }
+
+            // Check entity-specific validity
+            match &placement.kind {
+                EntityKind::Player => {
+                    // Verify player template exists
+                    if oracles.actors().template("player").is_none() {
+                        return Err(RuntimeError::InvalidConfig(
+                            "Player template 'player' not found in ActorOracle".to_string(),
+                        ));
+                    }
+                }
+
+                EntityKind::Actor { def_id } => {
+                    if oracles.actors().template(def_id).is_none() {
+                        return Err(RuntimeError::InvalidConfig(format!(
+                            "Placement #{}: Actor template '{}' not found in ActorOracle",
+                            idx, def_id
+                        )));
+                    }
+                }
+
+                EntityKind::Item { handle } => {
+                    if oracles.items.definition(*handle).is_none() {
+                        return Err(RuntimeError::InvalidConfig(format!(
+                            "Placement #{}: Item definition {:?} not found in ItemOracle",
+                            idx, handle
+                        )));
+                    }
+                }
+
+                EntityKind::Prop { .. } => {
+                    // Props don't need oracle validation (kind is self-contained)
+                }
+            }
+        }
+
+        tracing::info!(
+            "Scenario validation passed: {} placements, {} unique positions",
+            self.placements.len(),
+            used_positions.len()
+        );
+
+        Ok(())
+    }
+
     /// Initialize GameState from this scenario.
     ///
     /// This allocates EntityIds, creates entities from templates,
     /// and sets up initial world occupancy.
-    pub fn create_initial_state(&self, oracles: &OracleManager) -> Result<GameState> {
+    ///
+    /// # Validation
+    ///
+    /// This method validates the scenario before creating state. If validation fails,
+    /// returns `Err(RuntimeError::InvalidConfig)` with a detailed error message.
+    ///
+    /// # Arguments
+    ///
+    /// * `oracles` - Oracle bundle containing map, actors, items
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(GameState)` - Initialized game state
+    /// - `Err(RuntimeError::InvalidConfig)` - Validation failed or entity creation failed
+    pub fn create_initial_state(&self, oracles: &OracleBundle) -> Result<GameState> {
+        // Validate scenario first - fail fast with clear error messages
+        self.validate(oracles)?;
+
         // Start with empty state - scenario will add all entities explicitly
         let mut state = GameState::empty();
 
         tracing::info!(
-            "Creating initial state from scenario with {} placements",
+            "Creating initial state from scenario with {} placements (validation passed)",
             self.placements.len()
         );
 
@@ -75,7 +227,7 @@ impl Scenario {
                 EntityKind::Player => {
                     // Player always gets EntityId::PLAYER (0)
                     tracing::info!("Processing Player placement at {:?}", placement.position);
-                    let template = oracles.actors().template("player").ok_or_else(|| {
+                    let template = oracles.actors.template("player").ok_or_else(|| {
                         RuntimeError::InvalidConfig(
                             "Player template 'player' not found".to_string(),
                         )
@@ -93,7 +245,7 @@ impl Scenario {
                 }
 
                 EntityKind::Actor { def_id } => {
-                    let template = oracles.actors().template(def_id).ok_or_else(|| {
+                    let template = oracles.actors.template(def_id).ok_or_else(|| {
                         RuntimeError::InvalidConfig(format!(
                             "Actor template '{}' not found",
                             def_id

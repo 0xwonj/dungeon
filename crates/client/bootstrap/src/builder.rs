@@ -5,31 +5,67 @@ use std::sync::Arc;
 use anyhow::Result;
 use runtime::{AiKind, ProviderKind, Runtime, Scenario};
 
-use crate::config::ClientConfig;
+use crate::config::RuntimeConfig;
 use crate::oracles::{ContentOracleFactory, OracleBundle, OracleFactory};
 
 /// Builder that assembles runtime state, oracles, and configuration for clients.
 pub struct RuntimeBuilder {
-    config: ClientConfig,
     oracle_factory: Arc<dyn OracleFactory>,
+    config: RuntimeConfig,
+    initial_state: Option<game_core::GameState>,
+    #[cfg(feature = "sui")]
+    blockchain_clients: Option<runtime::BlockchainClients>,
+}
+
+impl Default for RuntimeBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RuntimeBuilder {
-    /// Create a new RuntimeBuilder with data-driven content from game-content.
+    /// Create a new RuntimeBuilder with default configuration.
     ///
     /// This uses ContentOracleFactory by default, loading content from RON/TOML files.
     /// Use `oracle_factory()` to override with a custom factory.
-    pub fn new(config: ClientConfig) -> Self {
+    /// Use `config()` to provide runtime configuration.
+    pub fn new() -> Self {
         let default_factory = ContentOracleFactory::default_paths();
         Self {
-            config,
             oracle_factory: Arc::new(default_factory),
+            config: RuntimeConfig::default(),
+            initial_state: None,
+            #[cfg(feature = "sui")]
+            blockchain_clients: None,
         }
+    }
+
+    /// Provide runtime configuration.
+    pub fn config(mut self, config: RuntimeConfig) -> Self {
+        self.config = config;
+        self
     }
 
     /// Provide a custom oracle factory (e.g., game-content backed implementation).
     pub fn oracle_factory(mut self, factory: impl OracleFactory + 'static) -> Self {
         self.oracle_factory = Arc::new(factory);
+        self
+    }
+
+    /// Provide initial game state (for resuming existing session).
+    ///
+    /// If provided, this state will be used instead of creating a new state from scenario.
+    pub fn initial_state(mut self, state: game_core::GameState) -> Self {
+        self.initial_state = Some(state);
+        self
+    }
+
+    /// Set blockchain clients for manual blockchain operations (Sui feature only).
+    ///
+    /// This enables RuntimeHandle methods for uploading to Walrus and submitting to blockchain.
+    #[cfg(feature = "sui")]
+    pub fn blockchain_clients(mut self, clients: runtime::BlockchainClients) -> Self {
+        self.blockchain_clients = Some(clients);
         self
     }
 
@@ -65,25 +101,30 @@ impl RuntimeBuilder {
 
     pub async fn build(self) -> Result<RuntimeSetup> {
         let oracles = self.oracle_factory.build();
-        let manager = oracles.manager();
 
-        let mut builder = Runtime::builder().oracles(manager.clone());
+        let mut builder = Runtime::builder().oracles(oracles.clone());
 
-        // Load scenario if available
-        // Try to find scenario file in data directory
-        let scenario_path = self.find_scenario_path();
-        if let Some(path) = scenario_path {
-            match Scenario::load_from_file(&path) {
-                Ok(scenario) => {
-                    tracing::info!("Loaded scenario from {}", path.display());
-                    builder = builder.scenario(scenario);
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to load scenario from {}: {}", path.display(), e);
-                }
-            }
+        // Use initial_state if provided (for session resumption)
+        if let Some(state) = self.initial_state {
+            tracing::info!("Using provided initial state (session resumption)");
+            builder = builder.initial_state(state);
         } else {
-            tracing::info!("No scenario file found, using default state");
+            // Load scenario if available
+            // Try to find scenario file in data directory
+            let scenario_path = self.find_scenario_path();
+            if let Some(path) = scenario_path {
+                match Scenario::load_from_file(&path) {
+                    Ok(scenario) => {
+                        tracing::info!("Loaded scenario from {}", path.display());
+                        builder = builder.scenario(scenario);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to load scenario from {}: {}", path.display(), e);
+                    }
+                }
+            } else {
+                tracing::info!("No scenario file found, using default state");
+            }
         }
 
         // Enable proving if requested
@@ -107,26 +148,29 @@ impl RuntimeBuilder {
             builder = builder.checkpoint_interval(interval);
         }
 
+        // Set blockchain clients if provided (Sui feature only)
+        #[cfg(feature = "sui")]
+        if let Some(blockchain_clients) = self.blockchain_clients {
+            builder = builder.blockchain_clients(blockchain_clients);
+        }
+
         // Build the runtime
         let runtime = builder.build().await?;
 
         // Register AI providers
         let handle = runtime.handle();
 
-        // Register GoalBasedAiProvider (recommended)
-        // This provider uses goal-oriented decision making (Goal → Evaluate candidates → Select best)
-        // Simpler and more natural than the layered Intent → Tactic → Action approach
-        let goal_based_kind = ProviderKind::Ai(AiKind::GoalBased);
-        handle.register_provider(goal_based_kind, runtime::GoalBasedAiProvider::new())?;
+        // Register UtilityAiProvider (goal-directed with utility scoring)
+        // This provider uses:
+        // 1. Goal Selection (Attack, Flee, Heal, Idle, etc.)
+        // 2. Candidate Generation (all possible actions)
+        // 3. Utility Scoring (0-100 based on goal relevance)
+        // 4. Best Selection (highest score wins)
+        let utility_ai_kind = ProviderKind::Ai(AiKind::Utility);
+        handle.register_provider(utility_ai_kind, runtime::UtilityAiProvider::new())?;
 
-        // Register UtilityAiProvider (legacy, for comparison)
-        // This provider uses 3-layer decision making (Intent → Tactic → Action)
-        // Note: Currently has compilation errors due to old action system
-        // let utility_ai_kind = ProviderKind::Ai(AiKind::Utility);
-        // handle.register_provider(utility_ai_kind, runtime::UtilityAiProvider::new())?;
-
-        // Set GoalBased as default for all NPCs
-        handle.set_default_provider(goal_based_kind)?;
+        // Set Utility AI as default for all NPCs
+        handle.set_default_provider(utility_ai_kind)?;
 
         Ok(RuntimeSetup {
             config: self.config,
@@ -137,7 +181,7 @@ impl RuntimeBuilder {
 }
 
 pub struct RuntimeSetup {
-    pub config: ClientConfig,
+    pub config: RuntimeConfig,
     pub oracles: OracleBundle,
     pub runtime: Runtime,
 }

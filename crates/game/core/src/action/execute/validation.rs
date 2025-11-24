@@ -49,7 +49,7 @@ pub(super) fn pre_validate(
 
     // 6. Load action profile
     let profile = env
-        .tables()
+        .actions()
         .map_err(|_| ActionError::ProfileNotFound)?
         .action_profile(action.kind);
 
@@ -116,22 +116,30 @@ fn validate_targeting(
         } => {
             // Must have a single entity input
             let target_id = match action.input {
-                ActionInput::Entity(id) => id,
+                ActionInput::Target(id) => id,
                 _ => return Err(ActionError::InvalidTarget),
             };
 
-            // Check target exists
-            let actor = state
-                .entities
-                .actor(action.actor)
+            // Get actor position
+            let actor_pos = state
+                .actor_position(action.actor)
                 .ok_or(ActionError::ActorNotFound)?;
-            let target = state
-                .entities
-                .actor(target_id)
+
+            // Try to find target position from any entity type: Actor, Item, or Prop
+            let target_pos = state
+                .actor_position(target_id)
+                .or_else(|| {
+                    // Not an actor - try item
+                    state.entities.item(target_id).map(|item| item.position)
+                })
+                .or_else(|| {
+                    // Not an item - try prop
+                    state.entities.prop(target_id).map(|prop| prop.position)
+                })
                 .ok_or(ActionError::TargetNotFound)?;
 
             // Check range (Chebyshev distance)
-            let distance = calculate_distance(actor.position, target.position);
+            let distance = calculate_distance(actor_pos, target_pos);
             if distance > *range {
                 return Err(ActionError::OutOfRange);
             }

@@ -3,30 +3,29 @@
 //! Oracles expose static map geometry, item definitions, rule tables, and NPC
 //! templates. The [`Env`] aggregate bundles them so the engine can access
 //! everything it needs without hard coupling to concrete implementations.
+mod actions;
+mod actors;
 mod config;
 mod error;
 mod items;
 mod map;
-mod npc;
 mod rng;
 mod snapshot;
-mod tables;
 
+pub use actions::ActionOracle;
+pub use actors::{ActorOracle, ActorTemplate, ActorTemplateBuilder};
 pub use config::ConfigOracle;
 pub use error::OracleError;
 pub use items::{
-    ArmorData, ConsumableData, ConsumableEffect, ItemDefinition, ItemKind, ItemOracle, WeaponData,
+    ArmorData, ArmorKind, AttackType, ConsumableData, ItemDefinition, ItemKind, ItemOracle,
+    WeaponData, WeaponKind,
 };
 pub use map::{MapDimensions, MapOracle, StaticTile, TerrainKind};
-pub use npc::{ActorOracle, ActorTemplate, ActorTemplateBuilder};
 pub use rng::{PcgRng, RngOracle, compute_seed};
 pub use snapshot::{
-    ActorsSnapshot, ConfigSnapshot, ItemsSnapshot, MapSnapshot, OracleSnapshot,
-    SnapshotActorOracle, SnapshotConfigOracle, SnapshotItemOracle, SnapshotMapOracle,
-    SnapshotOracleBundle, SnapshotTablesOracle, TablesSnapshot,
-};
-pub use tables::{
-    ActionCosts, CombatParams, DamageParams, HitChanceParams, SpeedParams, TablesOracle,
+    ActionSnapshot, ActorsSnapshot, ConfigSnapshot, ItemsSnapshot, MapSnapshot, OracleSnapshot,
+    SnapshotActionOracle, SnapshotActorOracle, SnapshotConfigOracle, SnapshotItemOracle,
+    SnapshotMapOracle, SnapshotOracleBundle,
 };
 
 /// Aggregates read-only oracles required by the reducer and action pipeline.
@@ -35,14 +34,14 @@ pub struct Env<'a, M, I, T, A, C, R>
 where
     M: MapOracle + ?Sized,
     I: ItemOracle + ?Sized,
-    T: TablesOracle + ?Sized,
+    T: ActionOracle + ?Sized,
     A: ActorOracle + ?Sized,
     C: ConfigOracle + ?Sized,
     R: RngOracle + ?Sized,
 {
     map: Option<&'a M>,
     items: Option<&'a I>,
-    tables: Option<&'a T>,
+    actions: Option<&'a T>,
     actors: Option<&'a A>,
     config: Option<&'a C>,
     rng: Option<&'a R>,
@@ -52,7 +51,7 @@ pub type GameEnv<'a> = Env<
     'a,
     dyn MapOracle + 'a,
     dyn ItemOracle + 'a,
-    dyn TablesOracle + 'a,
+    dyn ActionOracle + 'a,
     dyn ActorOracle + 'a,
     dyn ConfigOracle + 'a,
     dyn RngOracle + 'a,
@@ -62,7 +61,7 @@ impl<'a, M, I, T, A, C, R> Env<'a, M, I, T, A, C, R>
 where
     M: MapOracle + ?Sized,
     I: ItemOracle + ?Sized,
-    T: TablesOracle + ?Sized,
+    T: ActionOracle + ?Sized,
     A: ActorOracle + ?Sized,
     C: ConfigOracle + ?Sized,
     R: RngOracle + ?Sized,
@@ -70,7 +69,7 @@ where
     pub fn new(
         map: Option<&'a M>,
         items: Option<&'a I>,
-        tables: Option<&'a T>,
+        actions: Option<&'a T>,
         actors: Option<&'a A>,
         config: Option<&'a C>,
         rng: Option<&'a R>,
@@ -78,7 +77,7 @@ where
         Self {
             map,
             items,
-            tables,
+            actions,
             actors,
             config,
             rng,
@@ -88,7 +87,7 @@ where
     pub fn with_all(
         map: &'a M,
         items: &'a I,
-        tables: &'a T,
+        actions: &'a T,
         actors: &'a A,
         config: &'a C,
         rng: &'a R,
@@ -96,7 +95,7 @@ where
         Self::new(
             Some(map),
             Some(items),
-            Some(tables),
+            Some(actions),
             Some(actors),
             Some(config),
             Some(rng),
@@ -107,7 +106,7 @@ where
         Self {
             map: None,
             items: None,
-            tables: None,
+            actions: None,
             actors: None,
             config: None,
             rng: None,
@@ -132,13 +131,13 @@ where
         self.items.ok_or(OracleError::ItemsNotAvailable)
     }
 
-    /// Returns the TablesOracle, or an error if not available.
+    /// Returns the ActionOracle, or an error if not available.
     ///
     /// # Errors
     ///
-    /// Returns `OracleError::TablesNotAvailable` if no tables oracle was provided.
-    pub fn tables(&self) -> Result<&'a T, OracleError> {
-        self.tables.ok_or(OracleError::TablesNotAvailable)
+    /// Returns `OracleError::ActionsNotAvailable` if no actions oracle was provided.
+    pub fn actions(&self) -> Result<&'a T, OracleError> {
+        self.actions.ok_or(OracleError::ActionsNotAvailable)
     }
 
     /// Returns the ActorOracle, or an error if not available.
@@ -182,18 +181,35 @@ impl<'a, M, I, T, A, C, R> Env<'a, M, I, T, A, C, R>
 where
     M: MapOracle + 'a,
     I: ItemOracle + 'a,
-    T: TablesOracle + 'a,
+    T: ActionOracle + 'a,
     A: ActorOracle + 'a,
     C: ConfigOracle + 'a,
     R: RngOracle + 'a,
 {
+    /// Converts this environment into a trait-object based `GameEnv` (consumes self).
+    ///
+    /// Use this when you need to convert once and don't need the original `Env` anymore.
     pub fn into_game_env(self) -> GameEnv<'a> {
         let map: Option<&'a dyn MapOracle> = self.map.map(|map| map as _);
         let items: Option<&'a dyn ItemOracle> = self.items.map(|items| items as _);
-        let tables: Option<&'a dyn TablesOracle> = self.tables.map(|tables| tables as _);
+        let actions: Option<&'a dyn ActionOracle> = self.actions.map(|actions| actions as _);
         let actors: Option<&'a dyn ActorOracle> = self.actors.map(|actors| actors as _);
         let config: Option<&'a dyn ConfigOracle> = self.config.map(|config| config as _);
         let rng: Option<&'a dyn RngOracle> = self.rng.map(|rng| rng as _);
-        Env::new(map, items, tables, actors, config, rng)
+        Env::new(map, items, actions, actors, config, rng)
+    }
+
+    /// Converts this environment into a trait-object based `GameEnv` (borrows self).
+    ///
+    /// Use this when you need to convert multiple times (e.g., in a loop).
+    /// Overhead: 6 pointer copies (48 bytes on 64-bit systems).
+    pub fn as_game_env(&self) -> GameEnv<'a> {
+        let map: Option<&'a dyn MapOracle> = self.map.map(|map| map as _);
+        let items: Option<&'a dyn ItemOracle> = self.items.map(|items| items as _);
+        let actions: Option<&'a dyn ActionOracle> = self.actions.map(|actions| actions as _);
+        let actors: Option<&'a dyn ActorOracle> = self.actors.map(|actors| actors as _);
+        let config: Option<&'a dyn ConfigOracle> = self.config.map(|config| config as _);
+        let rng: Option<&'a dyn RngOracle> = self.rng.map(|rng| rng as _);
+        Env::new(map, items, actions, actors, config, rng)
     }
 }

@@ -22,7 +22,7 @@
 # Available Backends:
 #   risc0       - RISC0 zkVM (production, real proofs, slow)
 #   stub        - Stub prover (instant, no real proofs, testing only)
-#   sp1         - SP1 zkVM (not implemented yet)
+#   sp1         - SP1 zkVM (proof mode via SP1_PROOF_MODE env var)
 #   arkworks    - Arkworks circuits (not implemented yet)
 
 # ============================================================================
@@ -64,8 +64,13 @@ help:
     @echo "Available backends:"
     @echo "  risc0       Production RISC0 zkVM (real proofs, slow)"
     @echo "  stub        Dummy prover (instant, testing only)"
-    @echo "  sp1         SP1 zkVM (not implemented)"
+    @echo "  sp1         SP1 zkVM (use SP1_PROOF_MODE for proof type)"
     @echo "  arkworks    Arkworks circuits (not implemented)"
+    @echo ""
+    @echo "SP1 Proof Modes (SP1_PROOF_MODE):"
+    @echo "  compressed  Compressed STARK (~4-5MB, off-chain) [default]"
+    @echo "  groth16     Groth16 SNARK (~260 bytes, on-chain)"
+    @echo "  plonk       PLONK SNARK (~868 bytes, on-chain)"
     @echo ""
     @echo "Common workflows:"
     @echo "  just build stub          Fast development build"
@@ -77,6 +82,8 @@ help:
     @echo "Development tools:"
     @echo "  just tail-logs           Monitor latest session logs"
     @echo "  just tail-logs <id>      Monitor specific session"
+    @echo "  just read-state <nonce>  Read and inspect state file"
+    @echo "  just read-actions        Read and inspect action log (latest session)"
     @echo "  just clean-data          Clean all data (with confirmation)"
     @echo "  just clean-logs          Clean only logs"
     @echo "  just rebuild-guest       Rebuild guest program (fixes malformed binary)"
@@ -110,19 +117,106 @@ info:
 # Build Commands
 # ============================================================================
 
-# Build workspace with specified backend
-build backend=default_backend:
-    @just _exec {{backend}} build --workspace
+# Build workspace with flexible feature composition
+# Usage: just build stub [cli] [sui]
+build *features:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ $# -eq 0 ]; then
+        echo "❌ Error: At least one feature required (backend: risc0, sp1, stub, arkworks)"
+        exit 1
+    fi
+
+    backend=""
+    frontend=""
+    blockchain=""
+    other_features=()
+
+    for feat in "$@"; do
+        case "$feat" in
+            risc0|sp1|stub|arkworks) backend="$feat" ;;
+            cli|gui) frontend="$feat" ;;
+            sui|ethereum) blockchain="$feat" ;;
+            *) other_features+=("$feat") ;;
+        esac
+    done
+
+    if [ -z "$backend" ]; then
+        echo "❌ Error: No backend specified (choose: risc0, sp1, stub, arkworks)"
+        exit 1
+    fi
+
+    if [ -z "$frontend" ]; then
+        frontend="cli"
+    fi
+
+    all_features="$frontend,$backend"
+
+    if [ -n "$blockchain" ]; then
+        all_features="$blockchain,$all_features"
+    fi
+
+    if [ ${#other_features[@]} -gt 0 ]; then
+        for feat in "${other_features[@]}"; do
+            all_features="$feat,$all_features"
+        done
+    fi
+
+    just _exec "$backend" build -p dungeon-client --no-default-features --features "$all_features"
 
 alias b := build
 
 # Build specific package with specified backend
 build-package package backend=default_backend:
-    @just _exec {{backend}} build -p {{package}}
+    @just _exec {{backend}} build -p {{package}} --no-default-features --features {{backend}}
 
-# Build in release mode with specified backend
-build-release backend=default_backend:
-    @just _exec {{backend}} build --workspace --release
+# Build in release mode
+build-release *features:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ $# -eq 0 ]; then
+        echo "❌ Error: At least one feature required"
+        exit 1
+    fi
+
+    backend=""
+    frontend=""
+    blockchain=""
+    other_features=()
+
+    for feat in "$@"; do
+        case "$feat" in
+            risc0|sp1|stub|arkworks) backend="$feat" ;;
+            cli|gui) frontend="$feat" ;;
+            sui|ethereum) blockchain="$feat" ;;
+            *) other_features+=("$feat") ;;
+        esac
+    done
+
+    if [ -z "$backend" ]; then
+        echo "❌ Error: No backend specified"
+        exit 1
+    fi
+
+    if [ -z "$frontend" ]; then
+        frontend="cli"
+    fi
+
+    all_features="$frontend,$backend"
+
+    if [ -n "$blockchain" ]; then
+        all_features="$blockchain,$all_features"
+    fi
+
+    if [ ${#other_features[@]} -gt 0 ]; then
+        for feat in "${other_features[@]}"; do
+            all_features="$feat,$all_features"
+        done
+    fi
+
+    just _exec "$backend" build -p dungeon-client --release --no-default-features --features "$all_features"
 
 # Clean build artifacts
 clean:
@@ -138,51 +232,324 @@ build-guest:
 # Run Commands
 # ============================================================================
 
-# Run CLI client with specified backend
-run backend=default_backend *args='':
-    @just _exec {{backend}} run -p client-cli {{args}}
+# Run client with flexible feature composition
+# Usage:
+#   just run stub              → cli + stub (default)
+#   just run stub cli          → cli + stub (explicit)
+#   just run stub sui          → sui + cli + stub
+#   just run risc0 sui         → sui + cli + risc0
+run *features:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ $# -eq 0 ]; then
+        echo "❌ Error: At least one feature required (backend: risc0, sp1, stub, arkworks)"
+        exit 1
+    fi
+
+    # Parse features to detect backend, frontend, and blockchain
+    backend=""
+    frontend=""
+    blockchain=""
+    other_features=()
+
+    for feat in "$@"; do
+        case "$feat" in
+            risc0|sp1|stub|arkworks)
+                if [ -n "$backend" ]; then
+                    echo "❌ Error: Multiple backends specified: $backend and $feat"
+                    exit 1
+                fi
+                backend="$feat"
+                ;;
+            cli|gui)
+                if [ -n "$frontend" ]; then
+                    echo "❌ Error: Multiple frontends specified: $frontend and $feat"
+                    exit 1
+                fi
+                frontend="$feat"
+                ;;
+            sui|ethereum)
+                if [ -n "$blockchain" ]; then
+                    echo "❌ Error: Multiple blockchains specified: $blockchain and $feat"
+                    exit 1
+                fi
+                blockchain="$feat"
+                ;;
+            *)
+                other_features+=("$feat")
+                ;;
+        esac
+    done
+
+    # Validate backend is specified
+    if [ -z "$backend" ]; then
+        echo "❌ Error: No backend specified (choose: risc0, sp1, stub, arkworks)"
+        exit 1
+    fi
+
+    # Default frontend to cli if not specified
+    if [ -z "$frontend" ]; then
+        frontend="cli"
+    fi
+
+    # Build feature list
+    all_features="$frontend,$backend"
+
+    # Add blockchain if specified
+    if [ -n "$blockchain" ]; then
+        all_features="$blockchain,$all_features"
+    fi
+
+    # Add other features
+    if [ ${#other_features[@]} -gt 0 ]; then
+        for feat in "${other_features[@]}"; do
+            all_features="$feat,$all_features"
+        done
+    fi
+
+    just _exec "$backend" run -p dungeon-client --no-default-features --features "$all_features"
 
 alias r := run
 
-# Run CLI in fast mode (no proof generation, no persistence)
-run-fast backend=default_backend *args='':
+# Run in fast mode (no proof generation, no persistence)
+run-fast *features:
     #!/usr/bin/env bash
     set -euo pipefail
     export ENABLE_ZK_PROVING=false
     export ENABLE_PERSISTENCE=false
-    backend="$1"
-    shift
-    just _exec "$backend" run -p client-cli "$@"
+    just run "$@"
 
-# Run CLI in release mode
-run-release backend=default_backend *args='':
-    @just _exec {{backend}} run -p client-cli --release {{args}}
+# Run in release mode
+run-release *features:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ $# -eq 0 ]; then
+        echo "❌ Error: At least one feature required"
+        exit 1
+    fi
+
+    # Parse features (same logic as run)
+    backend=""
+    frontend=""
+    blockchain=""
+    other_features=()
+
+    for feat in "$@"; do
+        case "$feat" in
+            risc0|sp1|stub|arkworks)
+                backend="$feat"
+                ;;
+            cli|gui)
+                frontend="$feat"
+                ;;
+            sui|ethereum)
+                blockchain="$feat"
+                ;;
+            *)
+                other_features+=("$feat")
+                ;;
+        esac
+    done
+
+    if [ -z "$backend" ]; then
+        echo "❌ Error: No backend specified"
+        exit 1
+    fi
+
+    if [ -z "$frontend" ]; then
+        frontend="cli"
+    fi
+
+    all_features="$frontend,$backend"
+
+    if [ -n "$blockchain" ]; then
+        all_features="$blockchain,$all_features"
+    fi
+
+    if [ ${#other_features[@]} -gt 0 ]; then
+        for feat in "${other_features[@]}"; do
+            all_features="$feat,$all_features"
+        done
+    fi
+
+    just _exec "$backend" run -p dungeon-client --no-default-features --features "$all_features" --release
 
 # ============================================================================
 # Test Commands
 # ============================================================================
 
-# Run all tests with specified backend
-test backend=default_backend *args='':
-    @just _exec {{backend}} test --workspace {{args}}
+# Run all tests with flexible feature composition
+# Usage: just test stub [cli] [sui]
+test *features:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ $# -eq 0 ]; then
+        echo "❌ Error: At least one feature required (backend: risc0, sp1, stub, arkworks)"
+        exit 1
+    fi
+
+    backend=""
+    frontend=""
+    blockchain=""
+    other_features=()
+
+    for feat in "$@"; do
+        case "$feat" in
+            risc0|sp1|stub|arkworks) backend="$feat" ;;
+            cli|gui) frontend="$feat" ;;
+            sui|ethereum) blockchain="$feat" ;;
+            *) other_features+=("$feat") ;;
+        esac
+    done
+
+    if [ -z "$backend" ]; then
+        echo "❌ Error: No backend specified (choose: risc0, sp1, stub, arkworks)"
+        exit 1
+    fi
+
+    if [ -z "$frontend" ]; then
+        frontend="cli"
+    fi
+
+    all_features="$frontend,$backend"
+
+    if [ -n "$blockchain" ]; then
+        all_features="$blockchain,$all_features"
+    fi
+
+    if [ ${#other_features[@]} -gt 0 ]; then
+        for feat in "${other_features[@]}"; do
+            all_features="$feat,$all_features"
+        done
+    fi
+
+    just _exec "$backend" test --workspace --no-default-features --features "$all_features"
 
 alias t := test
 
 # Run tests for specific package
 test-package package backend=default_backend *args='':
-    @just _exec {{backend}} test -p {{package}} {{args}}
+    @just _exec {{backend}} test -p {{package}} --no-default-features --features {{backend}} {{args}}
 
 # Run integration tests only
-test-integration backend=default_backend:
-    @just _exec {{backend}} test --workspace --test '*'
+test-integration *features:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ $# -eq 0 ]; then
+        echo "❌ Error: At least one feature required"
+        exit 1
+    fi
+
+    backend=""
+    frontend=""
+    blockchain=""
+
+    for feat in "$@"; do
+        case "$feat" in
+            risc0|sp1|stub|arkworks) backend="$feat" ;;
+            cli|gui) frontend="$feat" ;;
+            sui|ethereum) blockchain="$feat" ;;
+        esac
+    done
+
+    if [ -z "$backend" ]; then
+        echo "❌ Error: No backend specified"
+        exit 1
+    fi
+
+    if [ -z "$frontend" ]; then
+        frontend="cli"
+    fi
+
+    all_features="$frontend,$backend"
+
+    if [ -n "$blockchain" ]; then
+        all_features="$blockchain,$all_features"
+    fi
+
+    just _exec "$backend" test --workspace --no-default-features --features "$all_features" --test '*'
 
 # Run lib tests only
-test-lib backend=default_backend:
-    @just _exec {{backend}} test --workspace --lib
+test-lib *features:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ $# -eq 0 ]; then
+        echo "❌ Error: At least one feature required"
+        exit 1
+    fi
+
+    backend=""
+    frontend=""
+    blockchain=""
+
+    for feat in "$@"; do
+        case "$feat" in
+            risc0|sp1|stub|arkworks) backend="$feat" ;;
+            cli|gui) frontend="$feat" ;;
+            sui|ethereum) blockchain="$feat" ;;
+        esac
+    done
+
+    if [ -z "$backend" ]; then
+        echo "❌ Error: No backend specified"
+        exit 1
+    fi
+
+    if [ -z "$frontend" ]; then
+        frontend="cli"
+    fi
+
+    all_features="$frontend,$backend"
+
+    if [ -n "$blockchain" ]; then
+        all_features="$blockchain,$all_features"
+    fi
+
+    just _exec "$backend" test --workspace --no-default-features --features "$all_features" --lib
 
 # Run tests with output visible (nocapture)
-test-verbose backend=default_backend:
-    @just _exec {{backend}} test --workspace -- --nocapture
+test-verbose *features:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ $# -eq 0 ]; then
+        echo "❌ Error: At least one feature required"
+        exit 1
+    fi
+
+    backend=""
+    frontend=""
+    blockchain=""
+
+    for feat in "$@"; do
+        case "$feat" in
+            risc0|sp1|stub|arkworks) backend="$feat" ;;
+            cli|gui) frontend="$feat" ;;
+            sui|ethereum) blockchain="$feat" ;;
+        esac
+    done
+
+    if [ -z "$backend" ]; then
+        echo "❌ Error: No backend specified"
+        exit 1
+    fi
+
+    if [ -z "$frontend" ]; then
+        frontend="cli"
+    fi
+
+    all_features="$frontend,$backend"
+
+    if [ -n "$blockchain" ]; then
+        all_features="$blockchain,$all_features"
+    fi
+
+    just _exec "$backend" test --workspace --no-default-features --features "$all_features" -- --nocapture
 
 # Watch tests and re-run on file changes (requires cargo-watch)
 watch-test backend=default_backend:
@@ -210,15 +577,102 @@ watch-test backend=default_backend:
 # Code Quality Commands
 # ============================================================================
 
-# Run clippy lints with specified backend
-lint backend=default_backend:
-    @just _exec {{backend}} clippy --workspace --all-targets -- -D warnings
+# Run clippy lints with flexible feature composition
+# Usage: just lint stub [cli] [sui]
+lint *features:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ $# -eq 0 ]; then
+        echo "❌ Error: At least one feature required (backend: risc0, sp1, stub, arkworks)"
+        exit 1
+    fi
+
+    backend=""
+    frontend=""
+    blockchain=""
+    other_features=()
+
+    for feat in "$@"; do
+        case "$feat" in
+            risc0|sp1|stub|arkworks) backend="$feat" ;;
+            cli|gui) frontend="$feat" ;;
+            sui|ethereum) blockchain="$feat" ;;
+            *) other_features+=("$feat") ;;
+        esac
+    done
+
+    if [ -z "$backend" ]; then
+        echo "❌ Error: No backend specified (choose: risc0, sp1, stub, arkworks)"
+        exit 1
+    fi
+
+    if [ -z "$frontend" ]; then
+        frontend="cli"
+    fi
+
+    all_features="$frontend,$backend"
+
+    if [ -n "$blockchain" ]; then
+        all_features="$blockchain,$all_features"
+    fi
+
+    if [ ${#other_features[@]} -gt 0 ]; then
+        for feat in "${other_features[@]}"; do
+            all_features="$feat,$all_features"
+        done
+    fi
+
+    just _exec "$backend" clippy --workspace --all-targets --no-default-features --features "$all_features" -- -D warnings
 
 alias l := lint
 
 # Run clippy with automatic fixes
-lint-fix backend=default_backend:
-    @just _exec {{backend}} clippy --workspace --all-targets --fix --allow-dirty --allow-staged
+lint-fix *features:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ $# -eq 0 ]; then
+        echo "❌ Error: At least one feature required"
+        exit 1
+    fi
+
+    backend=""
+    frontend=""
+    blockchain=""
+    other_features=()
+
+    for feat in "$@"; do
+        case "$feat" in
+            risc0|sp1|stub|arkworks) backend="$feat" ;;
+            cli|gui) frontend="$feat" ;;
+            sui|ethereum) blockchain="$feat" ;;
+            *) other_features+=("$feat") ;;
+        esac
+    done
+
+    if [ -z "$backend" ]; then
+        echo "❌ Error: No backend specified"
+        exit 1
+    fi
+
+    if [ -z "$frontend" ]; then
+        frontend="cli"
+    fi
+
+    all_features="$frontend,$backend"
+
+    if [ -n "$blockchain" ]; then
+        all_features="$blockchain,$all_features"
+    fi
+
+    if [ ${#other_features[@]} -gt 0 ]; then
+        for feat in "${other_features[@]}"; do
+            all_features="$feat,$all_features"
+        done
+    fi
+
+    just _exec "$backend" clippy --workspace --all-targets --no-default-features --features "$all_features" --fix --allow-dirty --allow-staged
 
 # Format all code
 fmt:
@@ -253,11 +707,11 @@ check-all:
     @echo "🔍 Verifying all implemented backends compile..."
     @echo ""
     @echo "Checking risc0 backend..."
-    @just _exec risc0 check --workspace
+    @just _exec risc0 check --workspace --no-default-features --features cli,risc0
     @echo "✅ RISC0 verified"
     @echo ""
     @echo "Checking stub backend..."
-    @just _exec stub check --workspace
+    @just _exec stub check --workspace --no-default-features --features cli,stub
     @echo "✅ Stub verified"
     @echo ""
     @echo "✅ All implemented backends verified!"
@@ -274,11 +728,11 @@ lint-all: (lint "risc0") (lint "stub")
 
 # Generate and open documentation
 doc backend=default_backend:
-    @just _exec {{backend}} doc --workspace --no-deps --open
+    @just _exec {{backend}} doc --workspace --no-default-features --features cli,{{backend}} --no-deps --open
 
 # Generate documentation without opening
 doc-build backend=default_backend:
-    @just _exec {{backend}} doc --workspace --no-deps
+    @just _exec {{backend}} doc --workspace --no-default-features --features cli,{{backend}} --no-deps
 
 # ============================================================================
 # Development Workflows
@@ -324,7 +778,7 @@ watch backend=default_backend:
 
 # Run benchmarks (when implemented)
 bench backend=default_backend:
-    @just _exec {{backend}} bench --workspace
+    @just _exec {{backend}} bench --workspace --no-default-features --features cli,{{backend}}
 
 # ============================================================================
 # Utility Commands
@@ -391,6 +845,20 @@ sessions:
     @echo "📋 Available sessions:"
     @ls -1t "$(cargo run -q -p xtask -- tail-logs --help 2>&1 | grep -o '/.*logs' | head -1 || echo "$HOME/Library/Caches/dungeon/logs")" 2>/dev/null || echo "  No sessions found"
 
+# Read and inspect state file at specified nonce
+read-state nonce format='summary':
+    @cargo run -q -p xtask -- read-state {{nonce}} --format {{format}}
+
+# Read and inspect action log for a session (default: latest)
+read-actions nonce='' *args='':
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "$1" ]; then
+        cargo run -q -p xtask -- read-actions ${@:2}
+    else
+        cargo run -q -p xtask -- read-actions "$1" ${@:2}
+    fi
+
 # ============================================================================
 # Internal Helpers (Private Recipes)
 # ============================================================================
@@ -400,69 +868,35 @@ sessions:
 _exec backend *args:
     #!/usr/bin/env bash
     set -euo pipefail
-
+    
     backend_name="$1"
     shift
-
-    # Separate cargo args before and after '--'
-    cargo_args=()
-    rustc_args=()
-    found_separator=false
-
-    for arg in "$@"; do
-        if [ "$arg" = "--" ]; then
-            found_separator=true
-        elif [ "$found_separator" = true ]; then
-            rustc_args+=("$arg")
-        else
-            cargo_args+=("$arg")
-        fi
-    done
-
+    
+    # Print backend banner
     case "$backend_name" in
         risc0)
             echo "🔧 Using RISC0 backend (production mode)"
-            if [ "$found_separator" = true ]; then
-                cargo "${cargo_args[@]}" -- "${rustc_args[@]}"
-            else
-                cargo "${cargo_args[@]}"
-            fi
             ;;
         stub)
             echo "🎭 Using Stub backend (no real proofs)"
-            if [ "$found_separator" = true ]; then
-                cargo "${cargo_args[@]}" --no-default-features --features stub -- "${rustc_args[@]}"
-            else
-                cargo "${cargo_args[@]}" --no-default-features --features stub
-            fi
             ;;
         sp1)
-            echo "🔧 Using SP1 backend"
-            if [ "$found_separator" = true ]; then
-                cargo "${cargo_args[@]}" --no-default-features --features sp1 -- "${rustc_args[@]}"
-            else
-                cargo "${cargo_args[@]}" --no-default-features --features sp1
-            fi
+            proof_mode="${SP1_PROOF_MODE:-compressed}"
+            echo "🔧 Using SP1 backend (proof mode: $proof_mode)"
             ;;
         arkworks)
             echo "🔧 Using Arkworks backend"
-            if [ "$found_separator" = true ]; then
-                cargo "${cargo_args[@]}" --no-default-features --features arkworks -- "${rustc_args[@]}"
-            else
-                cargo "${cargo_args[@]}" --no-default-features --features arkworks
-            fi
             ;;
         *)
             echo "❌ Error: Unknown backend '$backend_name'"
-            echo ""
-            echo "Available backends:"
-            echo "  risc0, stub, sp1, arkworks"
+            echo "Available backends: risc0, stub, sp1, arkworks"
             exit 1
             ;;
     esac
+    
+    # Execute cargo (caller provides all flags including features)
+    cargo "$@"
 
-# Install common development tools
-[private]
 install-dev-tools:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -492,3 +926,90 @@ bootstrap: install-dev-tools
     @echo "  just dev          # Fast development loop"
     @echo "  just watch stub   # Watch mode with auto-testing"
     @echo "  just help         # See all available commands"
+
+# ============================================================================
+# Sui Blockchain Commands
+# ============================================================================
+
+# Start Sui local network with faucet (foreground - use Ctrl+C to stop)
+[group('sui')]
+sui-localnet:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "🚀 Starting Sui local network with faucet..."
+    echo ""
+    echo "📍 Network: http://127.0.0.1:9000"
+    echo "💰 Faucet: http://0.0.0.0:9123"
+    echo ""
+    echo "ℹ️  Running in foreground. Press Ctrl+C to stop."
+    echo ""
+    sui start --force-regenesis --with-faucet
+
+# Generate a new Sui key with optional alias
+[group('sui')]
+sui-keygen alias="" scheme="ed25519":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "{{alias}}" ]; then
+        cargo run -p xtask -- sui keygen --alias {{alias}} --scheme {{scheme}}
+    else
+        cargo run -p xtask -- sui keygen --scheme {{scheme}}
+    fi
+
+# Deploy Sui Move contracts (see docs/sui-deployment.md for details)
+[group('sui')]
+sui-deploy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "📖 For deployment instructions, see: docs/sui-deployment.md"
+    echo ""
+    echo "Quick deploy commands:"
+    echo "  cd contracts/move"
+    echo "  sui move build"
+    echo "  sui client publish --gas-budget 10000000000 --with-unpublished-dependencies --json"
+    echo ""
+    echo "✅ Deployment complete! Update .env with the package ID above."
+    echo "   Then run: just sui-info"
+
+# Show Sui deployment info from .env
+[group('sui')]
+sui-info:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ ! -f ".env" ]; then
+        echo "❌ No .env file found"
+        echo "   Create .env with SUI_* variables after deployment"
+        exit 1
+    fi
+
+    echo "📦 Sui Deployment Info (from .env)"
+    echo ""
+    grep "^SUI_" .env || echo "No SUI_* variables found in .env"
+
+# Clean Sui deployment info from .env
+[group('sui')]
+sui-clean:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ ! -f ".env" ]; then
+        echo "⚠️  No .env file found"
+        exit 0
+    fi
+
+    if ! grep -q "^SUI_" .env; then
+        echo "⚠️  No SUI_* variables found in .env"
+        exit 0
+    fi
+
+    read -p "Are you sure you want to remove SUI_* variables from .env? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        # Remove all lines starting with SUI_
+        sed -i.bak '/^SUI_/d' .env
+        rm -f .env.bak
+        echo "✅ SUI_* variables removed from .env"
+    else
+        echo "❌ Cancelled"
+    fi

@@ -1,0 +1,55 @@
+[package]
+name = "dungeon-client"
+version = "0.1.0"
+edition = "2024"
+
+# This crate is both a library (Client orchestration) and a binary (entry point)
+[lib]
+name = "dungeon_client"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dungeon"
+path = "src/main.rs"
+
+[features]
+default = []
+
+# Frontend
+cli = ["dep:client-frontend-cli"]
+
+# Blockchain (optional)
+sui = ["dep:client-blockchain-sui", "client-bootstrap/sui", "client-frontend-cli?/sui"]
+# ethereum = [] # Future
+
+# ZK Backend (mutually exclusive - choose ONE)
+risc0 = ["zk/risc0", "client-frontend-cli?/risc0", "client-blockchain-sui?/risc0"]
+sp1 = ["zk/sp1", "client-frontend-cli?/sp1", "client-blockchain-sui?/sp1"]
+stub = ["zk/stub", "client-frontend-cli?/stub", "client-blockchain-sui?/stub"]
+arkworks = ["zk/arkworks", "client-frontend-cli?/arkworks", "client-blockchain-sui?/arkworks"]
+
+[dependencies]
+# Core dependencies
+anyhow = { workspace = true }
+tokio = { workspace = true }
+dotenvy = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+
+# Runtime (always required for Client)
+runtime = { workspace = true }
+
+# ZK proving (for proof data types)
+zk = { workspace = true }
+
+# Bootstrap (for RuntimeBuilder, used in main.rs)
+client-bootstrap = { workspace = true }
+
+# Frontend core (for shared types)
+client-frontend-core = { workspace = true }
+
+# Feature-gated frontends
+client-frontend-cli = { workspace = true, optional = true }
+
+# Blockchain integration (optional)
+client-blockchain-sui = { workspace = true, optional = true }

@@ -9,37 +9,41 @@ pub mod config;
 pub mod engine;
 pub mod env;
 pub mod error;
+pub mod provider;
 pub mod state;
 pub mod stats;
+pub mod traits;
+#[cfg(feature = "serde")]
+pub use action::compute_actions_root;
 pub use action::{
-    Action, ActionCostAction, ActionCostError, ActionEffect, ActionError, ActionInput, ActionKind,
-    ActionProfile, ActionResult, ActionTag, ActionTransition, ActivationAction, ActivationError,
-    CardinalDirection, CharacterAction, DamageType, EffectContext, EffectKind, ExecutionPhase,
-    Formula, PrepareTurnAction, ResourceCost, SystemActionKind, TargetingMode, TurnError,
-    get_available_actions,
+    Action, ActionEffect, ActionError, ActionInput, ActionKind, ActionProfile, ActionResult,
+    ActionTag, ActionTransition, ActivationAction, ActivationError, CardinalDirection,
+    CharacterAction, DamageType, DeactivateAction, EffectContext, EffectKind, ExecutionPhase,
+    Formula, PrepareTurnAction, RemoveFromWorldAction, RemoveFromWorldError, ResourceCost,
+    RestoreResourceEffect, SystemActionKind, TargetingMode, TurnError, get_available_actions,
 };
 pub use config::GameConfig;
 pub use engine::{
     ExecuteError, ExecutionOutcome, GameEngine, TransitionPhase, TransitionPhaseError,
 };
 pub use env::{
-    ActionCosts, ActorOracle, ActorTemplate, ActorTemplateBuilder, ActorsSnapshot, ArmorData,
-    CombatParams, ConfigOracle, ConfigSnapshot, ConsumableData, ConsumableEffect, DamageParams,
-    Env, GameEnv, HitChanceParams, ItemDefinition, ItemKind, ItemOracle, ItemsSnapshot,
-    MapDimensions, MapOracle, MapSnapshot, OracleError, OracleSnapshot, PcgRng, RngOracle,
-    SnapshotActorOracle, SnapshotConfigOracle, SnapshotItemOracle, SnapshotMapOracle,
-    SnapshotOracleBundle, SnapshotTablesOracle, SpeedParams, StaticTile, TablesOracle,
-    TablesSnapshot, TerrainKind, WeaponData, compute_seed,
+    ActionOracle, ActionSnapshot, ActorOracle, ActorTemplate, ActorTemplateBuilder, ActorsSnapshot,
+    ArmorData, ArmorKind, AttackType, ConfigOracle, ConfigSnapshot, ConsumableData, Env, GameEnv,
+    ItemDefinition, ItemKind, ItemOracle, ItemsSnapshot, MapDimensions, MapOracle, MapSnapshot,
+    OracleError, OracleSnapshot, PcgRng, RngOracle, SnapshotActionOracle, SnapshotActorOracle,
+    SnapshotConfigOracle, SnapshotItemOracle, SnapshotMapOracle, SnapshotOracleBundle, StaticTile,
+    TerrainKind, WeaponData, WeaponKind, compute_seed,
 };
 pub use error::{ErrorContext, ErrorSeverity, GameError, NeverError};
+pub use provider::{AiKind, InteractiveKind, ProviderKind};
 pub use state::{
-    ActionAbilities, ActionAbility, ActorChanges, ActorFields, ActorState, ArmorKind, AttackType,
-    CollectionChanges, EntitiesChanges, EntitiesState, EntityId, Equipment, EquipmentBuilder,
-    GameState, InventorySlot, InventoryState, ItemChanges, ItemFields, ItemHandle, ItemState,
+    ActionAbilities, ActionAbility, ActorChanges, ActorFields, ActorState, CollectionChanges,
+    EntitiesChanges, EntitiesState, EntityId, Equipment, EquipmentBuilder, GameState,
+    InventorySlot, InventoryState, ItemChanges, ItemFields, ItemHandle, ItemState,
     OccupancyChanges, PassiveAbilities, PassiveAbility, PassiveKind, Position, PropChanges,
     PropFields, PropKind, PropState, StateDelta, StateError, StatusEffect, StatusEffectKind,
-    StatusEffects, Tick, TileMap, TileView, TurnChanges, TurnFields, TurnState, WeaponKind,
-    WorldChanges, WorldState,
+    StatusEffects, Tick, TileMap, TileView, TurnChanges, TurnFields, TurnState, WorldChanges,
+    WorldState,
 };
 pub use stats::{
     ActorBonuses, Bonus, BonusStack, CoreEffective, CoreStatBonuses, CoreStatKind, CoreStats,
@@ -47,3 +51,4 @@ pub use stats::{
     ResourceMaximums, SpeedBonuses, SpeedKind, SpeedStats, StatBounds, StatLayer, StatModifiers,
     StatsSnapshot, StatsSnapshotBuilder, compute_actor_bonuses,
 };
+pub use traits::{Faction, Species, TraitKind, TraitProfile};

@@ -32,28 +32,61 @@ pub fn extract_events(
 ) -> Vec<GameEvent> {
     let mut events = Vec::new();
 
-    // Always emit ActionCompleted for non-system actions
-    if !delta.action.actor().is_system() {
-        // Get action cost from the action itself
-        let actor_id = delta.action.actor();
-        if state_before.entities.actor(actor_id).is_some() {
-            // Cost will be calculated by ActionCostHandler
-            let cost = 0;
-
-            events.push(GameEvent::ActionCompleted {
-                actor: actor_id,
-                action: delta.action.clone(),
-                cost,
-            });
-        }
+    // Debug: Check if delta is empty
+    if delta.is_empty() {
+        tracing::warn!(
+            target: "runtime::events",
+            "extract_events called with empty delta for action: {:?}",
+            delta.action.as_snake_case()
+        );
     }
 
-    // Check for EntityRemovedFromActive (from RemoveFromActive system action)
+    // Always emit ActionCompleted for non-system actions
+    if !delta.action.actor().is_system() {
+        let actor_id = delta.action.actor();
+
+        // Calculate actual cost from ready_at delta
+        // Cost is already applied within the action, so we extract it from state delta
+        let cost = if let Some(actor_before) = state_before.entities.actor(actor_id) {
+            if let Some(actor_after) = state_after.entities.actor(actor_id) {
+                if let (Some(ready_before), Some(ready_after)) =
+                    (actor_before.ready_at, actor_after.ready_at)
+                {
+                    // Cost is the difference in ready_at timestamps
+                    ready_after.saturating_sub(ready_before)
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+
+        events.push(GameEvent::ActionCompleted {
+            actor: actor_id,
+            action: delta.action.clone(),
+            cost,
+        });
+    }
+
+    // Check for EntityRemovedFromActive (from Deactivate system action)
     if let game_core::Action::System {
-        kind: SystemActionKind::RemoveFromActive(action),
+        kind: SystemActionKind::Deactivate(action),
     } = &delta.action
     {
         events.push(GameEvent::EntityRemovedFromActive {
+            entity: action.entity,
+        });
+    }
+
+    // Check for EntityRemovedFromWorld (from RemoveFromWorld system action)
+    if let game_core::Action::System {
+        kind: SystemActionKind::RemoveFromWorld(action),
+    } = &delta.action
+    {
+        events.push(GameEvent::EntityRemovedFromWorld {
             entity: action.entity,
         });
     }
@@ -86,6 +119,13 @@ pub fn extract_events(
 
                 // Check for death (HP dropped to 0)
                 if old_hp > 0 && new_hp == 0 {
+                    tracing::info!(
+                        target: "runtime::events",
+                        entity = ?actor_change.id,
+                        old_hp = old_hp,
+                        new_hp = new_hp,
+                        "EntityDied event generated"
+                    );
                     events.push(GameEvent::EntityDied {
                         entity: actor_change.id,
                         position: actor_after.position,

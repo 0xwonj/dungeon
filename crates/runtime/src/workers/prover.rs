@@ -1,560 +1,503 @@
-//! ZK proof generation worker.
+//! Prover worker for ZK proof generation.
 //!
-//! This worker reads from the action log and generates zero-knowledge proofs
-//! for executed actions. It maintains a cursor into the action log and processes
-//! entries sequentially using the [`ActionLogReader`] trait.
+//! Monitors action batches and generates zero-knowledge proofs for completed batches.
 //!
-//! Design principles:
-//! - Uses trait-based abstraction for flexible storage backends (mmap, in-memory, etc.)
-//! - Default implementation uses memory-mapped files for zero-copy reading
-//! - Runs asynchronously without blocking game execution
-//! - Emits proof events for clients/submitters to consume
-//! - Can resume from checkpoint to avoid re-proving
+//! # Workflow
+//!
+//! 1. Poll for Complete action batches
+//! 2. Load start state (previous batch's end state)
+//! 3. Read all actions from the batch's action log
+//! 4. Generate proof for the entire batch
+//! 5. Save proof file and update batch status to Proven
+//!
+//! # Proof Generation Strategy
+//!
+//! Currently generates a single proof for the entire batch. Future optimization
+//! could support incremental proving or parallel proof generation for large batches.
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::time::{self, Duration};
+use std::time::Instant;
+
+use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
-use game_core::{Action, GameState};
-use zk::{ProofData, ProofError, Prover, ZkProver};
+use game_core::GameState;
 
-use crate::events::{Event, EventBus, ProofEvent};
-use crate::oracle::OracleManager;
 use crate::repository::{
-    ActionLogEntry, ActionLogReader, ProofEntry, ProofIndex, ProofIndexRepository,
+    ActionBatch, ActionBatchRepository, FileActionBatchRepository, FileActionLogReader,
+    FileStateRepository, StateRepository,
 };
-use crate::workers::ProofMetrics;
 
-/// Proof persistence layer (disk I/O).
-struct ProofStorage {
-    /// Proof index repository for tracking which proofs have been generated
-    index_repo: Box<dyn ProofIndexRepository>,
+use zk::{ProofData, Prover};
 
-    /// Optional directory path for saving proof files
-    save_dir: Option<PathBuf>,
+/// Result type for prover operations
+pub type Result<T> = std::result::Result<T, ProverError>;
+
+/// Configuration for the prover worker
+#[derive(Debug, Clone)]
+pub struct ProverConfig {
+    /// Session identifier
+    pub session_id: String,
+
+    /// Base directory for all files
+    pub base_dir: PathBuf,
+
+    /// Maximum number of batches to prove in parallel
+    pub max_parallel: usize,
 }
 
-impl ProofStorage {
-    fn new(index_repo: Box<dyn ProofIndexRepository>, save_dir: Option<PathBuf>) -> Self {
+impl ProverConfig {
+    /// Create a new prover configuration
+    pub fn new(session_id: String, base_dir: PathBuf) -> Self {
         Self {
-            index_repo,
-            save_dir,
+            session_id,
+            base_dir,
+            max_parallel: 1,
         }
     }
 
-    fn save_index(&self, index: &ProofIndex) -> Result<(), crate::api::errors::RuntimeError> {
-        self.index_repo.save(index)
-    }
-
-    fn save_dir(&self) -> Option<&PathBuf> {
-        self.save_dir.as_ref()
+    /// Set maximum number of parallel batch proofs
+    pub fn with_max_parallel(mut self, max: usize) -> Self {
+        self.max_parallel = max;
+        self
     }
 }
 
-/// Background worker for ZK proof generation.
-///
-/// Reads ActionLogEntry records from the action log and generates zero-knowledge proofs.
+/// Commands that can be sent to the prover worker
+#[allow(dead_code)]
+pub enum Command {
+    /// Prove all Complete batches from repository
+    ProveBatches,
+
+    /// Shutdown the worker gracefully
+    Shutdown,
+}
+
+/// Background worker that generates ZK proofs for completed action batches
 pub struct ProverWorker {
-    /// ZK prover instance
-    prover: ZkProver,
+    config: ProverConfig,
 
-    /// Action log reader (trait object for flexibility)
-    reader: Box<dyn ActionLogReader>,
+    // Repositories (shared across parallel tasks)
+    batch_repo: Arc<FileActionBatchRepository>,
+    state_repo: Arc<FileStateRepository>,
 
-    /// Event bus for publishing proof events
-    event_bus: EventBus,
+    // Prover instance (shared across parallel tasks)
+    prover: Arc<dyn Prover>,
 
-    /// Proof generation metrics (shared with RuntimeHandle for querying)
-    /// Uses atomics for lock-free access
-    metrics: Arc<ProofMetrics>,
+    // Communication
+    command_rx: mpsc::Receiver<Command>,
+    batch_complete_rx: mpsc::UnboundedReceiver<ActionBatch>,
 
-    /// In-memory proof index (worker state)
-    proof_index: ProofIndex,
+    // Track running tasks to avoid blocking on completion
+    running_tasks: Vec<tokio::task::JoinHandle<Result<()>>>,
 
-    /// Proof persistence layer (disk I/O)
-    storage: ProofStorage,
+    // Queue for batches when max_parallel is reached
+    pending_batches: VecDeque<ActionBatch>,
 }
 
 impl ProverWorker {
-    /// Create a new builder for ProverWorker.
-    pub fn builder() -> ProverWorkerBuilder {
-        ProverWorkerBuilder::new()
-    }
+    /// Create a new prover worker
+    pub fn new(
+        config: ProverConfig,
+        prover: Arc<dyn Prover>,
+        command_rx: mpsc::Receiver<Command>,
+        batch_complete_rx: mpsc::UnboundedReceiver<ActionBatch>,
+    ) -> Result<Self> {
+        let base_dir = &config.base_dir;
+        let session_id = &config.session_id;
 
-    /// Creates a new prover worker (used by builder).
-    fn new(
-        reader: Box<dyn ActionLogReader>,
-        event_bus: EventBus,
-        oracle_manager: OracleManager,
-        save_proofs_dir: Option<PathBuf>,
-        proof_index_repo: Box<dyn ProofIndexRepository>,
-        session_id: String,
-    ) -> Result<Self, String> {
-        // Create prover
-        let oracle_snapshot = Self::create_oracle_snapshot(&oracle_manager);
-        let prover = ZkProver::new(oracle_snapshot);
+        // Create session directory
+        let session_dir = base_dir.join(session_id);
 
-        // Load or create proof index
-        let proof_index = match proof_index_repo.load(&session_id) {
-            Ok(Some(index)) => {
-                info!(
-                    "Loaded existing proof index: session={}, proven_up_to={}, offset={}",
-                    session_id, index.proven_up_to_nonce, index.action_log_offset
-                );
-
-                // Resume from checkpoint: seek reader to saved offset
-                if index.action_log_offset > 0 {
-                    if let Err(e) = reader.seek(index.action_log_offset) {
-                        warn!(
-                            "Failed to seek to checkpoint offset {}: {}. Starting from beginning.",
-                            index.action_log_offset, e
-                        );
-                    } else {
-                        info!(
-                            "Resumed proof generation from offset {} (after nonce {})",
-                            index.action_log_offset, index.proven_up_to_nonce
-                        );
-                    }
-                }
-
-                index
-            }
-            Ok(None) => {
-                info!("Creating new proof index: session={}", session_id);
-                ProofIndex::new(session_id.clone())
-            }
-            Err(e) => {
-                warn!("Failed to load proof index, creating new: {}", e);
-                ProofIndex::new(session_id.clone())
-            }
-        };
+        // Create repository instances
+        let batch_repo = FileActionBatchRepository::new(session_dir.join("batches"))?;
+        let state_repo = FileStateRepository::new(session_dir.join("states"))?;
 
         Ok(Self {
+            config,
+            batch_repo: Arc::new(batch_repo),
+            state_repo: Arc::new(state_repo),
             prover,
-            reader,
-            event_bus,
-            metrics: Arc::new(ProofMetrics::new()),
-            proof_index,
-            storage: ProofStorage::new(proof_index_repo, save_proofs_dir),
+            command_rx,
+            batch_complete_rx,
+            running_tasks: Vec::new(),
+            pending_batches: VecDeque::new(),
         })
     }
 
-    /// Returns a clone of the metrics Arc for external querying.
-    pub fn metrics(&self) -> Arc<ProofMetrics> {
-        Arc::clone(&self.metrics)
-    }
-
-    /// Creates an oracle snapshot from the oracle manager.
-    ///
-    /// This is a helper to avoid code duplication between proof generation
-    /// and verification.
-    fn create_oracle_snapshot(oracle_manager: &OracleManager) -> zk::OracleSnapshot {
-        use zk::{
-            ActorsSnapshot, ConfigSnapshot, ItemsSnapshot, MapSnapshot, OracleSnapshot,
-            TablesSnapshot,
-        };
-
-        let map_snapshot = MapSnapshot::from_oracle(oracle_manager.map.as_ref());
-        let items_snapshot = ItemsSnapshot::empty(); // TODO: Populate with actual items
-        let actors_snapshot = ActorsSnapshot::empty(); // TODO: Populate with actual actors
-        let tables_snapshot = TablesSnapshot::from_oracle(oracle_manager.tables.as_ref());
-        let config_snapshot = ConfigSnapshot::from_oracle(oracle_manager.config.as_ref());
-
-        OracleSnapshot::new(
-            map_snapshot,
-            items_snapshot,
-            actors_snapshot,
-            tables_snapshot,
-            config_snapshot,
-        )
-    }
-
-    /// Main worker loop.
-    ///
-    /// Continuously reads from the action log and generates proofs.
-    ///
-    /// # Performance Strategy
-    ///
-    /// The worker uses a tight loop for maximum throughput when there's backlog:
-    /// 1. Read entries in a tight loop using the ActionLogReader trait
-    /// 2. Process each entry immediately
-    /// 3. Only when caught up: refresh and check for new data, sleep briefly if none
-    ///
-    /// This design assumes ProverWorker is always behind PersistenceWorker
-    /// (proof generation is slower than action execution), so the worker
-    /// spends most of its time in the tight loop with minimal overhead.
-    ///
-    /// The implementation is agnostic to the underlying storage mechanism -
-    /// it works with any ActionLogReader (mmap, in-memory, S3, etc.).
+    /// Main worker loop
     pub async fn run(mut self) {
         info!(
-            "ProverWorker started (offset: {}, session: {})",
-            self.reader.current_offset(),
-            self.reader.session_id()
+            "ProverWorker started: session={}, max_parallel={}",
+            self.config.session_id, self.config.max_parallel
         );
+
+        // Proving pace controller: process queue at controlled rate (1 second intervals)
+        // This is the ONLY place where batches are actually processed from the queue
+        let mut cleanup_interval = tokio::time::interval(tokio::time::Duration::from_secs(1));
+        cleanup_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
-            // Tight loop: process all available entries
-            loop {
-                match self.reader.read_next() {
-                    Ok(Some(entry)) => {
-                        self.handle_action_entry(entry).await;
-                    }
-                    Ok(None) => {
-                        // Caught up with writer - break to refresh
-                        break;
-                    }
-                    Err(e) => {
-                        // Handle read errors (partial writes, corrupted data, etc.)
-                        error!(
-                            "Failed to read action log at offset {}: {}",
-                            self.reader.current_offset(),
-                            e
-                        );
+            tokio::select! {
+                // Queue completed batches from PersistenceWorker
+                // Processing happens at controlled pace via cleanup_interval
+                Some(batch) = self.batch_complete_rx.recv() => {
+                    self.pending_batches.push_back(batch);
+                }
 
-                        // Check if this is a partial write error
-                        if e.to_string().contains("partial write") {
-                            error!(
-                                "Detected partial write - action log may be corrupted. \
-                                 Will retry after refresh."
-                            );
+                cmd = self.command_rx.recv() => {
+                    match cmd {
+                        Some(Command::ProveBatches) => {
+                            if let Err(e) = self.handle_prove_batches().await {
+                                error!("Failed to prove batches: {}", e);
+                            }
                         }
-
-                        // Break and attempt refresh - file may be still being written
-                        break;
+                        Some(Command::Shutdown) => {
+                            info!("Shutdown command received");
+                            break;
+                        }
+                        None => {
+                            debug!("Command channel closed");
+                            break;
+                        }
                     }
                 }
-            }
 
-            // Caught up with writer - refresh and check for new data
-            match self.reader.refresh() {
-                Ok(true) => {
-                    // New data available - immediately continue processing
-                    debug!("Action log grew, resuming proof generation");
-                    continue;
+                // Proving pace controller: process queue at controlled rate
+                // This is where ProverWorker actually processes batches at its own pace
+                _ = cleanup_interval.tick() => {
+                    self.cleanup_completed_tasks();
+                    self.process_pending_batches();
                 }
-                Ok(false) => {
-                    // No new data - sleep briefly before checking again
-                    time::sleep(Duration::from_millis(100)).await;
-                }
-                Err(e) => {
-                    error!("Failed to refresh action log: {}", e);
-                    time::sleep(Duration::from_secs(1)).await;
-                }
+
+                else => break,
             }
         }
+
+        info!("ProverWorker stopped");
     }
 
-    /// Processes a single action log entry and generates a proof.
-    ///
-    /// # Workflow
-    ///
-    /// 1. Announce proof generation started
-    /// 2. Generate proof
-    /// 3. Broadcast ProofGenerated or ProofFailed event
-    /// 4. Update proof index
-    async fn handle_action_entry(&mut self, entry: ActionLogEntry) {
-        let nonce = entry.nonce;
-        let clock = entry.clock;
-        let action = entry.action.clone();
-        let before_state = &*entry.before_state;
-        let after_state = &*entry.after_state;
+    /// Load all Complete batches from repository and queue them for proving
+    async fn handle_prove_batches(&mut self) -> Result<()> {
+        use crate::repository::ActionBatchStatus;
 
-        debug!(
-            "ProverWorker processing action nonce={} tick={}",
-            nonce, clock
+        info!("Loading Complete batches from repository...");
+
+        // Load all Complete batches from repository
+        let batches = self
+            .batch_repo
+            .list_by_status(&self.config.session_id, ActionBatchStatus::Complete)?;
+
+        if batches.is_empty() {
+            info!("No Complete batches found");
+            return Ok(());
+        }
+
+        info!(
+            "Found {} Complete batch(es), queuing for proving",
+            batches.len()
         );
 
-        // Update queue depth metric (incremented when starting) - lock-free
-        let new_depth = self.metrics.queue_depth() + 1;
-        self.metrics.set_queue_depth(new_depth);
+        // Queue all batches
+        for batch in batches {
+            self.pending_batches.push_back(batch);
+        }
 
-        // Emit proof started event to Proof topic
-        self.event_bus
-            .publish(Event::Proof(ProofEvent::ProofStarted {
-                action: action.clone(),
-                clock,
-            }));
+        // Clean up completed tasks to free slots
+        self.cleanup_completed_tasks();
+
+        // Process queue in order (FIFO)
+        self.process_pending_batches();
+
+        Ok(())
+    }
+
+    /// Process pending batches from the queue if slots are available
+    fn process_pending_batches(&mut self) {
+        while self.running_tasks.len() < self.config.max_parallel {
+            if let Some(batch) = self.pending_batches.pop_front() {
+                info!(
+                    "Processing queued batch {} ({} remaining in queue)",
+                    batch.start_nonce,
+                    self.pending_batches.len()
+                );
+                self.spawn_proof_task(batch);
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Spawn a proof generation task for a batch
+    fn spawn_proof_task(&mut self, batch: ActionBatch) {
+        let start_nonce = batch.start_nonce;
+        let config = self.config.clone();
+        let batch_repo = Arc::clone(&self.batch_repo);
+        let state_repo = Arc::clone(&self.state_repo);
+        let prover = Arc::clone(&self.prover);
+
+        // CRITICAL: Run entire proof generation in blocking thread pool
+        // This prevents blocking tokio runtime with:
+        // 1. CPU-intensive proof generation (RISC0 zkVM)
+        // 2. Synchronous I/O operations (file reads/writes)
+        let task = tokio::task::spawn_blocking(move || {
+            if let Err(e) =
+                Self::prove_batch_blocking(start_nonce, config, batch_repo, state_repo, prover)
+            {
+                error!("Proof generation failed for batch {}: {}", start_nonce, e);
+                Err(e)
+            } else {
+                Ok(())
+            }
+        });
+
+        self.running_tasks.push(task);
+
+        info!(
+            "Spawned proof task for batch {} ({}/{} slots used)",
+            start_nonce,
+            self.running_tasks.len(),
+            self.config.max_parallel
+        );
+    }
+
+    /// Clean up completed tasks from the running_tasks list
+    fn cleanup_completed_tasks(&mut self) {
+        let before = self.running_tasks.len();
+
+        // Remove finished tasks and log any errors
+        self.running_tasks.retain_mut(|task| {
+            if task.is_finished() {
+                // Task is done, log result if needed (can't access result without blocking)
+                false // Remove from list
+            } else {
+                true // Keep in list
+            }
+        });
+
+        let cleaned = before - self.running_tasks.len();
+        if cleaned > 0 {
+            debug!(
+                "Cleaned up {} completed proof task(s), {}/{} slots now in use",
+                cleaned,
+                self.running_tasks.len(),
+                self.config.max_parallel
+            );
+        }
+    }
+
+    /// Generate proof for a specific batch (blocking version)
+    ///
+    /// IMPORTANT: This function runs in a blocking thread pool and performs:
+    /// 1. Synchronous file I/O (loading states, actions, saving proofs)
+    /// 2. CPU-intensive proof generation (RISC0 zkVM execution)
+    ///
+    /// Never call this directly from async context - use spawn_blocking wrapper.
+    fn prove_batch_blocking(
+        start_nonce: u64,
+        config: ProverConfig,
+        batch_repo: Arc<FileActionBatchRepository>,
+        state_repo: Arc<FileStateRepository>,
+        prover: Arc<dyn Prover>,
+    ) -> Result<()> {
+        info!("Starting proof generation for batch {}", start_nonce);
+
+        // Load batch metadata
+        let mut batch = batch_repo
+            .load(&config.session_id, start_nonce)?
+            .ok_or(ProverError::BatchNotFound { start_nonce })?;
+
+        // Check batch is in Complete state
+        if !batch.is_ready_for_proving() {
+            return Err(ProverError::BatchNotReady {
+                start_nonce,
+                status: batch.status,
+            });
+        }
+
+        // Mark batch as Proving
+        batch.mark_proving();
+        batch_repo.save(&batch)?;
+
+        // Load start state (genesis for batch 0, otherwise previous batch's end state)
+        let start_state_nonce = if start_nonce == 0 { 0 } else { start_nonce - 1 };
+        let start_state =
+            state_repo
+                .load(start_state_nonce)?
+                .ok_or(ProverError::StateNotFound {
+                    nonce: start_state_nonce,
+                })?;
+
+        // Load end state
+        let end_state = state_repo
+            .load(batch.end_nonce)?
+            .ok_or(ProverError::StateNotFound {
+                nonce: batch.end_nonce,
+            })?;
+
+        // Open action log reader
+        let session_dir = config.base_dir.join(&config.session_id);
+        let action_log_path = session_dir
+            .join("actions")
+            .join(batch.action_log_filename());
+
+        let mut reader = FileActionLogReader::new(&action_log_path, config.session_id.clone())?;
 
         // Generate proof
-        match self
-            .generate_proof(&action, before_state, after_state)
-            .await
+        let proof_start = Instant::now();
+        let proof_data =
+            Self::generate_batch_proof(&batch, &start_state, &end_state, &mut reader, &prover)?;
+        let generation_time_ms = proof_start.elapsed().as_millis() as u64;
+
+        // Debug mode: Verify the generated proof immediately
+        #[cfg(debug_assertions)]
         {
-            Ok((proof_data, proving_time)) => {
-                let generation_time_ms = proving_time.as_millis() as u64;
-
-                // Compute state hashes for logging
-                use crate::utils::hash::hash_game_state;
-                let before_hash = hash_game_state(before_state);
-                let after_hash = hash_game_state(after_state);
-
-                info!(
-                    "Proof generated for nonce={} tick={} (proving: {}ms) | before={} after={}",
-                    nonce,
-                    clock,
-                    generation_time_ms,
-                    &before_hash[..8],
-                    &after_hash[..8]
-                );
-
-                // Update metrics - lock-free atomic operations
-                self.metrics.record_success(proving_time);
-                let new_depth = self.metrics.queue_depth().saturating_sub(1);
-                self.metrics.set_queue_depth(new_depth);
-
-                // Create proof entry
-                let mut proof_entry = ProofEntry::new(nonce, generation_time_ms);
-
-                // Save proof to file if configured
-                if let Some(dir) = self.storage.save_dir()
-                    && let Some((filename, size)) = self
-                        .save_proof_to_file(dir, &action, nonce, &proof_data)
-                        .await
-                {
-                    proof_entry = proof_entry.with_file(filename, size);
+            match prover.verify(&proof_data) {
+                Ok(true) => {
+                    debug!("✓ Proof verification passed for batch {}", start_nonce);
                 }
-
-                // Update proof index
-                self.proof_index.add_proof(proof_entry);
-
-                // Update action log offset for checkpoint/resume
-                self.proof_index.action_log_offset = self.reader.current_offset();
-
-                // Save proof index to disk (every proof for now, could batch later)
-                if let Err(e) = self.storage.save_index(&self.proof_index) {
-                    error!("Failed to save proof index: {}", e);
+                Ok(false) => {
+                    return Err(ProverError::Proof(zk::ProofError::ZkvmError(format!(
+                        "Proof verification returned false for batch {}",
+                        start_nonce
+                    ))));
                 }
-
-                // Publish proof generated event to Proof topic
-                self.event_bus
-                    .publish(Event::Proof(ProofEvent::ProofGenerated {
-                        action,
-                        clock,
-                        proof_data,
-                        generation_time_ms,
-                    }));
-            }
-            Err(error) => {
-                // Log error with appropriate severity
-                match &error {
-                    ProofError::StateInconsistency(_) => {
-                        // This is CRITICAL - indicates determinism bug
-                        error!(
-                            target: "runtime::prover",
-                            "🚨 CRITICAL: State inconsistency detected at nonce={}! zkVM and simulation computed different results. {}",
-                            nonce, error
-                        );
-                    }
-                    _ => {
-                        error!("Proof generation failed at nonce={}: {}", nonce, error);
-                    }
+                Err(e) => {
+                    return Err(ProverError::Proof(e));
                 }
-
-                // Update failure metrics - lock-free atomic operations
-                self.metrics.record_failure();
-                let new_depth = self.metrics.queue_depth().saturating_sub(1);
-                self.metrics.set_queue_depth(new_depth);
-
-                // Publish proof failed event to Proof topic
-                self.event_bus
-                    .publish(Event::Proof(ProofEvent::ProofFailed {
-                        action,
-                        clock,
-                        error: error.to_string(),
-                    }));
             }
         }
+
+        // Save proof file
+        let proof_filename = batch.proof_filename();
+        let proof_path = session_dir.join("proofs").join(&proof_filename);
+
+        // Ensure proofs directory exists
+        if let Some(parent) = proof_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        // Serialize and save proof
+        let proof_bytes = bincode::serialize(&proof_data)?;
+        std::fs::write(&proof_path, proof_bytes)?;
+
+        // Update batch status to Proven
+        batch.mark_proven(proof_filename, generation_time_ms);
+        batch_repo.save(&batch)?;
+
+        info!(
+            "Proof generated for batch {}: {} actions in {}ms",
+            start_nonce,
+            batch.action_count(),
+            generation_time_ms
+        );
+
+        Ok(())
     }
 
-    /// Saves proof to file if directory is configured.
+    /// Generate a proof for all actions in a batch (blocking version)
     ///
-    /// Returns Some((filename, size_bytes)) on success, None on failure.
-    async fn save_proof_to_file(
-        &self,
-        dir: &std::path::Path,
-        action: &Action,
-        nonce: u64,
-        proof_data: &ProofData,
-    ) -> Option<(String, u64)> {
-        use tokio::fs;
+    /// Generates a single batch proof that verifies:
+    /// - start_state + [action1, action2, ..., actionN] → end_state
+    fn generate_batch_proof(
+        batch: &ActionBatch,
+        start_state: &GameState,
+        end_state: &GameState,
+        reader: &mut FileActionLogReader,
+        prover: &Arc<dyn Prover>,
+    ) -> Result<ProofData> {
+        let action_count = batch.action_count();
 
-        // Create directory if it doesn't exist
-        if let Err(e) = fs::create_dir_all(dir).await {
-            warn!("Failed to create proof directory {:?}: {}", dir, e);
-            return None;
+        debug!(
+            "Generating batch proof for {} action(s) in batch {}",
+            action_count, batch.start_nonce
+        );
+
+        // Read all actions at once
+        let entries = reader.read_all()?;
+
+        if entries.is_empty() {
+            return Err(ProverError::NoActions {
+                start_nonce: batch.start_nonce,
+            });
         }
 
-        // Generate filename: proof_{nonce}_{actor}_{kind}.bin
-        let kind_str = action.as_snake_case();
-        let filename = format!("proof_{}_{}_{}.bin", nonce, action.actor(), kind_str);
-        let filepath = dir.join(&filename);
+        // Filter actions within this batch
+        let batch_actions: Vec<_> = entries
+            .into_iter()
+            .filter(|entry| entry.nonce >= batch.start_nonce && entry.nonce <= batch.end_nonce)
+            .map(|entry| entry.action)
+            .collect();
 
-        let size_bytes = proof_data.bytes.len() as u64;
-
-        // Save proof bytes
-        match fs::write(&filepath, &proof_data.bytes).await {
-            Ok(_) => {
-                info!(
-                    "💾 Proof saved: {} ({} bytes, backend: {:?})",
-                    filepath.display(),
-                    size_bytes,
-                    proof_data.backend
-                );
-                Some((filename, size_bytes))
-            }
-            Err(e) => {
-                warn!("Failed to save proof to {:?}: {}", filepath, e);
-                None
-            }
+        if batch_actions.len() != action_count as usize {
+            warn!(
+                "Action count mismatch: expected {}, found {}",
+                action_count,
+                batch_actions.len()
+            );
+            return Err(ProverError::ActionCountMismatch {
+                start_nonce: batch.start_nonce,
+                expected: action_count,
+                actual: batch_actions.len(),
+            });
         }
-    }
 
-    /// Generates a zero-knowledge proof for an action execution.
-    ///
-    /// Creates an oracle snapshot and invokes the zkVM prover to generate
-    /// a proof that executing the action on before_state produces after_state.
-    ///
-    /// Returns a tuple of (ProofData, proving_time) where:
-    /// - proving_time: Duration of actual proof generation
-    async fn generate_proof(
-        &self,
-        action: &Action,
-        before_state: &GameState,
-        after_state: &GameState,
-    ) -> Result<(ProofData, std::time::Duration), ProofError> {
-        // Clone prover and states to send to blocking task
-        let prover = self.prover.clone();
-        let before_state = before_state.clone();
-        let action = action.clone();
-        let after_state = after_state.clone();
+        // Generate proof: start_state + actions → end_state
+        // NOTE: Already running in blocking thread pool (via spawn_blocking in spawn_proof_task)
+        // so we can directly call the CPU-intensive prove() method here
+        info!(
+            "Starting proof generation for {} actions (batch {})",
+            batch_actions.len(),
+            batch.start_nonce
+        );
 
-        // Generate proof (may take seconds for real proofs)
-        // Use tokio::spawn_blocking to avoid blocking the async runtime
-        let proof = tokio::task::spawn_blocking(move || {
-            // Measure proving time
-            let proving_start = std::time::Instant::now();
-            let result = prover.prove(&before_state, &action, &after_state);
-            let proving_time = proving_start.elapsed();
+        let proof = prover.prove(start_state, &batch_actions, end_state)?;
 
-            result.map(|proof_data| (proof_data, proving_time))
-        })
-        .await
-        .map_err(|e| ProofError::ZkvmError(format!("Proof task failed: {}", e)))??;
+        info!(
+            "Batch proof generated: {} actions, start_nonce={}, end_nonce={}",
+            action_count, batch.start_nonce, batch.end_nonce
+        );
 
         Ok(proof)
     }
 }
 
-/// Builder for [`ProverWorker`]
-pub struct ProverWorkerBuilder {
-    session_id: Option<String>,
-    persistence_dir: Option<PathBuf>,
-    event_bus: Option<EventBus>,
-    oracles: Option<OracleManager>,
-    save_proofs_dir: Option<PathBuf>,
-    #[allow(dead_code)]
-    start_offset: u64, // Deprecated: Use ProofIndex checkpoint instead
-}
+/// Errors that can occur during proof generation
+#[derive(Debug, thiserror::Error)]
+pub enum ProverError {
+    #[error("Batch {start_nonce} not found")]
+    BatchNotFound { start_nonce: u64 },
 
-impl ProverWorkerBuilder {
-    fn new() -> Self {
-        Self {
-            session_id: None,
-            persistence_dir: None,
-            event_bus: None,
-            oracles: None,
-            save_proofs_dir: None,
-            start_offset: 0,
-        }
-    }
+    #[error("Batch {start_nonce} not ready for proving (status: {status:?})")]
+    BatchNotReady {
+        start_nonce: u64,
+        status: crate::repository::ActionBatchStatus,
+    },
 
-    /// Set the session ID (required).
-    pub fn session_id(mut self, id: impl Into<String>) -> Self {
-        self.session_id = Some(id.into());
-        self
-    }
+    #[error("State not found at nonce {nonce}")]
+    StateNotFound { nonce: u64 },
 
-    /// Set the persistence base directory (required).
-    ///
-    /// This directory contains the session subdirectory with action logs and proof indices.
-    pub fn persistence_dir(mut self, dir: impl Into<PathBuf>) -> Self {
-        self.persistence_dir = Some(dir.into());
-        self
-    }
+    #[error("No actions to prove in batch {start_nonce}")]
+    NoActions { start_nonce: u64 },
 
-    /// Set the event bus (required).
-    pub fn event_bus(mut self, bus: EventBus) -> Self {
-        self.event_bus = Some(bus);
-        self
-    }
+    #[error("Action count mismatch in batch {start_nonce}: expected {expected}, found {actual}")]
+    ActionCountMismatch {
+        start_nonce: u64,
+        expected: u64,
+        actual: usize,
+    },
 
-    /// Set the oracle manager (required).
-    pub fn oracles(mut self, oracles: OracleManager) -> Self {
-        self.oracles = Some(oracles);
-        self
-    }
+    #[error(transparent)]
+    Repository(#[from] crate::repository::RepositoryError),
 
-    /// Set optional directory to save proof files.
-    ///
-    /// If not set, proofs will only be indexed but not saved to disk.
-    pub fn save_proofs_to(mut self, dir: impl Into<PathBuf>) -> Self {
-        self.save_proofs_dir = Some(dir.into());
-        self
-    }
+    #[error(transparent)]
+    Proof(#[from] zk::ProofError),
 
-    /// Build the ProverWorker.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - Required fields are missing
-    /// - Repository creation fails
-    /// - File I/O errors occur
-    pub fn build(self) -> Result<ProverWorker, String> {
-        use crate::repository::{FileProofIndexRepository, MmapActionLogReader};
+    #[error(transparent)]
+    Serialization(#[from] bincode::Error),
 
-        // Validate required fields
-        let session_id = self
-            .session_id
-            .ok_or_else(|| "session_id is required".to_string())?;
-        let persistence_dir = self
-            .persistence_dir
-            .ok_or_else(|| "persistence_dir is required".to_string())?;
-        let event_bus = self
-            .event_bus
-            .ok_or_else(|| "event_bus is required".to_string())?;
-        let oracles = self
-            .oracles
-            .ok_or_else(|| "oracles is required".to_string())?;
-
-        // Construct paths
-        let session_dir = persistence_dir.join(&session_id);
-        let action_filename = format!("actions_{}.log", session_id);
-        let action_log_path = session_dir.join("actions").join(&action_filename);
-        let proof_index_dir = session_dir.join("proof_indices");
-
-        // Create memory-mapped reader starting from beginning
-        // (will be seeked to checkpoint offset in ProverWorker::new)
-        let reader = MmapActionLogReader::new(action_log_path, session_id.clone(), 0)
-            .map_err(|e| format!("Failed to create mmap reader: {}", e))?;
-
-        // Box as trait object
-        let reader: Box<dyn ActionLogReader> = Box::new(reader);
-
-        // Create proof index repository
-        let proof_index_repo = FileProofIndexRepository::new(&proof_index_dir)
-            .map_err(|e| format!("Failed to create proof index repository: {}", e))?;
-
-        // Call the private constructor
-        ProverWorker::new(
-            reader,
-            event_bus,
-            oracles,
-            self.save_proofs_dir,
-            Box::new(proof_index_repo),
-            session_id,
-        )
-    }
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 }

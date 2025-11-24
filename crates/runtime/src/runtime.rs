@@ -13,16 +13,27 @@ use game_core::{EntityId, GameConfig, GameState};
 use crate::api::{
     ActionProvider, ProviderKind, ProviderRegistry, Result, RuntimeError, RuntimeHandle,
 };
-use crate::events::EventBus;
-use crate::oracle::OracleManager;
+use crate::events::{EventBus, Topic};
+use crate::oracle::OracleBundle;
 use crate::providers::SystemActionProvider;
+use crate::repository::ActionBatch;
+use crate::scenario::Scenario;
 use crate::workers::{
-    CheckpointStrategy, Command, PersistenceConfig, PersistenceWorker, ProofMetrics, ProverWorker,
-    SimulationWorker,
+    CheckpointStrategy, Command, PersistenceConfig, PersistenceWorker, ProofMetrics, ProverConfig,
+    ProverWorker, SimulationWorker,
 };
+
+use serde::{Deserialize, Serialize};
 
 /// Shared reference to proof generation metrics (thread-safe, lock-free)
 type ProofMetricsArc = std::sync::Arc<ProofMetrics>;
+
+/// Result type for persistence worker creation: (worker handle, batch completion receiver, persistence command sender)
+type PersistenceWorkerResult = (
+    Option<JoinHandle<()>>,
+    Option<mpsc::UnboundedReceiver<ActionBatch>>,
+    Option<mpsc::Sender<crate::workers::persistence::Command>>,
+);
 
 /// Core runtime configuration for channels and buffers.
 #[derive(Debug, Clone)]
@@ -51,6 +62,38 @@ pub struct ProvingSettings {
     pub enabled: bool,
     /// Optional directory to save generated proofs
     pub save_proofs_dir: Option<std::path::PathBuf>,
+}
+
+/// Session initialization data stored at game creation.
+///
+/// This structure contains all cryptographic commitments needed for blockchain
+/// session creation and proof verification.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionInit {
+    /// Session ID (timestamp-based)
+    pub session_id: String,
+    /// Creation timestamp (ISO 8601 format)
+    pub created_at: String,
+    /// Oracle root: SHA-256 hash of serialized oracle snapshot
+    pub oracle_root: [u8; 32],
+    /// Random seed for RNG (kept secret)
+    pub seed: [u8; 32],
+    /// Seed commitment: SHA-256 hash of seed
+    pub seed_commitment: [u8; 32],
+    /// Initial state root: hash of state_0
+    pub initial_state_root: [u8; 32],
+    /// Blockchain-specific data (optional, added after session creation)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blockchain: Option<BlockchainSessionData>,
+}
+
+/// Blockchain session metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockchainSessionData {
+    /// On-chain session object ID
+    pub session_object_id: String,
+    /// Network name (e.g., "testnet", "mainnet")
+    pub network: String,
 }
 
 impl Default for RuntimeConfig {
@@ -143,8 +186,12 @@ pub struct Runtime {
     // Provider registry (shared with RuntimeHandle via Arc)
     providers: Arc<RwLock<ProviderRegistry>>,
 
-    // Oracle manager (cloned, cheap due to Arc internals)
-    oracles: OracleManager,
+    // Oracle bundle (cloned, cheap due to Arc internals)
+    oracles: OracleBundle,
+
+    // Blockchain clients (optional, feature-gated)
+    #[cfg(feature = "sui")]
+    blockchain_clients: Option<Arc<crate::blockchain::BlockchainClients>>,
 }
 
 impl Runtime {
@@ -247,10 +294,12 @@ pub struct RuntimeBuilder {
     persistence: PersistenceSettings,
     proving: ProvingSettings,
     state: Option<GameState>,
-    oracles: Option<OracleManager>,
-    scenario: Option<crate::scenario::Scenario>,
+    oracles: Option<OracleBundle>,
+    scenario: Option<Scenario>,
     providers: ProviderRegistry,
     system_provider: Option<SystemActionProvider>,
+    #[cfg(feature = "sui")]
+    blockchain_clients: Option<crate::blockchain::BlockchainClients>,
 }
 
 impl RuntimeBuilder {
@@ -264,6 +313,8 @@ impl RuntimeBuilder {
             scenario: None,
             providers: ProviderRegistry::new(),
             system_provider: None,
+            #[cfg(feature = "sui")]
+            blockchain_clients: None,
         }
     }
 
@@ -291,8 +342,8 @@ impl RuntimeBuilder {
         self
     }
 
-    /// Set required oracle manager
-    pub fn oracles(mut self, oracles: OracleManager) -> Self {
+    /// Set required oracle bundle
+    pub fn oracles(mut self, oracles: OracleBundle) -> Self {
         self.oracles = Some(oracles);
         self
     }
@@ -300,7 +351,7 @@ impl RuntimeBuilder {
     /// Provide scenario for entity initialization.
     ///
     /// If both scenario and initial_state are provided, initial_state takes precedence.
-    pub fn scenario(mut self, scenario: crate::scenario::Scenario) -> Self {
+    pub fn scenario(mut self, scenario: Scenario) -> Self {
         self.scenario = Some(scenario);
         self
     }
@@ -363,6 +414,15 @@ impl RuntimeBuilder {
     /// Use this method to inject a custom provider with additional or modified handlers.
     pub fn with_system_provider(mut self, provider: SystemActionProvider) -> Self {
         self.system_provider = Some(provider);
+        self
+    }
+
+    /// Set blockchain clients for on-chain proof submission (Sui feature only).
+    ///
+    /// This enables the runtime to submit proofs to the blockchain via RuntimeHandle methods.
+    #[cfg(feature = "sui")]
+    pub fn blockchain_clients(mut self, clients: crate::blockchain::BlockchainClients) -> Self {
+        self.blockchain_clients = Some(clients);
         self
     }
 
@@ -439,6 +499,8 @@ impl RuntimeBuilder {
             scenario,
             providers,
             system_provider,
+            #[cfg(feature = "sui")]
+            blockchain_clients,
         } = self;
 
         let oracles = oracles.ok_or_else(|| RuntimeError::MissingOracles)?;
@@ -457,13 +519,16 @@ impl RuntimeBuilder {
             GameState::with_player()
         };
 
+        // Create session initialization file if persistence is enabled
+        if persistence.enabled {
+            Self::create_session_init_file(&config, &persistence, &oracles, &initial_state)?;
+        }
+
         let (command_tx, command_rx) = mpsc::channel::<Command>(config.command_buffer_size);
         let event_bus = EventBus::with_capacity(config.event_buffer_size);
 
         // Wrap providers in Arc<RwLock> for shared access
         let providers = Arc::new(RwLock::new(providers));
-
-        let handle = RuntimeHandle::new(command_tx.clone(), event_bus.clone(), providers.clone());
 
         // Use provided system provider or default
         let system_provider = system_provider.unwrap_or_default();
@@ -477,18 +542,35 @@ impl RuntimeBuilder {
             system_provider,
         );
 
-        let persistence_worker_handle = Self::create_persistence_worker(
-            &config,
-            &persistence,
+        let (persistence_worker_handle, batch_complete_rx, persistence_cmd_tx) =
+            Self::create_persistence_worker(
+                &config,
+                &persistence,
+                command_tx.clone(),
+                event_bus.clone(),
+            )?;
+
+        // Wrap blockchain clients in Arc for shared ownership
+        #[cfg(feature = "sui")]
+        let blockchain_clients_arc = blockchain_clients.map(Arc::new);
+
+        // Create RuntimeHandle with persistence channel
+        let handle = RuntimeHandle::new(
             command_tx.clone(),
+            persistence_cmd_tx,
             event_bus.clone(),
-        )?;
+            providers.clone(),
+            config.session_id.clone(),
+            persistence.base_dir.clone(),
+            #[cfg(feature = "sui")]
+            blockchain_clients_arc.clone(),
+        );
 
         let (prover_worker_handle, proof_metrics) = Self::create_prover_worker(
             &config,
             &persistence,
             &proving,
-            event_bus.clone(),
+            batch_complete_rx,
             oracles.clone(),
         )?;
 
@@ -502,13 +584,15 @@ impl RuntimeBuilder {
             proof_metrics,
             providers,
             oracles,
+            #[cfg(feature = "sui")]
+            blockchain_clients: blockchain_clients_arc,
         })
     }
 
     /// Create and spawn the simulation worker.
     fn create_simulation_worker(
         initial_state: GameState,
-        oracles: OracleManager,
+        oracles: OracleBundle,
         command_rx: mpsc::Receiver<Command>,
         event_bus: EventBus,
         system_provider: SystemActionProvider,
@@ -527,14 +611,16 @@ impl RuntimeBuilder {
     }
 
     /// Create and spawn the persistence worker (if enabled).
+    ///
+    /// Returns the worker handle and batch completion receiver for ProverWorker.
     fn create_persistence_worker(
         config: &RuntimeConfig,
         persistence: &PersistenceSettings,
         sim_command_tx: mpsc::Sender<Command>,
         event_bus: EventBus,
-    ) -> Result<Option<JoinHandle<()>>> {
+    ) -> Result<PersistenceWorkerResult> {
         if !persistence.enabled {
-            return Ok(None);
+            return Ok((None, None, None));
         }
 
         let persistence_config =
@@ -543,25 +629,36 @@ impl RuntimeBuilder {
                     persistence.checkpoint_interval,
                 ));
 
-        let event_rx = event_bus.subscribe(crate::events::Topic::GameState);
+        let event_rx = event_bus.subscribe(Topic::GameState);
 
         // PersistenceWorker has its own Command type, but we don't expose it
-        // Create a dummy channel since we don't send commands to it yet
-        let (_persistence_cmd_tx, persistence_cmd_rx) = mpsc::channel(8);
+        // Keep the sender alive to prevent the worker from shutting down
+        let (persistence_cmd_tx, persistence_cmd_rx) = mpsc::channel(8);
+
+        // Channel for notifying ProverWorker about completed batches
+        // Use unbounded channel to ensure no batch information is lost
+        // ProverWorker has internal queue management and processes at its own pace
+        let (batch_complete_tx, batch_complete_rx) = mpsc::unbounded_channel();
 
         let persistence_worker = PersistenceWorker::new(
             persistence_config,
             event_rx,
             persistence_cmd_rx,
             sim_command_tx,
+            batch_complete_tx,
         )
-        .map_err(RuntimeError::InvalidConfig)?;
+        .map_err(|e| RuntimeError::InvalidConfig(e.to_string()))?;
 
         let handle = tokio::spawn(async move {
             persistence_worker.run().await;
         });
 
-        Ok(Some(handle))
+        // Return the command sender so RuntimeHandle can use it
+        Ok((
+            Some(handle),
+            Some(batch_complete_rx),
+            Some(persistence_cmd_tx),
+        ))
     }
 
     /// Create and spawn the prover worker (if enabled).
@@ -575,8 +672,8 @@ impl RuntimeBuilder {
         config: &RuntimeConfig,
         persistence: &PersistenceSettings,
         proving: &ProvingSettings,
-        event_bus: EventBus,
-        oracles: OracleManager,
+        batch_complete_rx: Option<mpsc::UnboundedReceiver<ActionBatch>>,
+        _oracles: OracleBundle,
     ) -> Result<(Option<JoinHandle<()>>, Option<ProofMetricsArc>)> {
         if !proving.enabled {
             return Ok((None, None));
@@ -588,33 +685,140 @@ impl RuntimeBuilder {
             "Proving requires persistence - should be caught by validate()"
         );
 
-        // Construct session directory path
-        let session_dir = persistence.base_dir.join(&config.session_id);
-
-        // Build ProverWorker using its builder
-        // Note: ProverWorker automatically resumes from ProofIndex checkpoint
-        let mut builder = ProverWorker::builder()
-            .session_id(config.session_id.clone())
-            .persistence_dir(&persistence.base_dir)
-            .event_bus(event_bus)
-            .oracles(oracles);
-
-        // Optionally save proofs to disk
-        if proving.save_proofs_dir.is_some() || persistence.enabled {
-            let proofs_dir = session_dir.join("proofs");
-            builder = builder.save_proofs_to(proofs_dir);
-        }
-
-        let prover_worker = builder.build().map_err(|e| {
-            RuntimeError::InvalidConfig(format!("Failed to create ProverWorker: {}", e))
+        let batch_complete_rx = batch_complete_rx.ok_or_else(|| {
+            RuntimeError::InvalidConfig(
+                "Proving requires persistence to be enabled, but batch_complete_rx is None"
+                    .to_string(),
+            )
         })?;
 
-        let prover_metrics = prover_worker.metrics();
+        // Create prover config
+        // Use max_parallel=1 for RISC0 to avoid overwhelming the system
+        // (RISC0 proof generation is extremely CPU-intensive)
+        let prover_config =
+            ProverConfig::new(config.session_id.clone(), persistence.base_dir.clone())
+                .with_max_parallel(1); // TODO: Make this configurable via env var
+
+        // Create oracle snapshot for prover (includes all actors, items, maps, actions, config)
+        let oracle_snapshot = _oracles.to_snapshot();
+
+        // Create prover instance (stub or risc0)
+        #[cfg(feature = "stub")]
+        let prover = {
+            use zk::StubProver;
+            Arc::new(StubProver::new(oracle_snapshot))
+        };
+
+        #[cfg(all(feature = "risc0", not(feature = "stub")))]
+        let prover = {
+            use zk::Risc0Prover;
+            Arc::new(Risc0Prover::new(oracle_snapshot))
+        };
+
+        #[cfg(all(feature = "sp1", not(feature = "stub")))]
+        let prover = {
+            use zk::Sp1Prover;
+            Arc::new(Sp1Prover::new(oracle_snapshot))
+        };
+
+        // Create command channel (keep sender alive to prevent shutdown)
+        let (prover_cmd_tx, prover_cmd_rx) = mpsc::channel(8);
+
+        // Create ProverWorker
+        let prover_worker =
+            ProverWorker::new(prover_config, prover, prover_cmd_rx, batch_complete_rx)
+                .map_err(|e| RuntimeError::InvalidConfig(e.to_string()))?;
 
         let handle = tokio::spawn(async move {
             prover_worker.run().await;
         });
 
-        Ok((Some(handle), Some(prover_metrics)))
+        // Keep the command sender alive by forgetting it
+        // (If we drop it, the worker will shut down immediately)
+        std::mem::forget(prover_cmd_tx);
+
+        // TODO: Re-add metrics
+        Ok((Some(handle), None))
+    }
+
+    /// Create session initialization file with cryptographic commitments.
+    ///
+    /// This method is called during Runtime::build() to create a session_init.json
+    /// file containing oracle_root, seed, seed_commitment, and initial_state_root.
+    fn create_session_init_file(
+        config: &RuntimeConfig,
+        persistence: &PersistenceSettings,
+        oracles: &OracleBundle,
+        initial_state: &GameState,
+    ) -> Result<()> {
+        use sha2::{Digest, Sha256};
+        use std::fs;
+        use std::io::Write;
+
+        // Create session directory if it doesn't exist
+        let session_dir = persistence.base_dir.join(&config.session_id);
+        fs::create_dir_all(&session_dir).map_err(|e| {
+            RuntimeError::PersistenceError(format!("Failed to create session directory: {}", e))
+        })?;
+
+        let session_init_path = session_dir.join("session_init.json");
+
+        // Skip if session_init.json already exists (loading existing session)
+        if session_init_path.exists() {
+            tracing::info!("Session initialization file already exists, skipping creation");
+            return Ok(());
+        }
+
+        tracing::info!("Creating session initialization file");
+
+        // 1. Compute oracle_root: SHA-256 hash of serialized oracle snapshot
+        let oracle_snapshot = oracles.to_snapshot();
+        let oracle_bytes = bincode::serialize(&oracle_snapshot).map_err(|e| {
+            RuntimeError::PersistenceError(format!("Failed to serialize oracle snapshot: {}", e))
+        })?;
+        let oracle_root: [u8; 32] = Sha256::digest(&oracle_bytes).into();
+
+        // 2. Generate random 32-byte seed
+        use rand::RngCore;
+        let mut seed = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut seed);
+
+        // 3. Compute seed_commitment: SHA-256 hash of seed
+        let seed_commitment: [u8; 32] = Sha256::digest(seed).into();
+
+        // 4. Compute initial_state_root
+        let initial_state_root = initial_state.compute_state_root();
+
+        // 5. Create SessionInit structure
+        let created_at = chrono::Utc::now().to_rfc3339();
+        let session_init = SessionInit {
+            session_id: config.session_id.clone(),
+            created_at,
+            oracle_root,
+            seed,
+            seed_commitment,
+            initial_state_root,
+            blockchain: None, // Will be populated after blockchain session creation
+        };
+
+        // 6. Serialize to pretty JSON
+        let json = serde_json::to_string_pretty(&session_init).map_err(|e| {
+            RuntimeError::PersistenceError(format!("Failed to serialize session init: {}", e))
+        })?;
+
+        // 7. Write to file
+        let mut file = fs::File::create(&session_init_path).map_err(|e| {
+            RuntimeError::PersistenceError(format!("Failed to create session_init.json: {}", e))
+        })?;
+        file.write_all(json.as_bytes()).map_err(|e| {
+            RuntimeError::PersistenceError(format!("Failed to write session_init.json: {}", e))
+        })?;
+
+        tracing::info!(
+            "Session initialization file created at {}",
+            session_init_path.display()
+        );
+
+        Ok(())
     }
 }

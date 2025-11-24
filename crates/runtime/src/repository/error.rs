@@ -33,3 +33,5 @@ pub enum RepositoryError {
         actual: usize,
     },
 }
+
+pub type Result<T> = std::result::Result<T, RepositoryError>;

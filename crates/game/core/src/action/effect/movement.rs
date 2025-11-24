@@ -34,10 +34,8 @@ impl MoveSelfEffect {
     pub fn apply(&self, ctx: &mut EffectContext) -> Result<AppliedValue, ActionError> {
         let from = ctx
             .state
-            .entities
-            .actor(ctx.caster)
-            .ok_or(ActionError::ActorNotFound)?
-            .position;
+            .actor_position(ctx.caster)
+            .ok_or(ActionError::ActorNotFound)?;
 
         // Calculate and validate destination
         let to = self.calculate_destination(ctx, ctx.caster)?;
@@ -45,12 +43,18 @@ impl MoveSelfEffect {
         // Validate again (defensive, in case state changed)
         validate_destination(ctx, ctx.caster, to)?;
 
-        // Apply movement
+        // Update occupancy: remove from old position
+        ctx.state.world.tile_map.remove_occupant(&from, ctx.caster);
+
+        // Update occupancy: add to new position
+        ctx.state.world.tile_map.add_occupant(to, ctx.caster);
+
+        // Apply movement to actor
         ctx.state
             .entities
             .actor_mut(ctx.caster)
             .ok_or(ActionError::ActorNotFound)?
-            .position = to;
+            .position = Some(to);
 
         Ok(AppliedValue::Movement { from, to })
     }
@@ -68,10 +72,8 @@ impl MoveSelfEffect {
     ) -> Result<Position, ActionError> {
         let current_pos = ctx
             .state
-            .entities
-            .actor(entity_id)
-            .ok_or(ActionError::ActorNotFound)?
-            .position;
+            .actor_position(entity_id)
+            .ok_or(ActionError::ActorNotFound)?;
 
         match &self.displacement {
             Displacement::FromInput { distance } => {
@@ -93,10 +95,8 @@ impl MoveSelfEffect {
             Displacement::TowardTarget { distance } => {
                 let target_pos = ctx
                     .state
-                    .entities
-                    .actor(ctx.target)
-                    .ok_or(ActionError::TargetNotFound)?
-                    .position;
+                    .actor_position(ctx.target)
+                    .ok_or(ActionError::TargetNotFound)?;
 
                 Ok(calculate_destination_toward(
                     current_pos,
@@ -108,10 +108,8 @@ impl MoveSelfEffect {
             Displacement::AwayFromTarget { distance } => {
                 let target_pos = ctx
                     .state
-                    .entities
-                    .actor(ctx.target)
-                    .ok_or(ActionError::TargetNotFound)?
-                    .position;
+                    .actor_position(ctx.target)
+                    .ok_or(ActionError::TargetNotFound)?;
 
                 Ok(calculate_destination_away(
                     current_pos,
@@ -123,10 +121,8 @@ impl MoveSelfEffect {
             Displacement::AwayFromCaster { distance } => {
                 let caster_pos = ctx
                     .state
-                    .entities
-                    .actor(ctx.caster)
-                    .ok_or(ActionError::ActorNotFound)?
-                    .position;
+                    .actor_position(ctx.caster)
+                    .ok_or(ActionError::ActorNotFound)?;
 
                 Ok(calculate_destination_away(
                     current_pos,
@@ -177,21 +173,26 @@ impl MoveTargetEffect {
     pub fn apply(&self, ctx: &mut EffectContext) -> Result<AppliedValue, ActionError> {
         let from = ctx
             .state
-            .entities
-            .actor(ctx.target)
-            .ok_or(ActionError::TargetNotFound)?
-            .position;
+            .actor_position(ctx.target)
+            .ok_or(ActionError::TargetNotFound)?;
 
         let to = self.calculate_destination(ctx, ctx.target)?;
 
         // Validate again (defensive)
         validate_destination(ctx, ctx.target, to)?;
 
+        // Update occupancy: remove from old position
+        ctx.state.world.tile_map.remove_occupant(&from, ctx.target);
+
+        // Update occupancy: add to new position
+        ctx.state.world.tile_map.add_occupant(to, ctx.target);
+
+        // Apply movement to target
         ctx.state
             .entities
             .actor_mut(ctx.target)
             .ok_or(ActionError::TargetNotFound)?
-            .position = to;
+            .position = Some(to);
 
         Ok(AppliedValue::Movement { from, to })
     }
@@ -210,10 +211,8 @@ impl MoveTargetEffect {
         // Same logic as MoveSelf - could be refactored into shared function
         let current_pos = ctx
             .state
-            .entities
-            .actor(entity_id)
-            .ok_or(ActionError::ActorNotFound)?
-            .position;
+            .actor_position(entity_id)
+            .ok_or(ActionError::ActorNotFound)?;
 
         match &self.displacement {
             Displacement::FromInput { distance } => {
@@ -235,10 +234,8 @@ impl MoveTargetEffect {
             Displacement::TowardTarget { distance } => {
                 let target_pos = ctx
                     .state
-                    .entities
-                    .actor(ctx.target)
-                    .ok_or(ActionError::TargetNotFound)?
-                    .position;
+                    .actor_position(ctx.target)
+                    .ok_or(ActionError::TargetNotFound)?;
 
                 Ok(calculate_destination_toward(
                     current_pos,
@@ -250,10 +247,8 @@ impl MoveTargetEffect {
             Displacement::AwayFromTarget { distance } => {
                 let target_pos = ctx
                     .state
-                    .entities
-                    .actor(ctx.target)
-                    .ok_or(ActionError::TargetNotFound)?
-                    .position;
+                    .actor_position(ctx.target)
+                    .ok_or(ActionError::TargetNotFound)?;
 
                 Ok(calculate_destination_away(
                     current_pos,
@@ -265,10 +260,8 @@ impl MoveTargetEffect {
             Displacement::AwayFromCaster { distance } => {
                 let caster_pos = ctx
                     .state
-                    .entities
-                    .actor(ctx.caster)
-                    .ok_or(ActionError::ActorNotFound)?
-                    .position;
+                    .actor_position(ctx.caster)
+                    .ok_or(ActionError::ActorNotFound)?;
 
                 Ok(calculate_destination_away(
                     current_pos,
@@ -363,7 +356,7 @@ fn validate_destination(
 
     // Check for entity collision
     for actor in ctx.state.entities.all_actors() {
-        if actor.id != mover && actor.position == destination {
+        if actor.id != mover && actor.position == Some(destination) {
             return Err(ActionError::Occupied);
         }
     }

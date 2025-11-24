@@ -9,16 +9,14 @@ pub mod config;
 pub mod factory;
 pub mod item;
 pub mod map;
-pub mod tables;
 pub mod traits;
 
 pub use actions::ActionProfileRegistry;
-pub use actors::{ActorLoader, AiKindSpec, InteractiveKindSpec, ProviderKindSpec};
+pub use actors::ActorLoader;
 pub use config::ConfigLoader;
 pub use factory::ContentFactory;
 pub use item::ItemLoader;
 pub use map::MapLoader;
-pub use tables::TablesLoader;
 pub use traits::load_trait_registry;
 
 use std::path::Path;

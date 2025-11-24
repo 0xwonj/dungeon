@@ -7,8 +7,7 @@
 //! - Helper methods for situation assessment
 //! - Access to trait profiles
 
-use game_content::traits::TraitProfile;
-use game_core::{ActionKind, EntityId, GameEnv, GameState};
+use game_core::{ActionKind, EntityId, GameEnv, GameState, TraitProfile};
 
 /// Context for AI decision-making.
 ///
@@ -115,10 +114,15 @@ impl<'a> AiContext<'a> {
     /// Manhattan distance to player, or `u32::MAX` if player position unknown.
     pub fn distance_to_player(&self) -> u32 {
         if let Some(actor) = self.state.entities.actor(self.entity) {
-            let player_pos = self.state.entities.player().position;
-            let dx = (actor.position.x - player_pos.x).abs();
-            let dy = (actor.position.y - player_pos.y).abs();
-            (dx + dy) as u32
+            if let (Some(actor_pos), Some(player_pos)) =
+                (actor.position, self.state.entities.player().position)
+            {
+                let dx = (actor_pos.x - player_pos.x).abs();
+                let dy = (actor_pos.y - player_pos.y).abs();
+                (dx + dy) as u32
+            } else {
+                u32::MAX
+            }
         } else {
             u32::MAX
         }
@@ -143,10 +147,6 @@ impl<'a> AiContext<'a> {
 
         // If distance is MAX, entity is not an actor or other error
         if distance == u32::MAX {
-            tracing::warn!(
-                "can_see_player: entity {:?} has invalid distance to player",
-                self.entity
-            );
             return false;
         }
 
@@ -221,21 +221,20 @@ impl<'a> AiContext<'a> {
     ///
     /// # Returns
     ///
-    /// The entity's position, or `Position::new(0, 0)` if not found.
-    pub fn my_position(&self) -> game_core::Position {
+    /// The entity's position, or None if not on map.
+    pub fn my_position(&self) -> Option<game_core::Position> {
         self.state
             .entities
             .actor(self.entity)
-            .map(|a| a.position)
-            .unwrap_or(game_core::Position::new(0, 0))
+            .and_then(|a| a.position)
     }
 
     /// Gets the player's position.
     ///
     /// # Returns
     ///
-    /// The player's current position.
-    pub fn player_position(&self) -> game_core::Position {
+    /// The player's current position, or None if not on map.
+    pub fn player_position(&self) -> Option<game_core::Position> {
         self.state.entities.player().position
     }
 
@@ -247,15 +246,15 @@ impl<'a> AiContext<'a> {
     ///
     /// # Returns
     ///
-    /// The new position after moving in the specified direction.
+    /// The new position after moving in the specified direction, or None if not on map.
     pub fn position_after_move(
         &self,
         direction: game_core::CardinalDirection,
-    ) -> game_core::Position {
-        let current = self.my_position();
+    ) -> Option<game_core::Position> {
+        let current = self.my_position()?;
         // Use the game's coordinate system (from CardinalDirection::offset)
         let (dx, dy) = direction.offset();
-        game_core::Position::new(current.x + dx, current.y + dy)
+        Some(game_core::Position::new(current.x + dx, current.y + dy))
     }
 
     /// Calculates the Manhattan distance from a given position to the player.
@@ -266,9 +265,11 @@ impl<'a> AiContext<'a> {
     ///
     /// # Returns
     ///
-    /// Manhattan distance to the player.
+    /// Manhattan distance to the player, or u32::MAX if player not on map.
     pub fn distance_from_to_player(&self, pos: game_core::Position) -> u32 {
-        let player_pos = self.player_position();
+        let Some(player_pos) = self.player_position() else {
+            return u32::MAX;
+        };
         let dx = (pos.x - player_pos.x).abs();
         let dy = (pos.y - player_pos.y).abs();
         (dx + dy) as u32
@@ -280,21 +281,18 @@ impl<'a> AiContext<'a> {
 
     /// Gets the trait profile for the current entity.
     ///
-    /// This method looks up the entity's template_id from the game state,
-    /// then queries the NpcOracle for the corresponding trait profile.
+    /// Traits are now stored directly in ActorState for challenge verification support.
+    /// This enables deterministic re-execution in zkVM for fraud proof generation.
     ///
     /// # Returns
     ///
-    /// - `Some(&TraitProfile)` if the entity is an actor with a registered trait profile
-    /// - `None` if:
-    ///   - Entity is not an actor (e.g., prop, item)
-    ///   - NPC oracle is not available
-    ///   - Template has no trait profile registered
+    /// - `Some(&TraitProfile)` if the entity is an actor
+    /// - `None` if the entity is not an actor (e.g., prop, item)
     pub fn trait_profile(&self) -> Option<&TraitProfile> {
-        // TODO: Restore trait profile lookup after actor system migration
-        // Previously: Retrieved template_id from ActorState and looked up trait profile
-        // Next: Need to track def_id -> template_id mapping in runtime or store def_id in ActorState
-        None
+        self.state
+            .entities
+            .actor(self.entity)
+            .map(|actor| &actor.trait_profile)
     }
 
     // ========================================================================

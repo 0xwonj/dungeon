@@ -74,15 +74,15 @@ pub(super) fn execute_transition(
                 SystemActionKind::PrepareTurn(transition) => {
                     drive_transition(transition, state, env).map_err(ExecuteError::PrepareTurn)?;
                 }
-                SystemActionKind::ActionCost(transition) => {
-                    drive_transition(transition, state, env).map_err(ExecuteError::ActionCost)?;
-                }
                 SystemActionKind::Activation(transition) => {
                     drive_transition(transition, state, env).map_err(ExecuteError::Activation)?;
                 }
-                SystemActionKind::RemoveFromActive(transition) => {
+                SystemActionKind::Deactivate(transition) => {
+                    drive_transition(transition, state, env).map_err(ExecuteError::Deactivate)?;
+                }
+                SystemActionKind::RemoveFromWorld(transition) => {
                     drive_transition(transition, state, env)
-                        .map_err(ExecuteError::RemoveFromActive)?;
+                        .map_err(ExecuteError::RemoveFromWorld)?;
                 }
             }
             Ok(None)

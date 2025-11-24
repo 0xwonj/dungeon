@@ -1,5 +1,10 @@
 // Actor catalog - both players and NPCs
-// Format: Vec<(String, ActorTemplate, ProviderKind, TraitProfileSpec)>
+// Format: Vec<(String, ActorTemplate)>
+//
+// Trait Resolution by ActorLoader:
+// - species/faction: Enum values (Human, Goblin, etc. / Player, Hostile, etc.)
+// - archetype/temperament: String references to trait layer catalogs
+// - ActorLoader combines all four to build the final TraitProfile
 
 [
     // Player character
@@ -23,17 +28,16 @@
             status_effects: StatusEffects(effects: []),
             actions: [
                 ActionAbility(kind: Move, enabled: true, cooldown_until: 0),
+                ActionAbility(kind: PickupItem, enabled: true, cooldown_until: 0),
                 ActionAbility(kind: MeleeAttack, enabled: true, cooldown_until: 0),
                 ActionAbility(kind: Wait, enabled: true, cooldown_until: 0),
             ],
             passives: [],
             inventory: InventoryState(items: []),
-        ),
-        Interactive(CliInput),
-        (
-            species: "human",
+            provider_kind: Interactive(CliInput),
+            species: Human,
+            faction: Player,
             archetype: "none",
-            faction: "none",
             temperament: "neutral",
         ),
     ),
@@ -66,12 +70,10 @@
                 PassiveAbility(kind: Darkvision, enabled: true),
             ],
             inventory: InventoryState(items: []),
-        ),
-        Ai(Utility),
-        (
-            species: "goblin",
+            provider_kind: Ai(Utility),
+            species: Goblin,
+            faction: GoblinClan,
             archetype: "scout",
-            faction: "none",
             temperament: "cowardly",
         ),
     ),
@@ -102,12 +104,10 @@
             ],
             passives: [],
             inventory: InventoryState(items: []),
-        ),
-        Ai(Utility),
-        (
-            species: "orc",
+            provider_kind: Ai(Utility),
+            species: Orc,
+            faction: OrcHorde,
             archetype: "warrior",
-            faction: "none",
             temperament: "aggressive",
         ),
     ),
@@ -138,12 +138,10 @@
             ],
             passives: [],
             inventory: InventoryState(items: []),
-        ),
-        Ai(Utility),
-        (
-            species: "boss",
+            provider_kind: Ai(Utility),
+            species: Boss,
+            faction: Hostile,
             archetype: "leader",
-            faction: "none",
             temperament: "fearless",
         ),
     ),
@@ -176,12 +174,10 @@
                 PassiveAbility(kind: Darkvision, enabled: true),
             ],
             inventory: InventoryState(items: []),
-        ),
-        Ai(Utility),
-        (
-            species: "skeleton",
+            provider_kind: Ai(Utility),
+            species: Skeleton,
+            faction: UndeadLegion,
             archetype: "warrior",
-            faction: "none",
             temperament: "fearless",
         ),
     ),
@@ -212,12 +208,10 @@
             ],
             passives: [],
             inventory: InventoryState(items: []),
-        ),
-        Ai(Utility),
-        (
-            species: "human",
+            provider_kind: Ai(Utility),
+            species: Human,
+            faction: Friendly,
             archetype: "archer",
-            faction: "none",
             temperament: "cautious",
         ),
     ),

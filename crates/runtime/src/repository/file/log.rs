@@ -11,11 +11,10 @@ use std::path::{Path, PathBuf};
 
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::api::Result;
 use crate::events::Event;
-use crate::repository::RepositoryError;
 use crate::repository::traits::{ActionLogWriter, EventRepository};
 use crate::repository::types::ActionLogEntry;
+use crate::repository::{RepositoryError, Result};
 
 // ============================================================================
 // Generic FileRepository
@@ -72,7 +71,9 @@ where
 
         // Prevent overwriting existing logs
         if path.exists() {
-            return Err(RepositoryError::LogAlreadyExists(path.display().to_string()).into());
+            return Err(RepositoryError::LogAlreadyExists(
+                path.display().to_string(),
+            ));
         }
 
         let file = OpenOptions::new()

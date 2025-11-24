@@ -31,19 +31,22 @@ pub enum GameEvent {
     /// An entity died (HP reached 0).
     EntityDied {
         entity: EntityId,
-        position: Position,
+        position: Option<Position>,
         killer: Option<EntityId>,
     },
 
     /// An entity moved to a new position.
     EntityMoved {
         entity: EntityId,
-        from: Position,
-        to: Position,
+        from: Option<Position>,
+        to: Option<Position>,
     },
 
     /// An entity was removed from the active set.
     EntityRemovedFromActive { entity: EntityId },
+
+    /// An entity was removed from the world (position cleared, occupancy removed).
+    EntityRemovedFromWorld { entity: EntityId },
 
     /// An entity's health crossed a threshold.
     HealthThresholdCrossed {

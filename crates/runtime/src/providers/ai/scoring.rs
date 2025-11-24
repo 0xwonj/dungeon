@@ -16,8 +16,8 @@ pub fn score_for_attack(
     target: EntityId,
     ctx: &AiContext,
 ) -> u32 {
-    let profile = match ctx.env.tables() {
-        Ok(tables) => tables.action_profile(kind),
+    let profile = match ctx.env.actions() {
+        Ok(actions) => actions.action_profile(kind),
         Err(_) => return 0,
     };
 
@@ -25,17 +25,21 @@ pub fn score_for_attack(
     if profile.tags.contains(&game_core::ActionTag::Attack) {
         // Check if input targets the right entity/direction
         match input {
-            ActionInput::Entity(id) if *id == target => 100, // Perfect match
+            ActionInput::Target(id) if *id == target => 100, // Perfect match
             ActionInput::Direction(dir) => {
                 // Check if direction points towards target
-                if let Some(target_dir) = direction_to_entity(ctx.my_position(), target, ctx) {
-                    if target_dir == *dir {
-                        95 // Attack in right direction
+                if let Some(my_pos) = ctx.my_position() {
+                    if let Some(target_dir) = direction_to_entity(my_pos, target, ctx) {
+                        if target_dir == *dir {
+                            95 // Attack in right direction
+                        } else {
+                            30 // Attack but wrong direction
+                        }
                     } else {
-                        30 // Attack but wrong direction
+                        50 // Can't determine direction
                     }
                 } else {
-                    50 // Can't determine direction
+                    10 // No position
                 }
             }
             _ => 50, // Attack action but unclear targeting
@@ -44,9 +48,14 @@ pub fn score_for_attack(
     // Movement to close distance
     else if profile.tags.contains(&game_core::ActionTag::Movement) {
         if let ActionInput::Direction(dir) = input {
-            let my_pos = ctx.my_position();
+            let Some(my_pos) = ctx.my_position() else {
+                return 10; // No position
+            };
             let target_pos = match ctx.state.entities.actor(target) {
-                Some(actor) => actor.position,
+                Some(actor) => match actor.position {
+                    Some(pos) => pos,
+                    None => return 10,
+                },
                 None => return 10,
             };
 
@@ -79,17 +88,22 @@ pub fn score_for_flee(
     threat: EntityId,
     ctx: &AiContext,
 ) -> u32 {
-    let profile = match ctx.env.tables() {
-        Ok(tables) => tables.action_profile(kind),
+    let profile = match ctx.env.actions() {
+        Ok(actions) => actions.action_profile(kind),
         Err(_) => return 0,
     };
 
     // Movement is highest priority for fleeing
     if profile.tags.contains(&game_core::ActionTag::Movement) {
         if let ActionInput::Direction(dir) = input {
-            let my_pos = ctx.my_position();
+            let Some(my_pos) = ctx.my_position() else {
+                return 10; // No position
+            };
             let threat_pos = match ctx.state.entities.actor(threat) {
-                Some(actor) => actor.position,
+                Some(actor) => match actor.position {
+                    Some(pos) => pos,
+                    None => return 10,
+                },
                 None => return 10,
             };
 
@@ -137,12 +151,20 @@ pub fn score_for_heal_self(_kind: ActionKind, _input: &ActionInput, _ctx: &AiCon
 }
 
 /// Scores actions for the Idle goal.
-pub fn score_for_idle(kind: ActionKind, _input: &ActionInput, _ctx: &AiContext) -> u32 {
-    // Wait is best for idling
-    if kind == ActionKind::Wait {
-        100
+pub fn score_for_idle(kind: ActionKind, _input: &ActionInput, ctx: &AiContext) -> u32 {
+    let profile = match ctx.env.actions() {
+        Ok(actions) => actions.action_profile(kind),
+        Err(_) => return 30,
+    };
+
+    // When idle, prefer some variety over just waiting
+    // Movement actions get higher scores to encourage wandering/patrolling
+    if profile.tags.contains(&game_core::ActionTag::Movement) {
+        60 // Encourage movement when idle (wandering)
+    } else if kind == ActionKind::Wait {
+        50 // Wait is acceptable but not preferred
     } else {
-        30 // Other actions are acceptable but not preferred
+        30 // Other actions are acceptable
     }
 }
 
@@ -153,14 +175,16 @@ pub fn score_for_move_to(
     target_pos: Position,
     ctx: &AiContext,
 ) -> u32 {
-    let profile = match ctx.env.tables() {
-        Ok(tables) => tables.action_profile(kind),
+    let profile = match ctx.env.actions() {
+        Ok(actions) => actions.action_profile(kind),
         Err(_) => return 0,
     };
 
     if profile.tags.contains(&game_core::ActionTag::Movement) {
         if let ActionInput::Direction(dir) = input {
-            let my_pos = ctx.my_position();
+            let Some(my_pos) = ctx.my_position() else {
+                return 0; // No position
+            };
             let (dx, dy) = dir.offset();
             let new_pos = Position::new(my_pos.x + dx, my_pos.y + dy);
 
@@ -189,8 +213,8 @@ pub fn score_for_protect_ally(
     ally: EntityId,
     ctx: &AiContext,
 ) -> u32 {
-    let profile = match ctx.env.tables() {
-        Ok(tables) => tables.action_profile(kind),
+    let profile = match ctx.env.actions() {
+        Ok(actions) => actions.action_profile(kind),
         Err(_) => return 0,
     };
 
@@ -198,16 +222,21 @@ pub fn score_for_protect_ally(
     // // Healing the ally
     // if kind == ActionKind::Heal {
     //     match input {
-    //         ActionInput::Entity(id) if *id == ally => 100,
+    //         ActionInput::Target(id) if *id == ally => 100,
     //         _ => 50,
     //     }
     // }
     // Moving towards ally
     if profile.tags.contains(&game_core::ActionTag::Movement) {
         if let ActionInput::Direction(dir) = input {
-            let my_pos = ctx.my_position();
+            let Some(my_pos) = ctx.my_position() else {
+                return 10; // No position
+            };
             let ally_pos = match ctx.state.entities.actor(ally) {
-                Some(actor) => actor.position,
+                Some(actor) => match actor.position {
+                    Some(pos) => pos,
+                    None => return 10,
+                },
                 None => return 10,
             };
 
@@ -243,7 +272,7 @@ pub fn direction_to_entity(
     target: EntityId,
     ctx: &AiContext,
 ) -> Option<CardinalDirection> {
-    let target_pos = ctx.state.entities.actor(target)?.position;
+    let target_pos = ctx.state.actor_position(target)?;
     let dx = target_pos.x - from.x;
     let dy = target_pos.y - from.y;
 

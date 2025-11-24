@@ -1,0 +1,51 @@
+[package]
+name = "client-frontend-cli"
+version = "0.1.0"
+edition = "2024"
+
+# No [[bin]] section - this is now a library crate
+
+[features]
+# ZK backend features (propagate to client-bootstrap)
+# No default - backend must be explicitly selected by binary crate
+default = []
+risc0 = ["client-bootstrap/risc0"]
+stub = ["client-bootstrap/stub"]
+sp1 = ["client-bootstrap/sp1"]
+arkworks = ["client-bootstrap/arkworks"]
+
+# Blockchain integration (propagate to runtime for UI checks)
+sui = ["dep:client-blockchain-sui", "runtime/sui"]
+
+[dependencies]
+# Core dependencies
+game-core = { workspace = true }
+runtime = { workspace = true }
+client-frontend-core = { workspace = true }
+client-bootstrap = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Terminal UI
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+
+# Environment variables
+dotenvy = { workspace = true }
+
+# Utilities
+hex = { workspace = true }
+
+# Optional blockchain dependencies
+client-blockchain-sui = { workspace = true, optional = true }

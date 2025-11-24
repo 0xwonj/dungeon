@@ -5,11 +5,14 @@ edition = "2024"
 
 [features]
 # ZK backend features (mutually exclusive - inherit from zk crate)
-default = ["risc0"]
-risc0 = ["zk/risc0"]
-stub = ["zk/stub"]
-sp1 = ["zk/sp1"]
-arkworks = ["zk/arkworks"]
+# No default - backend must be explicitly selected
+default = []
+risc0 = ["zk/risc0", "client-blockchain-sui?/risc0"]
+stub = ["zk/stub", "client-blockchain-sui?/stub"]
+sp1 = ["zk/sp1", "client-blockchain-sui?/sp1"]
+arkworks = ["zk/arkworks", "client-blockchain-sui?/arkworks"]
+# Blockchain integration
+sui = ["dep:client-blockchain-sui"]
 
 [dependencies]
 game-core = { workspace = true, features = ["serde"] }
@@ -24,7 +27,14 @@ serde_json = { workspace = true }
 bincode = { workspace = true }
 directories = { workspace = true }
 memmap2 = "0.9"
-ron = "0.11"
+ron = "0.12"
+sha2 = { workspace = true }
+rand = { workspace = true }
+chrono = { workspace = true }
+hex = { workspace = true }
+
+# Optional blockchain dependencies
+client-blockchain-sui = { workspace = true, optional = true }
 
 [dev-dependencies]
 client-bootstrap = { workspace = true }

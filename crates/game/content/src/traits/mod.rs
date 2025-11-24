@@ -11,183 +11,12 @@
 //! - **Layered composition**: 4 layers combine with per-trait weights (sum=16)
 //! - **Deterministic**: Pure functions, no randomness, no floating point
 
-/// The 20 core behavioral traits.
-///
-/// Each trait ranges from 0 (minimum) to 15 (maximum) at the layer level,
-/// and composites to 0..240 at the final profile level.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[repr(u8)]
-pub enum TraitKind {
-    // ========================================================================
-    // Psychology/Temperament
-    // ========================================================================
-    /// Risk tolerance and fear resistance.
-    ///
-    /// - High: Fights longer, flees at lower HP
-    /// - Low: Flees early, avoids danger
-    Bravery = 0,
+// Re-export core trait types from game-core
+pub use game_core::{Faction, Species, TraitKind, TraitProfile};
 
-    /// Plan adherence, panic resistance, focus.
-    ///
-    /// - High: Sticks to tactics, resists distraction
-    /// - Low: Easily disrupted, changes plans
-    Discipline = 1,
-
-    /// Initiative and pursuit willingness.
-    ///
-    /// - High: Initiates combat, chases aggressively
-    /// - Low: Passive, defensive
-    Aggression = 2,
-
-    /// Caution and risk avoidance.
-    ///
-    /// - High: Checks corners, avoids traps, prepares
-    /// - Low: Rushes in, ignores preparation
-    Caution = 3,
-
-    /// Exploration and investigation drive.
-    ///
-    /// - High: Investigates sounds, searches thoroughly
-    /// - Low: Ignores distractions
-    Curiosity = 4,
-
-    /// Ally protection and call response.
-    ///
-    /// - High: Protects allies, responds to calls
-    /// - Low: Self-preservation over allies
-    Loyalty = 5,
-
-    /// Loot obsession and resource hoarding.
-    ///
-    /// - High: Prioritizes looting, guards treasure
-    /// - Low: Ignores loot
-    Greed = 6,
-
-    /// Spontaneity and explosive behavior.
-    ///
-    /// - High: Acts on impulse, sudden actions
-    /// - Low: Deliberate, controlled
-    Impulsivity = 7,
-
-    /// Non-lethal and negotiation preference.
-    ///
-    /// - High: Prefers capture, negotiates, shows mercy
-    /// - Low: Lethal force, no negotiation
-    Empathy = 8,
-
-    // ========================================================================
-    // Cognition/Tactics
-    // ========================================================================
-    /// Vision, hearing, stealth detection baseline.
-    ///
-    /// - High: Wide vision, detects stealth easily
-    /// - Low: Narrow perception, easily flanked
-    Perception = 9,
-
-    /// Positioning, cooldown timing, synergy awareness.
-    ///
-    /// - High: Optimal positioning, uses abilities well
-    /// - Low: Poor positioning, wastes cooldowns
-    TacticalSense = 10,
-
-    /// Alertness retention and suspicion accumulation.
-    ///
-    /// - High: Remembers events, stays alert longer
-    /// - Low: Forgets quickly, drops guard
-    Memory = 11,
-
-    // ========================================================================
-    // Physical/Movement/Range
-    // ========================================================================
-    /// Acceleration, dodge, terrain adaptation.
-    ///
-    /// - High: Fast movement, good dodging
-    /// - Low: Slow, clumsy
-    Mobility = 12,
-
-    /// Long pursuit, patrol, alertness duration.
-    ///
-    /// - High: Chases long distances, patrols far
-    /// - Low: Gives up quickly, short patrols
-    Stamina = 13,
-
-    /// Combat range preference (0=melee, 15=long range/kiting).
-    ///
-    /// - High: Prefers ranged combat, kites
-    /// - Low: Prefers melee engagement
-    PreferredRange = 14,
-
-    // ========================================================================
-    // Social/Norms/Territory
-    // ========================================================================
-    /// Refusal to leave territory, area rage.
-    ///
-    /// - High: Never leaves home area, enraged if invaded
-    /// - Low: Roams freely
-    Territoriality = 15,
-
-    /// Doctrine/command/formation adherence.
-    ///
-    /// - High: Follows orders strictly, maintains formation
-    /// - Low: Acts independently
-    Obedience = 16,
-
-    /// Frontal combat preference, cowardly tactic aversion.
-    ///
-    /// - High: Prefers fair fights, dislikes ambushes
-    /// - Low: Uses any tactic to win
-    Honor = 17,
-
-    /// Magic/light/taboo biases.
-    ///
-    /// - High: Affected by curses, fears holy symbols
-    /// - Low: Rational, ignores superstitions
-    Superstition = 18,
-
-    /// Intimidation and command success tendency.
-    ///
-    /// - High: Successfully intimidates, commands respect
-    /// - Low: Fails to intimidate
-    Dominance = 19,
-}
-
-impl TraitKind {
-    /// Total number of traits.
-    pub const COUNT: usize = 20;
-
-    /// Returns all trait kinds in order.
-    pub const fn all() -> [TraitKind; Self::COUNT] {
-        [
-            TraitKind::Bravery,
-            TraitKind::Discipline,
-            TraitKind::Aggression,
-            TraitKind::Caution,
-            TraitKind::Curiosity,
-            TraitKind::Loyalty,
-            TraitKind::Greed,
-            TraitKind::Impulsivity,
-            TraitKind::Empathy,
-            TraitKind::Perception,
-            TraitKind::TacticalSense,
-            TraitKind::Memory,
-            TraitKind::Mobility,
-            TraitKind::Stamina,
-            TraitKind::PreferredRange,
-            TraitKind::Territoriality,
-            TraitKind::Obedience,
-            TraitKind::Honor,
-            TraitKind::Superstition,
-            TraitKind::Dominance,
-        ]
-    }
-
-    /// Returns the trait as a u8 index.
-    #[inline]
-    pub const fn as_index(self) -> usize {
-        self as usize
-    }
-}
+// Note: TraitKind, TraitProfile, Species, and Faction now live in game-core at crates/game/core/src/traits.rs
+// for challenge verification support (needed in ActorState).
+// The composition logic (TraitLayer, TraitWeights, compose()) stays here in game-content.
 
 /// A single layer of trait values (Species, Archetype, Faction, or Temperament).
 ///
@@ -329,124 +158,36 @@ impl Default for TraitWeights {
     }
 }
 
-/// Final composed trait profile for an NPC.
+/// Composes a trait profile from 4 layers and weights.
 ///
-/// Each value is 0..240 (computed from 4 layers with weights summing to 16).
-/// This is the profile used by behavior tree nodes to compute thresholds.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct TraitProfile {
-    /// Composed trait values (0..240).
-    values: [u8; TraitKind::COUNT],
-}
+/// This is a standalone function since TraitProfile is defined in game-core.
+///
+/// Formula: `value[trait] = Σ(layer[i][trait] * weight[trait][i])` for i in 0..4
+/// Result range: 0..240 (since max is 15 * 16 = 240)
+pub fn compose_trait_profile(
+    species: &TraitLayer,
+    archetype: &TraitLayer,
+    faction: &TraitLayer,
+    temperament: &TraitLayer,
+    weights: &TraitWeights,
+) -> TraitProfile {
+    let mut values = [0u8; TraitKind::COUNT];
 
-impl Default for TraitProfile {
-    fn default() -> Self {
-        Self {
-            values: [120; TraitKind::COUNT], // Middle value (neutral)
-        }
-    }
-}
+    for trait_kind in TraitKind::all() {
+        let idx = trait_kind.as_index();
+        let w = weights.get(trait_kind);
 
-impl TraitProfile {
-    /// Creates a profile with all traits set to a specific value.
-    pub fn uniform(value: u8) -> Self {
-        let clamped = if value > 240 { 240 } else { value };
-        Self {
-            values: [clamped; TraitKind::COUNT],
-        }
-    }
+        // Compute weighted sum: w[0]*species + w[1]*archetype + w[2]*faction + w[3]*temperament
+        let sum = (w[0] as u32 * species.get(trait_kind) as u32)
+            + (w[1] as u32 * archetype.get(trait_kind) as u32)
+            + (w[2] as u32 * faction.get(trait_kind) as u32)
+            + (w[3] as u32 * temperament.get(trait_kind) as u32);
 
-    /// Composes a trait profile from 4 layers and weights.
-    ///
-    /// Formula: `value[trait] = Σ(layer[i][trait] * weight[trait][i])` for i in 0..4
-    /// Result range: 0..240 (since max is 15 * 16 = 240)
-    pub fn compose(
-        species: &TraitLayer,
-        archetype: &TraitLayer,
-        faction: &TraitLayer,
-        temperament: &TraitLayer,
-        weights: &TraitWeights,
-    ) -> Self {
-        let mut values = [0u8; TraitKind::COUNT];
-
-        for trait_kind in TraitKind::all() {
-            let idx = trait_kind.as_index();
-            let w = weights.get(trait_kind);
-
-            // Compute weighted sum: w[0]*species + w[1]*archetype + w[2]*faction + w[3]*temperament
-            let sum = (w[0] as u32 * species.get(trait_kind) as u32)
-                + (w[1] as u32 * archetype.get(trait_kind) as u32)
-                + (w[2] as u32 * faction.get(trait_kind) as u32)
-                + (w[3] as u32 * temperament.get(trait_kind) as u32);
-
-            // Result is guaranteed to be 0..240 (max: 16 * 15 = 240)
-            values[idx] = sum as u8;
-        }
-
-        Self { values }
+        // Result is guaranteed to be 0..240 (max: 16 * 15 = 240)
+        values[idx] = sum as u8;
     }
 
-    /// Gets the composed value for a specific trait (0..240).
-    #[inline]
-    pub fn get(&self, trait_kind: TraitKind) -> u8 {
-        self.values[trait_kind.as_index()]
-    }
-
-    /// Linear interpolation helper for threshold computation.
-    ///
-    /// Maps trait value (0..240) to range [min..max].
-    ///
-    /// # Arguments
-    ///
-    /// * `trait_kind` - The trait to use
-    /// * `min` - Minimum output value (when trait = 0)
-    /// * `max` - Maximum output value (when trait = 240)
-    ///
-    /// # Returns
-    ///
-    /// Interpolated value as u8.
-    pub fn lerp_u8(&self, trait_kind: TraitKind, min: u8, max: u8) -> u8 {
-        let value = self.get(trait_kind);
-        lerp_u8(min, max, value, 240)
-    }
-
-    /// Linear interpolation for percentage thresholds.
-    ///
-    /// Maps trait value (0..240) to range [min..max] as f32.
-    ///
-    /// # Arguments
-    ///
-    /// * `trait_kind` - The trait to use
-    /// * `min` - Minimum output value (when trait = 0)
-    /// * `max` - Maximum output value (when trait = 240)
-    ///
-    /// # Returns
-    ///
-    /// Interpolated value as f32 (typically 0.0..1.0 for percentages).
-    pub fn lerp_f32(&self, trait_kind: TraitKind, min: f32, max: f32) -> f32 {
-        let value = self.get(trait_kind);
-        lerp_f32(min, max, value, 240)
-    }
-
-    /// Inverted linear interpolation (high trait → low output).
-    ///
-    /// Maps trait value (0..240) to range [max..min] (reversed).
-    /// Useful for traits like Bravery where high value = low flee threshold.
-    ///
-    /// # Arguments
-    ///
-    /// * `trait_kind` - The trait to use
-    /// * `min` - Minimum output value (when trait = 240)
-    /// * `max` - Maximum output value (when trait = 0)
-    ///
-    /// # Returns
-    ///
-    /// Interpolated value as f32.
-    pub fn lerp_inverted(&self, trait_kind: TraitKind, min: f32, max: f32) -> f32 {
-        let value = 240 - self.get(trait_kind); // Invert
-        lerp_f32(min, max, value, 240)
-    }
+    TraitProfile::from_raw(values)
 }
 
 // ============================================================================
@@ -611,11 +352,79 @@ impl TraitRegistry {
             .get(&spec.temperament)
             .ok_or_else(|| format!("Temperament preset '{}' not found", spec.temperament))?;
 
-        Ok(TraitProfile::compose(
+        Ok(compose_trait_profile(
             species,
             archetype,
             faction,
             temperament,
+            &self.weights,
+        ))
+    }
+
+    /// Resolves a trait profile from individual components.
+    ///
+    /// This method builds a TraitProfile by looking up the species and faction trait layers,
+    /// then combining them with archetype and temperament string references.
+    ///
+    /// # Arguments
+    ///
+    /// * `species` - Species enum to look up in species registry
+    /// * `faction` - Faction enum to look up in faction registry
+    /// * `archetype` - String reference to archetype layer
+    /// * `temperament` - String reference to temperament layer
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any of the referenced preset names are not found.
+    pub fn resolve_from_components(
+        &self,
+        species: Species,
+        faction: Faction,
+        archetype: &str,
+        temperament: &str,
+    ) -> Result<TraitProfile, String> {
+        // Convert Species enum to string key
+        let species_key = format!("{:?}", species).to_lowercase();
+        let species_layer = self
+            .species
+            .get(&species_key)
+            .ok_or_else(|| format!("Species preset '{}' not found", species_key))?;
+
+        // Convert Faction enum to string key and look up faction layer
+        let faction_key = match faction {
+            Faction::None => "none",
+            Faction::Player => "player",
+            Faction::Friendly => "friendly",
+            Faction::Neutral => "neutral",
+            Faction::Hostile => "hostile",
+            Faction::GoblinClan => "goblin_clan",
+            Faction::OrcHorde => "orc_horde",
+            Faction::UndeadLegion => "undead_legion",
+            Faction::Wildlife => "wildlife",
+        };
+
+        // Use an empty layer as fallback if faction is not registered
+        let empty_faction_layer = TraitLayer::zero();
+        let faction_layer = self
+            .factions
+            .get(faction_key)
+            .unwrap_or(&empty_faction_layer);
+
+        let archetype_layer = self
+            .archetypes
+            .get(archetype)
+            .ok_or_else(|| format!("Archetype preset '{}' not found", archetype))?;
+
+        let temperament_layer = self
+            .temperaments
+            .get(temperament)
+            .ok_or_else(|| format!("Temperament preset '{}' not found", temperament))?;
+
+        Ok(compose_trait_profile(
+            species_layer,
+            archetype_layer,
+            faction_layer,
+            temperament_layer,
             &self.weights,
         ))
     }

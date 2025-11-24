@@ -7,7 +7,7 @@ use game_core::{Action, GameState, StateDelta};
 
 use crate::events::{GameEvent, extract_events};
 use crate::handlers::{EventContext, HandlerCriticality};
-use crate::oracle::OracleManager;
+use crate::oracle::OracleBundle;
 
 /// Handler for generating specific types of system actions.
 ///
@@ -70,14 +70,12 @@ impl SystemActionProvider {
     /// Create a provider with default handlers.
     ///
     /// Default handlers:
-    /// - ActionCostHandler: Apply action timing costs
-    /// - DeathHandler: Remove dead entities from turn scheduling
+    /// - DeathHandler: Remove dead entities from turn scheduling and world
     /// - ActivationHandler: Activate/deactivate NPCs based on player position
     pub fn with_defaults() -> Self {
-        use crate::handlers::{ActionCostHandler, ActivationHandler, DeathHandler};
+        use crate::handlers::{ActivationHandler, DeathHandler};
 
         let mut provider = Self::new();
-        provider.add_handler(Box::new(ActionCostHandler));
         provider.add_handler(Box::new(DeathHandler));
         provider.add_handler(Box::new(ActivationHandler));
         provider
@@ -105,7 +103,7 @@ impl SystemActionProvider {
         delta: &StateDelta,
         state_before: &GameState,
         state_after: &GameState,
-        oracles: &OracleManager,
+        oracles: &OracleBundle,
     ) -> Vec<(Action, &'static str, HandlerCriticality)> {
         // Extract high-level events from delta
         let events = extract_events(delta, state_before, state_after);
@@ -127,6 +125,7 @@ impl SystemActionProvider {
         for event in &events {
             for handler in &self.handlers {
                 let handler_actions = handler.generate_actions(event, &ctx);
+
                 for action in handler_actions {
                     actions.push((action, handler.name(), handler.criticality()));
                 }

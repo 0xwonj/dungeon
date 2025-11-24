@@ -2,11 +2,14 @@
 
 use game_core::GameState;
 
-use crate::api::Result;
 use crate::events::Event;
 
+use super::error::RepositoryError;
+
+type Result<T> = std::result::Result<T, RepositoryError>;
+
 // Re-export shared types
-pub use super::types::{ActionLogEntry, Checkpoint, ProofIndex};
+pub use super::types::ActionLogEntry;
 
 /// Repository for game state persistence and loading
 ///
@@ -42,50 +45,6 @@ pub trait StateRepository: Send + Sync {
         }
         Ok(deleted)
     }
-}
-
-/// Repository for checkpoint persistence
-///
-/// Checkpoints store lightweight metadata + indices to external data:
-/// - State references (state hash, persisted status)
-/// - Action log offsets (for replay/recovery)
-/// - Proof references (optional, verified status)
-///
-/// # Storage Model
-///
-/// Each checkpoint is stored as an individual file indexed by (session_id, nonce):
-/// ```text
-/// checkpoint_{session}_nonce_{nonce:010}.json
-/// ```
-///
-/// This enables:
-/// - Multiple checkpoints per session (save history)
-/// - Easy CRUD operations (load specific nonce or latest)
-/// - Selective cleanup (delete old checkpoints)
-pub trait CheckpointRepository: Send + Sync {
-    /// Save a checkpoint (indexed by session_id + nonce)
-    fn save(&self, checkpoint: &Checkpoint) -> Result<()>;
-
-    /// Load the latest checkpoint for a session
-    fn load_latest(&self, session_id: &str) -> Result<Option<Checkpoint>>;
-
-    /// Load a checkpoint at a specific nonce
-    fn load_at_nonce(&self, session_id: &str, nonce: u64) -> Result<Option<Checkpoint>>;
-
-    /// List all checkpoint nonces for a session (sorted ascending)
-    fn list_checkpoints(&self, session_id: &str) -> Result<Vec<u64>>;
-
-    /// Delete a specific checkpoint
-    fn delete(&self, session_id: &str, nonce: u64) -> Result<()>;
-
-    /// Delete all checkpoints for a session
-    fn delete_all(&self, session_id: &str) -> Result<usize>;
-
-    /// Delete checkpoints before a specific nonce (cleanup old saves)
-    fn delete_before(&self, session_id: &str, before_nonce: u64) -> Result<usize>;
-
-    /// List all checkpoint sessions
-    fn list_sessions(&self) -> Result<Vec<String>>;
 }
 
 /// Repository for event log persistence
@@ -157,25 +116,6 @@ pub trait ActionLogWriter: Send + Sync {
     fn session_id(&self) -> &str;
 }
 
-/// Repository for proof index persistence
-///
-/// Stores metadata about generated ZK proofs, indexed by session ID.
-/// This allows efficient lookup of proof status and metadata without
-/// loading the full proof files.
-pub trait ProofIndexRepository: Send + Sync {
-    /// Save the proof index
-    fn save(&self, index: &ProofIndex) -> Result<()>;
-
-    /// Load the proof index by session ID
-    fn load(&self, session_id: &str) -> Result<Option<ProofIndex>>;
-
-    /// Delete a proof index
-    fn delete(&self, session_id: &str) -> Result<()>;
-
-    /// List all proof index sessions
-    fn list_sessions(&self) -> Result<Vec<String>>;
-}
-
 /// Sequential action log reader for proof generation.
 ///
 /// This trait abstracts the sequential reading of action log entries,
@@ -191,7 +131,7 @@ pub trait ProofIndexRepository: Send + Sync {
 ///
 /// # Implementations
 ///
-/// - `MmapActionLogReader`: Zero-copy memory-mapped file reader (production)
+/// - `FileActionLogReader`: Buffered file reader for sequential reads
 /// - `InMemoryActionLogReader`: In-memory reader for testing
 pub trait ActionLogReader: Send + Sync {
     /// Read the next action log entry from the current position.
@@ -249,4 +189,45 @@ pub trait ActionLogReader: Send + Sync {
     /// - Does not validate that offset points to an entry boundary
     /// - Caller must ensure offset is from a valid checkpoint
     fn seek(&self, offset: u64) -> Result<()>;
+}
+
+/// Repository for action batch tracking and management.
+///
+/// Action batches represent logical groups of actions bounded by checkpoints.
+/// This repository tracks the lifecycle of each batch through various stages:
+/// - InProgress → Complete (PersistenceWorker)
+/// - Complete → Proving → Proven (ProverWorker)
+/// - Proven → OnChain (OnchainWorker)
+///
+/// Batches are identified by their start_nonce, which is known when the batch is created
+/// and remains constant throughout its lifecycle.
+pub trait ActionBatchRepository: Send + Sync {
+    /// Save or update an action batch.
+    fn save(&self, batch: &super::types::ActionBatch) -> Result<()>;
+
+    /// Load an action batch by its start nonce.
+    ///
+    /// The start nonce uniquely identifies a batch within a session.
+    fn load(&self, session_id: &str, start_nonce: u64)
+    -> Result<Option<super::types::ActionBatch>>;
+
+    /// List all batches for a session.
+    fn list(&self, session_id: &str) -> Result<Vec<super::types::ActionBatch>>;
+
+    /// List batches by status.
+    fn list_by_status(
+        &self,
+        session_id: &str,
+        status: super::types::ActionBatchStatus,
+    ) -> Result<Vec<super::types::ActionBatch>>;
+
+    /// Delete a batch.
+    fn delete(&self, session_id: &str, start_nonce: u64) -> Result<()>;
+
+    /// Get the current in-progress batch (if any).
+    fn get_current_batch(&self, session_id: &str) -> Result<Option<super::types::ActionBatch>> {
+        let batches =
+            self.list_by_status(session_id, super::types::ActionBatchStatus::InProgress)?;
+        Ok(batches.into_iter().next())
+    }
 }

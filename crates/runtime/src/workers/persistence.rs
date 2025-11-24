@@ -1,7 +1,37 @@
 //! Persistence worker for coordinated state and event persistence.
 //!
-//! Subscribes to the event bus and persists game state, checkpoints, events,
-//! and action logs according to configured checkpoint strategies.
+//! Manages action batches, action log rotation, state snapshots, and event logging.
+//!
+//! # Checkpoint Strategy
+//!
+//! A "checkpoint" creates an action batch boundary:
+//! 1. Current batch is marked Complete
+//! 2. Current action log file is closed and rotated
+//! 3. State at end_nonce is saved
+//! 4. New batch is started with new action log file
+//!
+//! # State Management
+//!
+//! - Only end_nonce state is saved per batch
+//! - ProverWorker loads previous batch's end state (= current batch's start state)
+//! - First batch requires genesis state (nonce 0)
+//!
+//! # File Structure
+//!
+//! ```text
+//! {base_dir}/{session_id}/
+//!   ├── actions/
+//!   │   ├── actions_{session}_{start}_{end}.log
+//!   │   └── ...
+//!   ├── batches/
+//!   │   ├── batch_{end_nonce}.json
+//!   │   └── ...
+//!   ├── states/
+//!   │   ├── state_{nonce}.bin
+//!   │   └── ...
+//!   └── events/
+//!       └── events_{session}.log
+//! ```
 
 use std::path::PathBuf;
 
@@ -12,12 +42,55 @@ use tracing::{debug, error, info, warn};
 
 use crate::events::{Event, GameStateEvent};
 use crate::repository::{
-    ActionLogEntry, Checkpoint, CheckpointRepository, FileActionLog, FileCheckpointRepository,
+    ActionBatch, ActionBatchRepository, ActionLogEntry, FileActionBatchRepository, FileActionLog,
     FileEventLog, FileStateRepository, StateRepository,
 };
 use crate::workers::simulation::Command as SimCommand;
 
-/// Checkpoint strategy determines when to save full state snapshots
+/// Result type for persistence operations
+pub type Result<T> = std::result::Result<T, PersistenceError>;
+
+/// Errors that can occur during persistence operations
+#[derive(Debug, thiserror::Error)]
+pub enum PersistenceError {
+    #[error("No active batch to checkpoint")]
+    NoActiveBatch,
+
+    #[error("Failed to save state at nonce {nonce}: {error}")]
+    StateSave { nonce: u64, error: String },
+
+    #[error("Failed to save batch: {0}")]
+    BatchSave(String),
+
+    #[error("Failed to append event: {0}")]
+    EventAppend(String),
+
+    #[error("Failed to flush event log: {0}")]
+    EventFlush(String),
+
+    #[error("Failed to append action log: {0}")]
+    ActionLogAppend(String),
+
+    #[error("Failed to flush action log: {0}")]
+    ActionLogFlush(String),
+
+    #[error("Failed to create action log: {0}")]
+    ActionLogCreate(String),
+
+    #[error("Failed to query state from SimulationWorker")]
+    StateQuery,
+
+    #[error("Failed to send command to SimulationWorker")]
+    CommandSend,
+
+    #[error(transparent)]
+    Repository(#[from] crate::repository::RepositoryError),
+
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
+
+/// Checkpoint strategy determines when to create action batch boundaries
 #[derive(Debug, Clone)]
 pub enum CheckpointStrategy {
     /// Create checkpoint every N actions
@@ -36,7 +109,7 @@ impl Default for CheckpointStrategy {
 /// Configuration for the persistence worker
 #[derive(Debug, Clone)]
 pub struct PersistenceConfig {
-    /// Session identifier (used for checkpoint and log naming)
+    /// Session identifier (used for file naming)
     pub session_id: String,
 
     /// Base directory for all persistence files
@@ -64,11 +137,39 @@ impl PersistenceConfig {
 }
 
 /// Commands that can be sent to the persistence worker
-#[allow(dead_code)] // Reserved for future manual checkpoint and graceful shutdown features
+#[allow(dead_code)]
 pub enum Command {
     /// Manually trigger a checkpoint
-    CreateCheckpoint {
-        reply: oneshot::Sender<Result<u64, String>>,
+    CreateCheckpoint { reply: oneshot::Sender<Result<u64>> },
+
+    /// List all checkpoints (all statuses)
+    ListAllCheckpoints {
+        reply: oneshot::Sender<Result<Vec<ActionBatch>>>,
+    },
+
+    /// Get a specific checkpoint by start nonce
+    GetCheckpoint {
+        start_nonce: u64,
+        reply: oneshot::Sender<Result<Option<ActionBatch>>>,
+    },
+
+    /// Load a game state from a specific nonce
+    LoadState {
+        nonce: u64,
+        reply: oneshot::Sender<Result<Option<GameState>>>,
+    },
+
+    /// Update batch status (for manual workflow)
+    UpdateBatchStatus {
+        start_nonce: u64,
+        status: crate::repository::ActionBatchStatus,
+        reply: oneshot::Sender<Result<()>>,
+    },
+
+    /// Read action log for a batch (for manual workflow)
+    GetActionLog {
+        start_nonce: u64,
+        reply: oneshot::Sender<Result<Vec<u8>>>,
     },
 
     /// Shutdown the worker gracefully
@@ -81,19 +182,22 @@ pub struct PersistenceWorker {
 
     // Repositories
     state_repo: FileStateRepository,
-    checkpoint_repo: FileCheckpointRepository,
+    batch_repo: FileActionBatchRepository,
     event_repo: FileEventLog,
-    action_repo: FileActionLog,
+
+    // Current batch tracking
+    current_batch: Option<ActionBatch>,
+    current_action_log: Option<FileActionLog>,
 
     // Communication channels
     event_rx: broadcast::Receiver<Event>,
     command_rx: mpsc::Receiver<Command>,
     sim_command_tx: mpsc::Sender<SimCommand>,
+    batch_complete_tx: mpsc::UnboundedSender<ActionBatch>,
 
     // Checkpoint tracking
     strategy: CheckpointStrategy,
     actions_since_checkpoint: u64,
-    last_checkpoint_nonce: u64,
 }
 
 impl PersistenceWorker {
@@ -103,7 +207,8 @@ impl PersistenceWorker {
         event_rx: broadcast::Receiver<Event>,
         command_rx: mpsc::Receiver<Command>,
         sim_command_tx: mpsc::Sender<SimCommand>,
-    ) -> Result<Self, String> {
+        batch_complete_tx: mpsc::UnboundedSender<ActionBatch>,
+    ) -> Result<Self> {
         let base_dir = &config.base_dir;
         let session_id = &config.session_id;
 
@@ -111,33 +216,25 @@ impl PersistenceWorker {
         let session_dir = base_dir.join(session_id);
 
         // Create repository instances under session directory
-        let state_repo = FileStateRepository::new(session_dir.join("states"))
-            .map_err(|e| format!("Failed to create state repository: {}", e))?;
-
-        let checkpoint_repo = FileCheckpointRepository::new(session_dir.join("checkpoints"))
-            .map_err(|e| format!("Failed to create checkpoint repository: {}", e))?;
+        let state_repo = FileStateRepository::new(session_dir.join("states"))?;
+        let batch_repo = FileActionBatchRepository::new(session_dir.join("batches"))?;
 
         let event_filename = format!("events_{}.log", session_id);
-        let event_repo = FileEventLog::open_or_create(session_dir.join("events"), &event_filename)
-            .map_err(|e| format!("Failed to create event log: {}", e))?;
-
-        let action_filename = format!("actions_{}.log", session_id);
-        let action_repo =
-            FileActionLog::open_or_create(session_dir.join("actions"), &action_filename)
-                .map_err(|e| format!("Failed to create action log: {}", e))?;
+        let event_repo = FileEventLog::open_or_create(session_dir.join("events"), &event_filename)?;
 
         Ok(Self {
             strategy: config.strategy.clone(),
             config,
             state_repo,
-            checkpoint_repo,
+            batch_repo,
             event_repo,
-            action_repo,
+            current_batch: None,
+            current_action_log: None,
             event_rx,
             command_rx,
             sim_command_tx,
+            batch_complete_tx,
             actions_since_checkpoint: 0,
-            last_checkpoint_nonce: 0,
         })
     }
 
@@ -147,6 +244,37 @@ impl PersistenceWorker {
             "PersistenceWorker started: session={}, strategy={:?}",
             self.config.session_id, self.strategy
         );
+
+        // Query current state to determine starting nonce
+        let current_state = match self.query_current_state().await {
+            Ok(state) => state,
+            Err(e) => {
+                error!("Failed to query initial state: {}", e);
+                return;
+            }
+        };
+
+        let current_nonce = current_state.turn.nonce;
+
+        // Save genesis state only if we're starting from nonce 0
+        if current_nonce == 0 {
+            if let Err(e) = self.state_repo.save(0, &current_state) {
+                error!("Failed to save genesis state: {}", e);
+                return;
+            }
+            info!("Genesis state saved at nonce 0");
+        } else {
+            info!(
+                "Resuming session from nonce {} (genesis state already exists)",
+                current_nonce
+            );
+        }
+
+        // Start the first batch from current nonce
+        if let Err(e) = self.start_new_batch(current_nonce).await {
+            error!("Failed to start initial batch: {}", e);
+            return;
+        }
 
         loop {
             tokio::select! {
@@ -174,14 +302,51 @@ impl PersistenceWorker {
                 }
 
                 // Handle commands
-                Some(cmd) = self.command_rx.recv() => {
+                cmd = self.command_rx.recv() => {
                     match cmd {
-                        Command::CreateCheckpoint { reply } => {
-                            let result = self.create_checkpoint().await;
+                        Some(Command::CreateCheckpoint { reply }) => {
+                            // For manual checkpoint, we need to query state
+                            let (state_tx, state_rx) = oneshot::channel();
+                            let result = if self.sim_command_tx.send(SimCommand::QueryState { reply: state_tx }).await.is_ok() {
+                                if let Ok(state) = state_rx.await {
+                                    self.create_checkpoint(&state).await
+                                } else {
+                                    Err(PersistenceError::StateQuery)
+                                }
+                            } else {
+                                Err(PersistenceError::CommandSend)
+                            };
                             let _ = reply.send(result);
                         }
-                        Command::Shutdown => {
+                        Some(Command::ListAllCheckpoints { reply }) => {
+                            let result = self.batch_repo.list(&self.config.session_id)
+                                .map_err(PersistenceError::from);
+                            let _ = reply.send(result);
+                        }
+                        Some(Command::GetCheckpoint { start_nonce, reply }) => {
+                            let result = self.batch_repo.load(&self.config.session_id, start_nonce)
+                                .map_err(PersistenceError::from);
+                            let _ = reply.send(result);
+                        }
+                        Some(Command::LoadState { nonce, reply }) => {
+                            let result = self.state_repo.load(nonce)
+                                .map_err(PersistenceError::from);
+                            let _ = reply.send(result);
+                        }
+                        Some(Command::UpdateBatchStatus { start_nonce, status, reply }) => {
+                            let result = self.update_batch_status(start_nonce, status).await;
+                            let _ = reply.send(result);
+                        }
+                        Some(Command::GetActionLog { start_nonce, reply }) => {
+                            let result = self.read_action_log(start_nonce).await;
+                            let _ = reply.send(result);
+                        }
+                        Some(Command::Shutdown) => {
                             info!("Shutdown command received");
+                            break;
+                        }
+                        None => {
+                            debug!("Command channel closed");
                             break;
                         }
                     }
@@ -191,16 +356,95 @@ impl PersistenceWorker {
             }
         }
 
+        // Cleanup phase: flush all pending writes
+        info!("Finalizing persistence worker...");
+        if let Err(e) = self.finalize().await {
+            error!("Failed to finalize: {}", e);
+        }
+
         info!("PersistenceWorker stopped");
     }
 
-    /// Handle an event with exponential backoff retry.
-    ///
-    /// Retries up to 5 times with exponential backoff (100ms, 200ms, 400ms, 800ms, 1600ms).
-    /// Panics if all retries fail to ensure data integrity.
-    async fn handle_event_with_retry(&mut self, event: Event) -> Result<(), String> {
+    /// Query current state from SimulationWorker
+    async fn query_current_state(&mut self) -> Result<GameState> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sim_command_tx
+            .send(SimCommand::QueryState { reply: reply_tx })
+            .await
+            .map_err(|_| PersistenceError::CommandSend)?;
+
+        reply_rx.await.map_err(|_| PersistenceError::StateQuery)
+    }
+
+    /// Finalize persistence: flush all buffers and create final checkpoint
+    async fn finalize(&mut self) -> Result<()> {
+        debug!("Flushing all pending writes...");
+
+        // Flush event log
+        if let Err(e) = self.event_repo.flush() {
+            error!("Failed to flush event log: {}", e);
+        }
+
+        // Check if there's an active batch with actions
+        match &self.current_batch {
+            Some(batch) if batch.action_count() > 0 => {
+                let action_count = batch.action_count();
+                let start_nonce = batch.start_nonce;
+
+                info!(
+                    "Creating final checkpoint for batch with {} action(s)",
+                    action_count
+                );
+
+                // Query final state from SimulationWorker
+                let (reply_tx, reply_rx) = oneshot::channel();
+                self.sim_command_tx
+                    .send(SimCommand::QueryState { reply: reply_tx })
+                    .await
+                    .map_err(|_| PersistenceError::CommandSend)?;
+
+                let final_state = reply_rx.await.map_err(|_| PersistenceError::StateQuery)?;
+
+                // Create final checkpoint
+                if let Err(e) = self.create_checkpoint(&final_state).await {
+                    error!("Failed to create final checkpoint: {}", e);
+                } else {
+                    info!(
+                        "Final checkpoint created: batch {} complete with {} action(s)",
+                        start_nonce, action_count
+                    );
+                }
+            }
+            Some(batch) => {
+                // No actions in current batch, just flush and save
+                let start_nonce = batch.start_nonce;
+
+                if let Some(log) = self.current_action_log.as_mut() {
+                    log.flush()
+                        .map_err(|e| PersistenceError::ActionLogFlush(e.to_string()))?;
+                }
+
+                self.batch_repo
+                    .save(batch)
+                    .map_err(|e| PersistenceError::BatchSave(e.to_string()))?;
+
+                debug!("Saved empty batch: start={}", start_nonce);
+            }
+            None => {
+                debug!("No active batch to finalize");
+            }
+        }
+
+        info!("Finalization complete");
+        Ok(())
+    }
+
+    /// Handle an event with exponential backoff retry
+    async fn handle_event_with_retry(&mut self, event: Event) -> Result<()> {
         const MAX_RETRIES: u32 = 5;
         const BASE_DELAY_MS: u64 = 100;
+
+        let mut last_error = None;
 
         for attempt in 0..MAX_RETRIES {
             match self.handle_event(event.clone()).await {
@@ -221,92 +465,93 @@ impl PersistenceWorker {
                             delay
                         );
                         sleep(delay).await;
+                        last_error = Some(e);
                     } else {
                         error!(
                             "🚨 FATAL: Failed to persist event after {} attempts: {}",
                             MAX_RETRIES, e
                         );
-                        return Err(format!(
-                            "Persistence failed after {} retries: {}",
-                            MAX_RETRIES, e
-                        ));
+                        return Err(e);
                     }
                 }
             }
         }
 
-        unreachable!()
+        // This should never happen due to the return in the last attempt
+        Err(last_error.unwrap())
     }
 
     /// Handle an event from the event bus
-    async fn handle_event(&mut self, event: Event) -> Result<(), String> {
+    async fn handle_event(&mut self, event: Event) -> Result<()> {
         match &event {
             Event::GameState(game_event) => {
                 if let GameStateEvent::ActionExecuted {
                     nonce,
                     action,
-                    delta,
-                    clock,
-                    before_state,
                     after_state,
                     ..
                 } = game_event
                 {
-                    // Save to action log (for proof generation)
-                    let entry = ActionLogEntry {
-                        nonce: *nonce,
-                        clock: *clock,
-                        action: action.clone(),
-                        before_state: before_state.clone(),
-                        after_state: after_state.clone(),
-                        delta: Some(delta.clone()),
-                    };
-
-                    // Log state hashes for debugging chain consistency
-                    use crate::utils::hash::hash_game_state;
-                    debug!(
-                        "ActionLog written at nonce {} | before_hash={} after_hash={}",
-                        nonce,
-                        &hash_game_state(before_state)[..8],
-                        &hash_game_state(after_state)[..8]
-                    );
-
-                    self.action_repo
-                        .append(&entry)
-                        .map_err(|e| format!("Failed to append action log: {}", e))?;
-
-                    // Flush immediately so ProverWorker can read it
-                    self.action_repo
-                        .flush()
-                        .map_err(|e| format!("Failed to flush action log: {}", e))?;
-
-                    self.actions_since_checkpoint += 1;
-
-                    debug!(
-                        "Persisted action: nonce={}, actor={:?}",
-                        nonce,
-                        action.actor()
-                    );
-
-                    // Check if we should checkpoint
-                    if self.should_checkpoint()
-                        && let Err(e) = self.create_checkpoint().await
-                    {
-                        error!("Failed to create checkpoint: {}", e);
-                    }
+                    self.handle_action_executed(*nonce, action.clone(), after_state)
+                        .await?;
                 }
             }
             _ => {
-                // Save all events to event log (for event replay)
+                // Save all events to event log
                 self.event_repo
                     .append(&event)
-                    .map_err(|e| format!("Failed to append event: {}", e))?;
+                    .map_err(|e| PersistenceError::EventAppend(e.to_string()))?;
 
-                // Flush for consistency (less critical than action log)
                 self.event_repo
                     .flush()
-                    .map_err(|e| format!("Failed to flush event log: {}", e))?;
+                    .map_err(|e| PersistenceError::EventFlush(e.to_string()))?;
             }
+        }
+
+        Ok(())
+    }
+
+    /// Handle an executed action
+    async fn handle_action_executed(
+        &mut self,
+        nonce: u64,
+        action: game_core::Action,
+        after_state: &game_core::GameState,
+    ) -> Result<()> {
+        // Ensure we have a current batch and action log
+        if self.current_batch.is_none() || self.current_action_log.is_none() {
+            return Err(PersistenceError::NoActiveBatch);
+        }
+
+        // Update batch end_nonce
+        if let Some(batch) = self.current_batch.as_mut() {
+            batch.end_nonce = nonce;
+        }
+
+        // Append to action log
+        let entry = ActionLogEntry::new(nonce, action);
+        if let Some(log) = self.current_action_log.as_mut() {
+            log.append(&entry)
+                .map_err(|e| PersistenceError::ActionLogAppend(e.to_string()))?;
+
+            // Flush immediately for ProverWorker
+            log.flush()
+                .map_err(|e| PersistenceError::ActionLogFlush(e.to_string()))?;
+        }
+
+        self.actions_since_checkpoint += 1;
+
+        debug!(
+            "Persisted action: nonce={}, actor={:?}",
+            nonce,
+            entry.action.actor()
+        );
+
+        // Check if we should checkpoint
+        if self.should_checkpoint()
+            && let Err(e) = self.create_checkpoint(after_state).await
+        {
+            error!("Failed to create checkpoint: {}", e);
         }
 
         Ok(())
@@ -320,63 +565,163 @@ impl PersistenceWorker {
         }
     }
 
-    /// Create a checkpoint by querying current state and saving it
-    async fn create_checkpoint(&mut self) -> Result<u64, String> {
+    /// Create a checkpoint by completing current batch and starting new one
+    ///
+    /// The `state` parameter should be the after_state from the last ActionExecuted event.
+    async fn create_checkpoint(&mut self, state: &game_core::GameState) -> Result<u64> {
         debug!("Creating checkpoint...");
 
-        // Query current state from SimulationWorker
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sim_command_tx
-            .send(SimCommand::QueryState { reply: reply_tx })
-            .await
-            .map_err(|e| format!("Failed to send QueryState command: {}", e))?;
+        // Get current batch
+        let mut batch = self
+            .current_batch
+            .take()
+            .ok_or(PersistenceError::NoActiveBatch)?;
 
-        let state = reply_rx
-            .await
-            .map_err(|e| format!("Failed to receive state: {}", e))?;
+        let end_nonce = batch.end_nonce;
 
-        let nonce = state.turn.nonce;
-
-        // Save state
+        // Save state at end_nonce
         self.state_repo
-            .save(nonce, &state)
-            .map_err(|e| format!("Failed to save state: {}", e))?;
+            .save(end_nonce, state)
+            .map_err(|e| PersistenceError::StateSave {
+                nonce: end_nonce,
+                error: e.to_string(),
+            })?;
 
-        // Create checkpoint
-        let state_hash = self.compute_state_hash(&state);
-        let action_offset = self.action_repo.size().unwrap_or(0);
-        let checkpoint = Checkpoint::with_state(
-            self.config.session_id.clone(),
-            nonce,
-            state_hash,
-            true,
-            action_offset,
-        );
+        // Close current action log
+        self.current_action_log = None;
 
-        debug!(
-            "Checkpoint offsets: action={}, nonce={}",
-            action_offset, nonce
-        );
-
-        self.checkpoint_repo
-            .save(&checkpoint)
-            .map_err(|e| format!("Failed to save checkpoint: {}", e))?;
-
-        // Reset counters
-        self.actions_since_checkpoint = 0;
-        self.last_checkpoint_nonce = nonce;
+        // Mark batch as complete
+        batch.mark_complete(end_nonce);
+        self.batch_repo
+            .save(&batch)
+            .map_err(|e| PersistenceError::BatchSave(e.to_string()))?;
 
         info!(
-            "Checkpoint created: session={}, nonce={}",
-            self.config.session_id, nonce
+            "Checkpoint created: session={}, nonce={}, actions={}",
+            self.config.session_id,
+            end_nonce,
+            batch.action_count()
         );
 
-        Ok(nonce)
+        // Notify ProverWorker about the completed batch
+        // Use unbounded channel so batch information is never lost
+        // ProverWorker has internal queue management and will process at its own pace
+        if let Err(e) = self.batch_complete_tx.send(batch.clone()) {
+            warn!(
+                "Failed to notify ProverWorker about completed batch (channel closed): {}",
+                e
+            );
+        }
+
+        // Start new batch
+        self.start_new_batch(end_nonce + 1).await?;
+
+        // Reset counter
+        self.actions_since_checkpoint = 0;
+
+        Ok(end_nonce)
     }
 
-    /// Compute a hash of the game state for verification
-    fn compute_state_hash(&self, state: &GameState) -> String {
-        use crate::utils::hash::hash_game_state;
-        hash_game_state(state)
+    /// Update the status of an existing batch (for manual workflow)
+    async fn update_batch_status(
+        &mut self,
+        start_nonce: u64,
+        new_status: crate::repository::ActionBatchStatus,
+    ) -> Result<()> {
+        debug!(
+            "Updating batch status: start_nonce={}, new_status={:?}",
+            start_nonce, new_status
+        );
+
+        // Load the batch
+        let mut batch = self
+            .batch_repo
+            .load(&self.config.session_id, start_nonce)
+            .map_err(PersistenceError::from)?
+            .ok_or_else(|| {
+                PersistenceError::BatchSave(format!("Batch not found at nonce {}", start_nonce))
+            })?;
+
+        // Update status
+        batch.update_status(new_status);
+
+        // Save updated batch
+        self.batch_repo
+            .save(&batch)
+            .map_err(|e| PersistenceError::BatchSave(e.to_string()))?;
+
+        info!(
+            "Batch status updated: start_nonce={}, new_status={:?}",
+            start_nonce, batch.status
+        );
+
+        Ok(())
+    }
+
+    /// Read action log bytes for a batch (for manual workflow)
+    async fn read_action_log(&self, start_nonce: u64) -> Result<Vec<u8>> {
+        use std::io::Read;
+
+        debug!("Reading action log for batch at nonce {}", start_nonce);
+
+        // Load batch to get filename
+        let batch = self
+            .batch_repo
+            .load(&self.config.session_id, start_nonce)
+            .map_err(PersistenceError::from)?
+            .ok_or_else(|| {
+                PersistenceError::BatchSave(format!("Batch not found at nonce {}", start_nonce))
+            })?;
+
+        // Construct action log path
+        let session_dir = self.config.base_dir.join(&self.config.session_id);
+        let action_log_path = session_dir
+            .join("actions")
+            .join(batch.action_log_filename());
+
+        // Read action log file
+        let mut file = std::fs::File::open(&action_log_path).map_err(PersistenceError::Io)?;
+
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer)
+            .map_err(PersistenceError::Io)?;
+
+        debug!(
+            "Action log read: {} bytes from {}",
+            buffer.len(),
+            action_log_path.display()
+        );
+
+        Ok(buffer)
+    }
+
+    /// Start a new action batch
+    async fn start_new_batch(&mut self, start_nonce: u64) -> Result<()> {
+        debug!("Starting new batch at nonce {}", start_nonce);
+
+        // Create new batch
+        let batch = ActionBatch::new(self.config.session_id.clone(), start_nonce);
+
+        // Create new action log file
+        let session_dir = self.config.base_dir.join(&self.config.session_id);
+        let action_log_filename = batch.action_log_filename();
+        let action_log =
+            FileActionLog::open_or_create(session_dir.join("actions"), &action_log_filename)
+                .map_err(|e| PersistenceError::ActionLogCreate(e.to_string()))?;
+
+        // Save initial batch state
+        self.batch_repo
+            .save(&batch)
+            .map_err(|e| PersistenceError::BatchSave(e.to_string()))?;
+
+        self.current_batch = Some(batch);
+        self.current_action_log = Some(action_log);
+
+        info!(
+            "New batch started: session={}, start_nonce={}",
+            self.config.session_id, start_nonce
+        );
+
+        Ok(())
     }
 }

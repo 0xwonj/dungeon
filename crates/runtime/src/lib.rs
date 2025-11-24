@@ -15,7 +15,9 @@
 //! - [`oracle`] and [`repository`] provide data adapters reused by other crates
 //! - [`scenario`] provides entity placement and game initialization
 //! - [`types`] provides common type aliases for semantic clarity
+//! - [`blockchain`] provides blockchain client integration (optional, feature-gated)
 pub mod api;
+pub mod blockchain;
 pub mod events;
 pub mod handlers;
 pub mod oracle;
@@ -32,26 +34,28 @@ pub use api::{
     ActionProvider, AiKind, InteractiveKind, ProviderKind, ProviderRegistry, Result, RuntimeError,
     RuntimeHandle,
 };
+#[cfg(feature = "sui")]
+pub use blockchain::BlockchainClients;
 pub use events::{
     Event, EventBus, GameEvent, GameStateEvent, HealthThreshold, ProofEvent, Topic, extract_events,
 };
-pub use handlers::{
-    ActionCostHandler, ActivationHandler, DeathHandler, EventContext, HandlerCriticality,
-};
+pub use handlers::{ActivationHandler, DeathHandler, EventContext, HandlerCriticality};
 pub use oracle::{
-    ActorOracleImpl, AiConfig, ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, OracleManager,
-    TablesOracleImpl,
+    ActionOracleImpl, ActorOracleImpl, ConfigOracleImpl, ItemOracleImpl, MapOracleImpl,
+    OracleBundle,
 };
-pub use providers::ai::{AiContext, GoalBasedAiProvider};
+pub use providers::ai::{AiContext, UtilityAiProvider};
 pub use providers::{SystemActionHandler, SystemActionProvider};
 pub use repository::{
-    ActionLogEntry, ActionLogReader, ActionLogWriter, Checkpoint, CheckpointRepository,
-    EventRepository, FileActionLog, FileCheckpointRepository, FileEventLog,
-    FileProofIndexRepository, FileStateRepository, InMemoryActionLogReader, InMemoryStateRepo,
-    MmapActionLogReader, ProofEntry, ProofIndex, ProofIndexRepository, RepositoryError,
-    StateReference, StateRepository,
+    ActionBatch, ActionBatchRepository, ActionBatchStatus, ActionLogEntry, ActionLogReader,
+    ActionLogWriter, EventRepository, FileActionBatchRepository, FileActionLog,
+    FileActionLogReader, FileEventLog, FileStateRepository, InMemoryActionLogReader,
+    InMemoryStateRepo, RepositoryError, StateRepository,
 };
-pub use runtime::{PersistenceSettings, ProvingSettings, Runtime, RuntimeBuilder, RuntimeConfig};
+pub use runtime::{
+    BlockchainSessionData, PersistenceSettings, ProvingSettings, Runtime, RuntimeBuilder,
+    RuntimeConfig, SessionInit,
+};
 pub use scenario::{EntityKind, EntityPlacement, Scenario};
 pub use types::{ByteOffset, DurationMs, Nonce, ProofSize, SessionId, StateHash, Timestamp};
 pub use workers::{CheckpointStrategy, PersistenceConfig, ProofMetrics};

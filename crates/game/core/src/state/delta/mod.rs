@@ -70,11 +70,14 @@ impl StateDelta {
 
     /// Creates a minimal empty delta.
     ///
-    /// This is used in zkvm mode where delta computation is completely skipped to reduce overhead.
-    /// The delta contains placeholder values and no change tracking - it's only used to satisfy
-    /// the return type while avoiding all computation costs. The placeholder values (action, clock)
-    /// have no meaning and should not be used.
-    #[cfg(feature = "zkvm")]
+    /// This is used inside zkVM guest (`target_os = "zkvm"`) where delta computation is
+    /// completely skipped to reduce proof generation overhead. The delta contains placeholder
+    /// values and no change tracking - it's only used to satisfy the return type while avoiding
+    /// all computation costs. The placeholder values (action, clock) have no meaning and should
+    /// not be used.
+    ///
+    /// Note: This is only compiled when building for zkVM guest environment.
+    #[cfg(target_os = "zkvm")]
     pub fn empty() -> Self {
         use crate::action::{ActionInput, ActionKind, CharacterAction};
         use crate::state::EntityId;
@@ -135,7 +138,7 @@ impl EntitiesChanges {
     }
 }
 
-#[cfg(feature = "zkvm")]
+#[cfg(target_os = "zkvm")]
 impl EntitiesChanges {
     fn empty() -> Self {
         Self {

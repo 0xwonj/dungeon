@@ -1,0 +1,25 @@
+[package]
+name = "dungeon"
+edition = "2024.beta"
+authors = ["Wonjae Choi (wonjae@snu.ac.kr)"]
+
+[dependencies]
+# Sui framework dependencies (Sui, MoveStdlib, etc.) are auto-added by default
+Walrus = { git = "https://github.com/MystenLabs/walrus.git", rev = "main", subdir = "contracts/walrus" }
+
+[addresses]
+dungeon = "0x0"
+
+# Named addresses will be accessible in Move as `@name`. They're also exported:
+# for example, `std = "0x1"` is exported by the Standard Library.
+# alice = "0xA11CE"
+
+[dev-dependencies]
+# The dev-dependencies section allows overriding dependencies for `--test` and
+# `--dev` modes. You can introduce test-only dependencies here.
+# Local = { local = "../path/to/dev-build" }
+
+[dev-addresses]
+# The dev-addresses section allows overwriting named addresses for the `--test`
+# and `--dev` modes.
+# alice = "0xB0B"

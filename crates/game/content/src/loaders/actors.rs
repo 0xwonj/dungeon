@@ -1,41 +1,14 @@
 //! Actor catalog loader.
 //!
-//! Loads actors (both players and NPCs) from RON files with trait profile specs.
+//! Loads actors (both players and NPCs) from RON files.
+//! Trait profiles are resolved from species/faction/archetype/temperament fields.
 
 use std::path::Path;
 
 use game_core::ActorTemplate;
-use serde::Deserialize;
 
 use crate::loaders::{LoadResult, read_file};
-use crate::traits::{TraitProfile, TraitProfileSpec, TraitRegistry};
-
-/// Provider kind specification for deserialization.
-///
-/// This mirrors runtime::ProviderKind but exists in game-content to avoid circular dependency.
-/// Converted to runtime::ProviderKind in ContentOracleFactory.
-#[derive(Debug, Clone, Deserialize)]
-pub enum ProviderKindSpec {
-    Interactive(InteractiveKindSpec),
-    Ai(AiKindSpec),
-    Custom(u32),
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub enum InteractiveKindSpec {
-    CliInput,
-    NetworkInput,
-    Replay,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub enum AiKindSpec {
-    Wait,
-    Aggressive,
-    Passive,
-    Scripted,
-    Utility,
-}
+use crate::traits::TraitRegistry;
 
 /// Loader for actor catalog from RON files.
 pub struct ActorLoader;
@@ -43,7 +16,19 @@ pub struct ActorLoader;
 impl ActorLoader {
     /// Load actor catalog from a RON file with trait registry.
     ///
-    /// RON format: Vec<(String, ActorTemplate, ProviderKindSpec, TraitProfileSpec)>
+    /// RON format: Vec<(String, ActorTemplate)>
+    ///
+    /// # Trait Profile Resolution
+    ///
+    /// Each ActorTemplate contains:
+    /// - `species`: Species enum (e.g., Human, Goblin)
+    /// - `faction`: Faction enum (e.g., Player, Hostile)
+    /// - `archetype`: String reference to archetype trait layer
+    /// - `temperament`: String reference to temperament trait layer
+    /// - `trait_profile`: Optional explicit trait profile
+    ///
+    /// If `trait_profile` is `None`, the loader resolves it from the four components.
+    /// After loading, all templates have `trait_profile` set to `Some(...)`.
     ///
     /// # Arguments
     ///
@@ -52,30 +37,41 @@ impl ActorLoader {
     ///
     /// # Returns
     ///
-    /// Returns a Vec of (actor_id, ActorTemplate, ProviderKindSpec, TraitProfile).
+    /// Returns a Vec of (actor_id, ActorTemplate) with trait_profile resolved.
     pub fn load(
         path: &Path,
         trait_registry: &TraitRegistry,
-    ) -> LoadResult<Vec<(String, ActorTemplate, ProviderKindSpec, TraitProfile)>> {
+    ) -> LoadResult<Vec<(String, ActorTemplate)>> {
         let content = read_file(path)?;
 
-        // Deserialize as Vec<(String, ActorTemplate, ProviderKindSpec, TraitProfileSpec)>
-        let raw_data: Vec<(String, ActorTemplate, ProviderKindSpec, TraitProfileSpec)> =
-            ron::from_str(&content)
-                .map_err(|e| anyhow::anyhow!("Failed to parse actor catalog RON: {}", e))?;
+        // Deserialize as Vec<(String, ActorTemplate)>
+        let raw_data: Vec<(String, ActorTemplate)> = ron::from_str(&content)
+            .map_err(|e| anyhow::anyhow!("Failed to parse actor catalog RON: {}", e))?;
 
-        // Resolve TraitProfileSpec to TraitProfile
+        // Resolve trait profile if not explicitly specified
         let mut actors = Vec::new();
-        for (actor_id, template, provider, trait_spec) in raw_data {
-            let trait_profile = trait_registry.resolve(&trait_spec).map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to resolve trait profile for actor '{}': {}",
-                    actor_id,
-                    e
-                )
-            })?;
+        for (actor_id, mut template) in raw_data {
+            if template.trait_profile.is_none() {
+                // Build trait profile from the four components
+                let trait_profile = trait_registry
+                    .resolve_from_components(
+                        template.species,
+                        template.faction,
+                        &template.archetype,
+                        &template.temperament,
+                    )
+                    .map_err(|e| {
+                        anyhow::anyhow!(
+                            "Failed to resolve trait profile for actor '{}': {}",
+                            actor_id,
+                            e
+                        )
+                    })?;
 
-            actors.push((actor_id, template, provider, trait_profile));
+                template.trait_profile = Some(trait_profile);
+            }
+
+            actors.push((actor_id, template));
         }
 
         Ok(actors)

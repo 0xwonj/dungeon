@@ -10,36 +10,38 @@
 
 The Dungeon project is structured as a Rust workspace composed of multiple crates that collaborate to deliver a deterministic, provable dungeon crawler. The high-level flow is:
 
-1. **Front-ends (CLI, UI, automation)** gather player and NPC input through the `FrontendApp` abstraction.
-2. **`client-core`** translates front-end messages into runtime-facing actions and bootstraps oracle bundles.
-3. **`runtime`** orchestrates the game loop via the `SimulationWorker`, delegates gameplay execution to background workers, and emits game events through a broadcast channel.
-4. **`game-core`** provides the pure deterministic simulation engine with a comprehensive action system (`GameEngine::execute`), domain models (`GameState`, `Action`), and validation schema (pre-validate, execute, post-validate phases).
-5. **`game-content`** supplies static content (maps, items, NPCs, loot tables) consumed by oracle implementations.
-6. **`zk`** (planned) will contain proving-friendly utilities shared by the prover worker and any off-chain verification services.
-7. **Persistence and blockchain integration (future)** will bridge runtime checkpoints to chain-facing artifacts.
+1.  **Front-ends (CLI, UI, automation)** gather player and NPC input through the `FrontendApp` abstraction.
+2.  **`client`** orchestrates the application, wiring together the runtime, frontend, and optional blockchain layers.
+3.  **`runtime`** orchestrates the game loop via the `SimulationWorker`, delegates gameplay execution to background workers, and emits game events through a broadcast channel.
+4.  **`game-core`** provides the pure deterministic simulation engine with a comprehensive action system (`GameEngine::execute`), domain models (`GameState`, `Action`), and validation schema.
+5.  **`game-content`** supplies static content (maps, items, NPCs, loot tables) consumed by oracle implementations.
+6.  **`zk`** provides the proving backends (RISC0, SP1) and circuits for generating zero-knowledge proofs of game state transitions.
+7.  **`contracts`** (Move) manages on-chain game sessions, optimistic verification with challenge periods, and Walrus-based action log storage.
 
 The guiding principles are:
 
-- **Layered boundaries**, so each crate only depends on the surfaces it requires.
-- **Determinism first**, ensuring all runtime decisions are reproducible for ZK/STARK proving.
-- **Pluggable providers**, letting clients swap input sources, oracle data, and persistence backends.
-- **Observability**, exposing event streams and handles suitable for synchronous or async clients.
+-   **Layered boundaries**, so each crate only depends on the surfaces it requires.
+-   **Determinism first**, ensuring all runtime decisions are reproducible for ZK/STARK proving.
+-   **Pluggable providers**, letting clients swap input sources, oracle data, and persistence backends.
+-   **Observability**, exposing event streams and handles suitable for synchronous or async clients.
 
 ## 2. Workspace Layout
 
 ```
 root
+├── contracts/                 # Smart contracts (Move)
+│   └── move/                  # Sui Move packages (game_session, proof_verifier)
 ├── crates
-│   ├── client
-│   │   ├── core/              # Shared UX glue (config, messages, view models, oracle factories)
-│   │   └── frontend/
-│   │       ├── core/          # Frontend abstraction layer (FrontendApp trait, message routing)
-│   │       └── cli/           # Terminal UI with cursor system and examine mode
+│   ├── client/                # Application orchestrator (CLI, Blockchain, Bootstrap)
+│   │   ├── src/               # Main entry point and orchestration logic
+│   │   ├── frontend/          # UI implementations (CLI, Core abstraction)
+│   │   └── blockchain/        # Blockchain client adapters (Sui)
 │   ├── game
 │   │   ├── core/              # Pure deterministic state machine (no I/O, crypto, or randomness)
 │   │   └── content/           # Static content and fixtures (maps, items, NPCs, loot tables)
 │   ├── runtime/               # Orchestrator, API façade, workers, oracle/repository adapters
-│   └── zk/                    # Proving-focused utilities and shared gadgets (planned)
+│   ├── zk/                    # Proving backends (RISC0, SP1) and circuits
+│   └── xtask/                 # Build and development automation tools
 ├── docs/                      # Architecture, research notes, design decisions
 └── target/                    # Build artifacts (ignored)
 ```
@@ -48,361 +50,278 @@ root
 
 ```mermaid
 flowchart TB
-    subgraph Frontends
-        cli_client["client/frontend/cli<br/>Terminal UI with cursor & examine modes"]
-        future_ui["Future frontends<br/>(Bevy, WebAssembly)"]
+    %% --- Node Styling Definitions ---
+    classDef frontend fill:#bbdefb,stroke:#1976d2,stroke-width:2px,color:#0d47a1;
+    classDef client fill:#c5cae9,stroke:#303f9f,stroke-width:2px,color:#1a237e;
+    classDef runtime fill:#b2dfdb,stroke:#00796b,stroke-width:2px,color:#004d40;
+    classDef core fill:#ffccbc,stroke:#d84315,stroke-width:2px,color:#bf360c;
+    classDef zk fill:#e1bee7,stroke:#7b1fa2,stroke-width:2px,color:#4a148c;
+    classDef chain fill:#cfd8dc,stroke:#455a64,stroke-width:2px,color:#263238;
+    classDef walrus fill:#ffe0b2,stroke:#f57c00,stroke-width:2px,color:#e65100;
+
+    %% --- Subgraphs & Nodes ---
+    subgraph Frontends ["🖥️ Presentation Layer"]
+        direction TB
+        cli_client["📟 Terminal UI<br/>(client/frontend/cli)"]:::frontend
+        future_ui["🌐 Future Frontends<br/>(Bevy, WebAssembly)"]:::frontend
     end
 
-    subgraph FrontendCore["client/frontend/core<br/>(FrontendApp abstraction)"]
-        frontend_trait["FrontendApp trait"]
-        message_router["Message routing & view models"]
+    subgraph Client ["🔌 Client Layer"]
+        direction TB
+        orchestrator["🎬 Client Orchestrator"]:::client
+        blockchain_client["🔗 Blockchain Client<br/>(Sui Adapter)"]:::client
     end
 
-    subgraph ClientCore["client/core<br/>(runtime bootstrap & UX glue)"]
-        cfg["config.rs · CliConfig"]
-        bootstrap["bootstrap.rs"]
-        factory["world.rs<br/>oracle factories"]
+    subgraph Runtime ["⚙️ Runtime Layer"]
+        direction TB
+        api_mod["📡 api/<br/>RuntimeHandle · GameEvent"]:::runtime
+        runtime_orch["🧠 Runtime Orchestrator"]:::runtime
+        workers_mod["👷 workers/<br/>Simulation · Prover · Persistence"]:::runtime
+        oracle_mod["🔮 oracle/<br/>MapOracle · ItemOracle"]:::runtime
+        repo_mod["💾 repository/<br/>ActionBatch · StateRepo"]:::runtime
     end
 
-    subgraph Runtime["runtime crate"]
-        api_mod["api/<br/>RuntimeHandle · GameEvent · ActionProvider"]
-        orchestrator["runtime.rs<br/>Runtime & RuntimeBuilder"]
-        workers_mod["workers/<br/>SimulationWorker (impl)<br/>ProverWorker (planned)"]
-        oracle_mod["oracle/<br/>MapOracle · ItemOracle<br/>NpcOracle · TablesOracle"]
-        repo_mod["repository/<br/>StateRepository trait<br/>InMemoryStateRepo"]
+    subgraph Game ["🦀 Game Logic (Shared)"]
+        direction TB
+        game_core["🧩 game-core<br/>(Engine, State, Actions)"]:::core
+        game_content["📦 game-content<br/>(Static Assets)"]:::core
     end
 
-    subgraph GameCore["game/core<br/>(pure deterministic engine)"]
-        engine["engine::GameEngine<br/>execute() · prepare_next_turn()"]
-        actions["Action system<br/>Move · Attack · Interact · Inventory"]
-        models["GameState · TurnState<br/>EntitiesState · WorldState"]
-        validation["ActionTransition<br/>pre-validate · execute · post-validate"]
+    subgraph ZK ["🔐 Zero-Knowledge"]
+        direction TB
+        prover_backend["🛡️ Proving Backends<br/>(RISC0, SP1, Stub)"]:::zk
     end
 
-    subgraph Content["game/content<br/>(static assets)"]
-        maps["maps.rs"]
-        items["items.rs"]
-        npcs["npcs.rs"]
-        tables["tables.rs"]
+    subgraph Infrastructure ["☁️ On-Chain & Storage"]
+        direction TB
+        move_contract["💧 Game Session<br/>(Sui Move)"]:::chain
+        walrus["🦭 Walrus Storage<br/>(Action Logs)"]:::walrus
     end
 
-    subgraph Proofs["zk<br/>(proving utilities - planned)"]
-        circuits["Action validation circuits"]
-        witness["Witness generation"]
-    end
+    %% --- Connections ---
+    cli_client -->|"implements"| orchestrator
+    
+    orchestrator -->|"initializes"| runtime_orch
+    orchestrator -->|"uses"| blockchain_client
+    
+    blockchain_client -.->|"submits proofs"| move_contract
+    blockchain_client -.->|"uploads logs"| walrus
 
-    cli_client -->|"implements"| frontend_trait
-    future_ui -.->|"will implement"| frontend_trait
-    frontend_trait -->|"consumes"| ClientCore
-    ClientCore -->|"RuntimeConfig · OracleBundle"| orchestrator
-    ClientCore -->|"ActionProvider impls"| api_mod
+    runtime_orch -->|"exposes"| api_mod
+    runtime_orch -->|"manages"| workers_mod
+    
+    workers_mod -->|"executes"| game_core
+    workers_mod -->|"generates proofs"| prover_backend
+    workers_mod -->|"persists"| repo_mod
+    workers_mod -->|"injects Oracle"| game_core
+    
+    oracle_mod -->|"wraps"| game_content
+    oracle_mod -.->|"implements traits"| game_core
+    
+    prover_backend -->|"proves"| game_core
 
-    api_mod -->|"RuntimeHandle · subscribe_events()"| FrontendCore
-    orchestrator -->|"commands · events"| api_mod
-    orchestrator -->|"manages"| workers_mod
-    orchestrator -->|"wires"| oracle_mod
-    orchestrator -->|"wires"| repo_mod
-    workers_mod -->|"broadcasts GameEvent"| api_mod
-    repo_mod -->|"load/save checkpoints"| workers_mod
-    oracle_mod -->|"implements Env traits"| engine
-    oracle_mod -->|"reads static data"| Content
-    workers_mod -->|"Action · GameState"| engine
-    engine -->|"deterministic transitions"| workers_mod
-    actions -->|"uses"| validation
-    engine -->|"coordinates"| actions
-    engine -->|"mutates"| models
-    workers_mod -.->|"proof inputs (future)"| Proofs
-    Proofs -.->|"proof artifacts (future)"| workers_mod
+    %% --- Background Styling (Soft Pastel Colors) ---
+    style Frontends fill:#f0f8ff,stroke:#90caf9,stroke-width:1px,stroke-dasharray: 5 5
+    style Client fill:#f3f4fa,stroke:#9fa8da,stroke-width:1px,stroke-dasharray: 5 5
+    style Runtime fill:#e8f5e9,stroke:#80cbc4,stroke-width:1px,stroke-dasharray: 5 5
+    style Game fill:#fffbe6,stroke:#ffab91,stroke-width:1px,stroke-dasharray: 5 5
+    style ZK fill:#f3e5f5,stroke:#ce93d8,stroke-width:1px,stroke-dasharray: 5 5
+    style Infrastructure fill:#f5f5f5,stroke:#b0bec5,stroke-width:1px,stroke-dasharray: 5 5
 ```
-
-Arrows are annotated with the primary data exchanged between crates or modules, illustrating both build-time dependencies and runtime flow.
 
 ## 3. Runtime Architecture
 
 The `runtime` crate is the central orchestrator. Its module structure mirrors the runtime layers:
 
-- **`api/`**: Public surface consumed by other crates
-  - `RuntimeHandle`: Client-facing API for action execution and state queries
-  - `GameEvent`: Broadcast events (TurnCompleted, ActionExecuted, ActionFailed, etc.)
-  - `ActionProvider`: Async trait for pluggable input sources
-  - Error types: `RuntimeError`, result types
-- **`runtime.rs`**: Builder-based orchestrator that wires channels, workers, and providers
-  - `RuntimeBuilder`: Fluent API for configuring the runtime
-  - `Runtime`: Owns workers, manages lifecycle, exposes `RuntimeHandle`
-- **`workers/`**: Background tasks coordinating game execution
-  - `SimulationWorker`: Owns canonical `GameState`, processes turns and actions, broadcasts events
-  - `ProverWorker`: Placeholder for ZK proof generation (planned)
-- **`oracle/`**: Adapters exposing static game content compatible with `game-core` environment traits
-  - `MapOracleImpl`, `ItemOracleImpl`, `NpcOracleImpl`, `TablesOracleImpl`, `ConfigOracleImpl`
-  - `OracleManager`: Bundles all oracles for injection into `GameEngine`
-- **`repository/`**: Traits and implementations for persisting mutable state
-  - `StateRepository`: Trait for load/save/checkpoint operations
-  - `InMemoryStateRepo`: Testing implementation
+-   **`api/`**: Public surface consumed by other crates (`RuntimeHandle`, `GameEvent`).
+-   **`workers/`**: Background tasks coordinating game execution.
+    -   **`SimulationWorker`**: Owns canonical `GameState`, processes turns/actions, broadcasts events.
+    -   **`ProverWorker`**: Monitors completed action batches and generates ZK proofs.
+    -   **`PersistenceWorker`**: Manages state checkpoints, action log rotation, and event persistence.
+    -   **`MetricsWorker`**: Collects and exposes telemetry.
+-   **`repository/`**: Traits and implementations for persisting mutable state and action logs.
 
-### 3.1 Runtime Control Flow
+### 3.1 Worker Responsibilities
+
+#### Simulation Worker ✅
+-   Owns the canonical `GameState` and runs the game loop.
+-   Processes commands: `PrepareNextTurn`, `ExecuteAction`, `QueryState`.
+-   Broadcasts `GameEvent` notifications (TurnCompleted, ActionExecuted).
+-   Manages entity activation and turn-based cooldowns.
+
+#### Persistence Worker ✅
+-   **Checkpoint System**: Manages "Action Batches".
+    -   Creates a checkpoint every N actions (configurable).
+    -   Rotates action log files upon checkpoint.
+    -   Saves a state snapshot at the batch boundary.
+-   **Event Logging**: Persists all game events to disk.
+-   **Coordination**: Notifies `ProverWorker` when a batch is complete and ready for proving.
+
+#### Prover Worker ✅
+-   **Batch Proving**: Consumes completed action batches from `PersistenceWorker`.
+-   **Proof Generation**: Uses the `zk` crate to generate cryptographic proofs (RISC0/SP1) that `Start State + Actions = End State`.
+-   **Parallelism**: Supports parallel proof generation for multiple batches.
+-   **Artifacts**: Saves proof files and updates batch status to `Proven`.
+
+### 3.2 Runtime Control Flow
 
 ```mermaid
-graph TD
-    A[Front-end ActionProvider] -->|provide_action| B(RuntimeHandle)
-    B -->|Command::PrepareNextTurn| C(SimulationWorker)
-    C -->|GameEngine::prepare_next_turn| D[game-core]
-    C -->|GameEvent::TurnCompleted| E(broadcast::Sender)
-    B -->|Command::ExecuteAction| C
-    C -->|GameEngine::execute| D
-    C -->|GameEvent::ActionExecuted / ActionFailed| E
-    E -->|broadcast events| F[Clients/UI]
-    C -->|checkpoint & witness| G(ProverWorker)
-    G -->|proof artifact| H[Proof consumers]
-    H -->|verification status| F
-    B -->|subscribe_events| F
-    B -->|Command::QueryState| C -->|GameState clone| B
+sequenceDiagram
+    autonumber
+    
+    %% --- Participants ---
+    box "Frontend & Client" #e3f2fd
+        participant User as 👤 User
+        participant CLI as 📟 CLI / Frontend
+        participant Client as 🔌 Client Orch
+    end
+    
+    box "Runtime Layer" #e8f5e9
+        participant Handle as 📡 RuntimeHandle
+        participant Sim as 👷 SimulationWorker
+        participant Persist as 💾 PersistenceWorker
+        participant Prover as 🛡️ ProverWorker
+    end
+    
+    box "Game Logic" #fff3e0
+        participant Engine as 🧩 GameEngine
+        participant State as 🦀 GameState
+    end
+    
+    box "Infrastructure" #f3e5f5
+        participant Walrus as 🦭 Walrus Storage
+        participant Chain as 💧 Sui Blockchain
+    end
+
+    %% --- Phase 1: Real-time Gameplay (Hot Path) ---
+    note right of User: ⚡️ Phase 1: Real-time Gameplay
+    
+    User->>CLI: Input Action (e.g., Move)
+    CLI->>Handle: ExecuteAction(action)
+    Handle->>Sim: Command::ExecuteAction
+    
+    activate Sim
+    Sim->>Engine: execute(action, current_state)
+    activate Engine
+    Engine->>State: validate & apply
+    Engine-->>Sim: Ok(StateDelta, NewState)
+    deactivate Engine
+    
+    Sim->>Sim: Update Canonical State
+    
+    par Broadcast Events
+        Sim-->>Handle: Event::ActionExecuted
+        Handle-->>CLI: Update UI
+        CLI-->>User: Render New State
+    and Persist Event
+        Sim-->>Persist: Event::ActionExecuted
+    end
+    deactivate Sim
+
+    %% --- Phase 2: Persistence & Batching (Async) ---
+    note right of User: 💾 Phase 2: Async Persistence
+    
+    activate Persist
+    Persist->>Persist: Append to Action Log
+    
+    alt Batch Limit Reached
+        Persist->>Persist: Close Batch & Save State Snapshot
+        Persist->>Prover: Notify: Batch Complete
+    end
+    deactivate Persist
+
+    %% --- Phase 3: Proving & Submission (Background) ---
+    note right of User: 🔐 Phase 3: ZK Proving & On-Chain
+    
+    activate Prover
+    Prover->>Prover: Load Batch & State
+    Prover->>Prover: Generate ZK Proof (RISC0/SP1)
+    Prover-->>Handle: Event::ProofGenerated
+    deactivate Prover
+    
+    Handle-->>Client: Event::ProofGenerated
+    
+    activate Client
+    Client->>Walrus: Upload Action Log Blob
+    Walrus-->>Client: Blob ID
+    Client->>Chain: Submit Transaction(Proof, BlobID)
+    Chain-->>Client: Tx Confirmation
+    deactivate Client
 ```
 
-1. Clients ask the `RuntimeHandle` to prepare the next turn, which routes a command to the `SimulationWorker`.
-2. The worker invokes `game-core::GameEngine`, updates the authoritative `GameState`, and emits events.
-3. After deciding the next action via the appropriate `ActionProvider`, the client issues `ExecuteAction`.
-4. Successful execution updates the active set, emits action events, and hands a checkpoint plus witness data to the prover worker, which produces proof artifacts for downstream consumers and UIs.
-5. Front-ends consume both gameplay events and proof status; failures continue to surface as `ActionFailed` events for immediate feedback.
+1.  **Action Execution**: User input is translated into a command, validated by the `GameEngine`, and applied to the state.
+2.  **Event Broadcast**: The result is immediately broadcast to the UI for real-time feedback and sent to the `PersistenceWorker`.
+3.  **Persistence & Batching**: Actions are logged to disk. When a batch fills up (e.g., 10 actions), a checkpoint is created.
+4.  **Proving**: The `ProverWorker` picks up the completed batch and generates a ZK proof in the background.
+5.  **Submission**: The `Client` uploads the action log to Walrus and submits the proof + blob ID to the blockchain.
 
-### 3.2 Worker Responsibilities
+## 4. ZK & Proving Architecture
 
-- **Simulation Worker** ✅ **Implemented**
-  - Owns the canonical `GameState` and runs the game loop
-  - Processes commands from `RuntimeHandle`:
-    - `PrepareNextTurn`: Calls `GameEngine::prepare_next_turn()` to advance turn counter and activate entities
-    - `ExecuteAction`: Validates and executes player/NPC actions via `GameEngine::execute()`
-    - `QueryState`: Returns cloned `GameState` for inspection
-  - Broadcasts `GameEvent` notifications:
-    - `TurnCompleted(Tick)`: New turn prepared
-    - `ActionExecuted(EntityId, Action, StateDelta)`: Action succeeded with state changes
-    - `ActionFailed(EntityId, Action, Error)`: Action validation/execution failed
-  - Manages entity activation tracking and turn-based cooldowns
-  - Thread-safe: Runs in background tokio task, communicates via MPSC channels
+The `zk` crate provides a unified interface for multiple proving backends, selectable via feature flags.
 
-- **Prover Worker** 📋 **Planned**
-  - Will consume checkpoints/state deltas from simulation worker
-  - Generate zero-knowledge proofs of action validity:
-    - Prove that action transitions satisfied pre-validate, execute, post-validate phases
-    - Use circuits from `zk` crate for validation logic
-  - Emit proof artifacts via broadcast channel for client consumption
-  - Run in parallel with simulation worker without blocking gameplay
-  - Integration points already present in architecture
+### 4.1 Supported Backends
+-   **RISC0** (`feature = "risc0"`): Production-grade zkVM. Generates STARKs/SNARKs.
+-   **SP1** (`feature = "sp1"`): Succinct's SP1 zkVM. Supports Groth16/PLONK.
+-   **Stub** (`feature = "stub"`): Development backend. Instant "proofs" for fast iteration.
 
-- **Submitter / Chain Worker** 📋 **Planned**
-  - Package proofs and state commitments for blockchain submission
-  - Handle transaction lifecycle: signing, submission, confirmation
-  - Implement retry logic, rate limiting, gas management
-  - Monitor on-chain verification results
+### 4.2 Proof Workflow
+1.  **Input**: Start State Root, End State Root, Action Log Hash.
+2.  **Circuit**: Verifies that applying the action log to the start state results in the end state, following all game rules.
+3.  **Output**: A cryptographic proof (Groth16/STARK) verifying the transition.
 
-## 4. Action Providers
+## 5. Blockchain Integration (Sui + Walrus)
 
-**Action Providers** are the pluggable input layer allowing diverse sources of game actions.
+The project uses a **Hybrid On-Chain/Off-Chain** architecture with **Optimistic Verification**.
 
-The `ActionProvider` async trait enables:
+### 5.1 Smart Contract (`game_session.move`)
+-   **Session Object**: Tracks `oracle_root`, `state_root`, `nonce`, and `finalized` status.
+-   **Optimistic Updates**:
+    -   Players submit a ZK proof + Action Log Blob ID (Walrus).
+    -   Contract verifies the ZK proof (currently disabled for hackathon due to verifier incompatibility, but logic is in place).
+    -   Updates `state_root` and stores the Action Log reference.
+-   **Challenge Period**:
+    -   Action logs are stored as Dynamic Object Fields.
+    -   A challenge period (e.g., 7 days) allows verifiers to inspect logs on Walrus and challenge invalid transitions.
+    -   Expired logs can be cleaned up for storage rebates.
 
-```rust
-pub trait ActionProvider: Send + Sync {
-    async fn provide_action(
-        &self,
-        state: &GameState,
-        entity_id: EntityId,
-    ) -> Result<Action>;
-}
-```
+### 5.2 Walrus Integration
+-   **Action Logs**: Full action sequences are too large for on-chain storage.
+-   **Blob Storage**: Action logs are uploaded to Walrus (decentralized storage).
+-   **Commitment**: The Walrus Blob ID is committed on-chain, binding the proof to the specific data.
 
-**Current Implementations:**
-
-- **`WaitActionProvider`** ✅: Default provider that always returns `Action::Wait`, used for testing and idle entities
-- **CLI Human Input** ✅: Implemented in `client-frontend-cli`, collects player commands via terminal interface
-  - Validates entity ownership and turn alignment
-  - Supports movement (WASD), attack (Space), inventory, examine mode
-  - Cursor-based targeting for combat and interactions
-
-**Planned Implementations:**
-
-- **AI / NPC Scripts** 📋: Heuristic-based or ML-powered decision making for NPCs
-- **Replay Provider** 📋: Deterministic playback from recorded action sequences for regression tests
-- **Remote Providers** 📋: gRPC/WebSocket-based providers for multiplayer or cloud-based agents
-- **On-chain Agents** 📋: Blockchain-based decision making (smart contract triggered actions)
-
-## 5. Oracle and Repository Layers
-
-### 5.1 Oracle Bundle
-
-`OracleManager` wraps immutable game content sourced from map, item, table, and NPC oracle implementations. These adapters:
-
-- Serve `game-core` traits with deterministic, read-only data.
-- Are typically constructed by `client-core` factories (`TestOracleFactory`, etc.).
-- Can be swapped with real content once `game-content` is populated.
-
-Planned enhancements:
-
-- Streaming content updates for live events.
-- Content versioning to align with provable game states.
-
-### 5.2 Repositories
-
-The repository layer persists mutable runtime data:
-
-- `StateRepository`: trait describing load/save/checkpoint operations.
-- `InMemoryStateRepo`: current implementation for tests and demos.
-
-Upcoming work:
-
-- Database-backed repositories (RocksDB, Postgres) for durable saves.
-- Snapshot compression and Merkle commitments for proofs.
-- Gossip integration to share state/off-chain updates across nodes.
 
 ## 6. Front-end Integration
 
-The client crates implement a layered architecture for diverse UI implementations:
+The `client` crate provides a layered architecture:
 
-### 6.1 `client-core` (Bootstrap & Configuration)
+-   **`client-frontend-core`**: Defines `FrontendApp` trait and shared view models.
+-   **`client-frontend-cli`**: Terminal-based UI.
+    -   **Examine Mode**: Cursor-based inspection of tiles/entities.
+    -   **Real-time**: Renders updates from `GameEvent` stream.
+-   **Future**: Bevy (2D/3D), WebAssembly.
 
-- **Configuration**: `CliConfig` for runtime parameters (map size, entity counts, etc.)
-- **Bootstrap**: Constructs `RuntimeConfig` and `OracleBundle` from configuration
-- **Oracle Factories**: `TestOracleFactory` and production factories for content injection
-- **Message Types**: Shared types for client-runtime communication
+## 7. Data Persistence Strategy
 
-### 6.2 `client/frontend/core` (Frontend Abstraction)
+Filesystem-based repository structure (managed by `PersistenceWorker`):
 
-✅ **Implemented** - Provides `FrontendApp` trait for frontend implementations:
-
-```rust
-pub trait FrontendApp {
-    async fn run(self) -> anyhow::Result<()>;
-}
 ```
-
-Key components:
-- **View Models**: Transform `GameState` into presentation-friendly structures
-- **Message Routing**: Translates frontend events into runtime commands
-- **Event Consumption**: Subscribe to `GameEvent` broadcasts for UI updates
-
-### 6.3 `client/frontend/cli` (Terminal Interface)
-
-✅ **Implemented** - Full-featured async terminal application:
-
-**Architecture:**
-- `CliApp`: Main application struct implementing `FrontendApp`
-- Event loop: Processes terminal input, runtime events, and renders UI
-- State management: Tracks UI mode (Normal, Examine), cursor position, targeting
-
-**Features:**
-- **Examine Mode**: Press `E` to enter cursor-based exploration
-  - Navigate with WASD to inspect map tiles and entities
-  - View detailed entity stats, items, and tile information
-- **Cursor System**:
-  - Manual cursor movement in examine mode
-  - Automatic cursor targeting for combat (nearest enemy selection)
-- **Action Input**: WASD movement, Space for attack, inventory management
-- **Real-time Updates**: Subscribes to runtime events for immediate feedback
-
-### 6.4 Future Frontends
-
-📋 **Planned** - Additional frontend implementations:
-
-- **Bevy Frontend**: 2D/3D graphical client with same `FrontendApp` trait
-- **WebAssembly UI**: Browser-based client for web deployment
-- **Headless Client**: For AI training and batch simulation
-
-All future frontends will:
-- Implement `FrontendApp` trait from `client/frontend/core`
-- Reuse `client-core` bootstrap and configuration
-- Subscribe to same `GameEvent` broadcasts
-- Use same `ActionProvider` abstractions
-
-## 7. Proving and Blockchain Integration Roadmap
-
-| Component | Status | Description |
-|-----------|--------|-------------|
-| **Action Validation System** | ✅ Implemented | Three-phase validation (pre-validate, execute, post-validate) in `game-core` |
-| **State Delta Tracking** | ✅ Implemented | `StateDelta` captures all state mutations for witness generation |
-| **Deterministic Engine** | ✅ Implemented | Pure functional `GameEngine` with no I/O or randomness |
-| **`ProverWorker`** | 📋 Planned | Will generate ZK proofs for action validity using circuits from `zk` crate |
-| **`zk` crate** | 📋 Scaffolded | Will provide circuits for validation phases, hashing, transcript utilities |
-| **Proof Transport** | 📋 Planned | Broadcast channel for proof artifacts to clients/submitter |
-| **Blockchain Bridge** | 📋 Planned | Smart contracts and RPC clients for on-chain proof verification |
-| **State Commitments** | 📋 Planned | Merkle trees or polynomial commitments anchoring `GameState` |
-
-Expected workflow:
-
-1. Simulation worker produces deterministic state updates and checkpoints.
-2. Prover worker consumes checkpoints, runs proving routines, and emits proof artifacts.
-3. Submitter worker (or external service) packages the proof plus state commitments for blockchain submission.
-4. On-chain verifier contract validates proofs and updates game state roots.
-
-## 8. Design Philosophy
-
-- **Deterministic Core, Decoupled I/O**: All randomness and side-effects are injected at the edges (providers, repositories), keeping `game-core` and `runtime` deterministic.
-- **Trait-based Extensibility**: Oracles, providers, and repositories are trait objects so builds can swap implementations without modifying orchestration.
-- **Async, Message-driven**: Workers communicate via `tokio` channels, enabling concurrent pipelines (simulation, proof generation, submission).
-- **Incremental Proof Adoption**: Placeholders like `ProverWorker` keep the integration points visible, guiding future development.
-- **Testing First**: In-memory repositories, wait-action providers, and event broadcasts enable fast unit/integration tests before heavy proving work lands.
-
-## 9. Game Core Implementation Details
-
-### 9.1 Action System
-
-✅ **Fully Implemented** - Comprehensive action types with validation:
-
-**Action Types:**
-- **Movement** (`MoveAction`): Cardinal direction movement with collision detection
-- **Combat** (`AttackAction`): Multiple attack styles (Normal, Heavy, Light) with range/cooldown validation
-- **Inventory** (`UseItemAction`): Item consumption with target selection (Self, Other, Ground)
-- **Interaction** (`InteractAction`): Tile/entity interactions
-
-**Action Lifecycle:**
+{base_dir}/{session_id}/
+├── actions/               # Action logs (rotated per batch)
+│   ├── actions_{session}_{start}_{end}.log
+│   └── ...
+├── batches/               # Batch metadata (status, nonces)
+│   ├── batch_{end_nonce}.json
+│   └── ...
+├── states/                # State snapshots (at batch boundaries)
+│   ├── state_{nonce}.bin
+│   └── ...
+├── proofs/                # Generated ZK proofs
+│   ├── proof_{start}_{end}.bin
+│   └── ...
+└── events/                # Full event stream
+    └── events_{session}.log
 ```
-Action submitted → pre_validate() → execute() → post_validate() → StateDelta emitted
-```
-
-Each phase can:
-- Inspect current `GameState` and `Env` oracles
-- Return validation errors (movement blocked, insufficient resources, etc.)
-- Mutate state via builder patterns
-- Hook into custom validators for extensibility
-
-### 9.2 State Management
-
-✅ **Implemented** - Hierarchical state structure:
-
-- `GameState`: Root state container
-  - `TurnState`: Current tick, active entity tracking
-  - `EntitiesState`: All actors (players, NPCs), items, props
-  - `WorldState`: Tile map, overlays, occupancy tracking
-
-**Delta System:**
-- `StateDelta`: Records all mutations during action execution
-  - `TurnDelta`: Turn counter changes
-  - `EntitiesDelta`: Entity additions/removals/patches
-  - `WorldDelta`: Tile and overlay modifications
-- Enables:
-  - Event replay and debugging
-  - Witness generation for ZK proofs
-  - Efficient state synchronization
-
-### 9.3 Environment Oracles
-
-✅ **Implemented** - Read-only game data injection:
-
-```rust
-pub trait Env {
-    fn map(&self) -> &dyn MapOracle;
-    fn items(&self) -> &dyn ItemOracle;
-    fn npcs(&self) -> &dyn NpcOracle;
-    fn tables(&self) -> &dyn TablesOracle;
-    fn config(&self) -> &GameConfig;
-}
-```
-
-Keeps `game-core` pure by externalizing:
-- Map dimensions and terrain definitions
-- Item definitions and categories
-- NPC templates and AI behaviors
-- Loot tables and drop rates
-- Game configuration (cooldowns, ranges, damage formulas)
 
 ---
 
-_This document aims to remain living documentation. When major architectural decisions shift (new crates, worker topology changes, proof pipeline implementation), please update this file alongside the code and record rationale in `docs/research.md`._
+_This document reflects the architecture as of the "Prover & Persistence" update. Future work includes enabling on-chain ZK verification._

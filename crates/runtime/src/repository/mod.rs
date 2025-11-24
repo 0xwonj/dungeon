@@ -39,23 +39,19 @@ mod error;
 mod traits;
 
 // Re-export main types
-pub use error::RepositoryError;
+pub use error::{RepositoryError, Result};
 pub use traits::{
-    ActionLogReader, ActionLogWriter, CheckpointRepository, EventRepository, ProofIndexRepository,
-    StateRepository,
+    ActionBatchRepository, ActionLogReader, ActionLogWriter, EventRepository, StateRepository,
 };
 
 // Re-export shared types
-pub use types::{ActionLogEntry, Checkpoint, ProofEntry, ProofIndex, StateReference};
+pub use types::{ActionBatch, ActionBatchStatus, ActionLogEntry};
 
 // Re-export file implementations
 pub use file::{
-    FileActionLog, FileCheckpointRepository, FileEventLog, FileProofIndexRepository,
-    FileRepository, FileStateRepository, MmapActionLogReader,
+    FileActionBatchRepository, FileActionLog, FileActionLogReader, FileEventLog, FileRepository,
+    FileStateRepository,
 };
 
 // Re-export memory implementations
-pub use memory::{
-    InMemoryActionLogReader, InMemoryCheckpointRepository, InMemoryEventRepository,
-    InMemoryStateRepo,
-};
+pub use memory::{InMemoryActionLogReader, InMemoryEventRepository, InMemoryStateRepo};

@@ -21,8 +21,8 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use std::{collections::BTreeMap, vec::Vec};
 
 use super::{
-    ActorOracle, ConfigOracle, ItemDefinition, ItemOracle, MapDimensions, MapOracle, StaticTile,
-    TablesOracle,
+    ActionOracle, ActorOracle, ConfigOracle, ItemDefinition, ItemOracle, MapDimensions, MapOracle,
+    StaticTile,
 };
 use crate::{GameConfig, ItemHandle, Position};
 
@@ -40,7 +40,7 @@ pub struct OracleSnapshot {
     pub map: MapSnapshot,
     pub items: ItemsSnapshot,
     pub actors: ActorsSnapshot,
-    pub tables: TablesSnapshot,
+    pub actions: ActionSnapshot,
     pub config: ConfigSnapshot,
 }
 
@@ -49,14 +49,14 @@ impl OracleSnapshot {
         map: MapSnapshot,
         items: ItemsSnapshot,
         actors: ActorsSnapshot,
-        tables: TablesSnapshot,
+        actions: ActionSnapshot,
         config: ConfigSnapshot,
     ) -> Self {
         Self {
             map,
             items,
             actors,
-            tables,
+            actions,
             config,
         }
     }
@@ -70,19 +70,70 @@ impl OracleSnapshot {
     #[cfg(feature = "std")]
     pub fn from_oracles(
         map: &dyn MapOracle,
-        _items: &dyn ItemOracle,
+        items: &dyn ItemOracle,
         actors: &dyn ActorOracle,
-        tables: &dyn TablesOracle,
+        actions: &dyn ActionOracle,
         config: &dyn ConfigOracle,
         actor_ids: &[String],
     ) -> Self {
         Self::new(
             MapSnapshot::from_oracle(map),
-            ItemsSnapshot::empty(), // TODO: Need item handles from scenario
+            ItemsSnapshot::from_oracle(items),
             ActorsSnapshot::from_oracle(actors, actor_ids),
-            TablesSnapshot::from_oracle(tables),
+            ActionSnapshot::from_oracle(actions),
             ConfigSnapshot::from_oracle(config),
         )
+    }
+
+    /// Computes a deterministic SHA-256 hash of the entire oracle snapshot.
+    ///
+    /// This is used as the "oracle root" for ZK proofs, providing a cryptographic
+    /// commitment to all static game content (maps, items, actors, tables, config).
+    ///
+    /// # Design
+    ///
+    /// - Simple SHA-256 hash (hardware-accelerated in RISC0 zkVM)
+    /// - Deterministic binary serialization using bincode
+    /// - BTreeMap in ActionSnapshot ensures deterministic ordering
+    ///
+    /// # Serialization
+    ///
+    /// Requires the `serde` feature. Works in both std and no_std (zkvm) environments.
+    #[cfg(feature = "serde")]
+    pub fn compute_oracle_root(&self) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+
+        let mut hasher = Sha256::new();
+
+        // Hash all oracle components in deterministic order
+        // Using bincode for consistent binary serialization
+
+        // 1. Map snapshot (dimensions + tiles)
+        if let Ok(map_bytes) = bincode::serialize(&self.map) {
+            hasher.update(&map_bytes);
+        }
+
+        // 2. Items snapshot
+        if let Ok(items_bytes) = bincode::serialize(&self.items) {
+            hasher.update(&items_bytes);
+        }
+
+        // 3. Actors snapshot
+        if let Ok(actors_bytes) = bincode::serialize(&self.actors) {
+            hasher.update(&actors_bytes);
+        }
+
+        // 4. Actions snapshot (BTreeMap ensures deterministic order)
+        if let Ok(actions_bytes) = bincode::serialize(&self.actions) {
+            hasher.update(&actions_bytes);
+        }
+
+        // 5. Config snapshot
+        if let Ok(config_bytes) = bincode::serialize(&self.config) {
+            hasher.update(&config_bytes);
+        }
+
+        hasher.finalize().into()
     }
 }
 
@@ -121,7 +172,7 @@ impl MapSnapshot {
 }
 
 /// Snapshot of items oracle data
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ItemsSnapshot {
     pub items: Vec<(ItemHandle, ItemDefinition)>,
@@ -138,13 +189,12 @@ impl ItemsSnapshot {
 
     /// Creates an items snapshot from an ItemOracle.
     ///
-    /// Note: This requires the list of all item handles to query.
+    /// Includes all item definitions available in the oracle.
     #[cfg(feature = "std")]
-    pub fn from_oracle(oracle: &dyn ItemOracle, handles: &[ItemHandle]) -> Self {
-        let items: Vec<(ItemHandle, ItemDefinition)> = handles
-            .iter()
-            .filter_map(|&handle| oracle.definition(handle).map(|def| (handle, def)))
-            .collect();
+    pub fn from_oracle(oracle: &dyn ItemOracle) -> Self {
+        let all_defs = oracle.all_definitions();
+        let items: Vec<(ItemHandle, ItemDefinition)> =
+            all_defs.into_iter().map(|def| (def.handle, def)).collect();
 
         Self::new(items)
     }
@@ -202,35 +252,26 @@ impl ActorsSnapshot {
 
 /// Snapshot of tables oracle data
 ///
-/// This snapshot captures all game balance values for deterministic
+/// Snapshot of action profile oracle data.
+///
+/// This snapshot captures all action profiles for deterministic
 /// execution in zkVM and future on-chain verification.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct TablesSnapshot {
-    pub action_costs: super::ActionCosts,
-    pub combat: super::CombatParams,
-    pub speed: super::SpeedParams,
+pub struct ActionSnapshot {
     pub action_profiles: BTreeMap<crate::action::ActionKind, crate::action::ActionProfile>,
 }
 
-impl TablesSnapshot {
+impl ActionSnapshot {
     pub fn new(
-        action_costs: super::ActionCosts,
-        combat: super::CombatParams,
-        speed: super::SpeedParams,
         action_profiles: BTreeMap<crate::action::ActionKind, crate::action::ActionProfile>,
     ) -> Self {
-        Self {
-            action_costs,
-            combat,
-            speed,
-            action_profiles,
-        }
+        Self { action_profiles }
     }
 
-    /// Creates a tables snapshot from a TablesOracle.
+    /// Creates an action snapshot from an ActionOracle.
     #[cfg(feature = "std")]
-    pub fn from_oracle(oracle: &dyn TablesOracle) -> Self {
+    pub fn from_oracle(oracle: &dyn ActionOracle) -> Self {
         // Load all action profiles from the oracle
         let mut action_profiles = BTreeMap::new();
         for &kind in crate::action::ActionKind::all_variants() {
@@ -238,12 +279,7 @@ impl TablesSnapshot {
             action_profiles.insert(kind, profile);
         }
 
-        Self::new(
-            oracle.action_costs(),
-            oracle.combat(),
-            oracle.speed(),
-            action_profiles,
-        )
+        Self::new(action_profiles)
     }
 }
 
@@ -318,6 +354,15 @@ impl<'a> ItemOracle for SnapshotItemOracle<'a> {
             .find(|(h, _)| *h == handle)
             .map(|(_, def)| def.clone())
     }
+
+    #[cfg(feature = "std")]
+    fn all_definitions(&self) -> Vec<ItemDefinition> {
+        self.snapshot
+            .items
+            .iter()
+            .map(|(_, def)| def.clone())
+            .collect()
+    }
 }
 
 /// Guest-side adapter for ActorOracle backed by ActorsSnapshot
@@ -341,30 +386,18 @@ impl<'a> ActorOracle for SnapshotActorOracle<'a> {
     }
 }
 
-/// Guest-side adapter for TablesOracle backed by TablesSnapshot
-pub struct SnapshotTablesOracle<'a> {
-    snapshot: &'a TablesSnapshot,
+/// Guest-side adapter for ActionOracle backed by ActionSnapshot
+pub struct SnapshotActionOracle<'a> {
+    snapshot: &'a ActionSnapshot,
 }
 
-impl<'a> SnapshotTablesOracle<'a> {
-    pub fn new(snapshot: &'a TablesSnapshot) -> Self {
+impl<'a> SnapshotActionOracle<'a> {
+    pub fn new(snapshot: &'a ActionSnapshot) -> Self {
         Self { snapshot }
     }
 }
 
-impl<'a> TablesOracle for SnapshotTablesOracle<'a> {
-    fn action_costs(&self) -> super::ActionCosts {
-        self.snapshot.action_costs
-    }
-
-    fn combat(&self) -> super::CombatParams {
-        self.snapshot.combat
-    }
-
-    fn speed(&self) -> super::SpeedParams {
-        self.snapshot.speed
-    }
-
+impl<'a> ActionOracle for SnapshotActionOracle<'a> {
     fn action_profile(&self, kind: crate::action::ActionKind) -> crate::action::ActionProfile {
         self.snapshot
             .action_profiles
@@ -403,7 +436,7 @@ impl<'a> ConfigOracle for SnapshotConfigOracle<'a> {
 pub struct SnapshotOracleBundle<'a> {
     pub map: SnapshotMapOracle<'a>,
     pub items: SnapshotItemOracle<'a>,
-    pub tables: SnapshotTablesOracle<'a>,
+    pub actions: SnapshotActionOracle<'a>,
     pub actors: SnapshotActorOracle<'a>,
     pub config: SnapshotConfigOracle<'a>,
     pub rng: super::PcgRng,
@@ -415,7 +448,7 @@ impl<'a> SnapshotOracleBundle<'a> {
         Self {
             map: SnapshotMapOracle::new(&snapshot.map),
             items: SnapshotItemOracle::new(&snapshot.items),
-            tables: SnapshotTablesOracle::new(&snapshot.tables),
+            actions: SnapshotActionOracle::new(&snapshot.actions),
             actors: SnapshotActorOracle::new(&snapshot.actors),
             config: SnapshotConfigOracle::new(&snapshot.config),
             rng: super::PcgRng, // PcgRng is stateless
@@ -429,7 +462,7 @@ impl<'a> SnapshotOracleBundle<'a> {
         '_,
         SnapshotMapOracle<'a>,
         SnapshotItemOracle<'a>,
-        SnapshotTablesOracle<'a>,
+        SnapshotActionOracle<'a>,
         SnapshotActorOracle<'a>,
         SnapshotConfigOracle<'a>,
         super::PcgRng,
@@ -437,7 +470,7 @@ impl<'a> SnapshotOracleBundle<'a> {
         super::Env::with_all(
             &self.map,
             &self.items,
-            &self.tables,
+            &self.actions,
             &self.actors,
             &self.config,
             &self.rng,

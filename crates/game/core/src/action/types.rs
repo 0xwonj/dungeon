@@ -112,8 +112,14 @@ pub enum ActionInput {
     /// No input required (self only).
     None,
 
-    /// Target a specific entity.
-    Entity(EntityId),
+    /// Target a specific entity (Actor, Item, Prop, etc.).
+    ///
+    /// The effect implementation determines how to interpret this entity.
+    /// For example:
+    /// - DamageEffect interprets this as an Actor to damage
+    /// - PickupItemEffect interprets this as an Item to pick up
+    /// - InteractEffect interprets this as a Prop or Actor to interact with
+    Target(EntityId),
 
     /// Target a specific position.
     Position(Position),
@@ -122,7 +128,13 @@ pub enum ActionInput {
     Direction(CardinalDirection),
 
     /// Target multiple entities.
-    Entities(Vec<EntityId>),
+    Targets(Vec<EntityId>),
+
+    /// Target an inventory slot.
+    ///
+    /// Used by item-related effects (UseConsumableEffect, EquipItemEffect)
+    /// to specify which inventory slot contains the item to use/equip.
+    InventorySlot(u8),
 }
 
 // ============================================================================
@@ -240,6 +252,24 @@ pub enum AppliedValue {
     Summon {
         /// The newly created entity ID.
         entity_id: EntityId,
+    },
+
+    /// Item was acquired from world and added to inventory.
+    ItemAcquired {
+        /// The item entity ID that was acquired.
+        item_id: EntityId,
+        /// The item handle (definition reference).
+        handle: crate::state::ItemHandle,
+        /// How many were acquired.
+        quantity: u16,
+    },
+
+    /// Item was used from inventory.
+    ItemUsed {
+        /// The inventory slot that was used.
+        slot: u8,
+        /// The item handle that was used.
+        handle: crate::state::ItemHandle,
     },
 
     /// No value (for effects like Wait, or failed effects).

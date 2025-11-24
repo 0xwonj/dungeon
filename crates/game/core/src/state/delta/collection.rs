@@ -43,8 +43,8 @@ impl<TChanges> CollectionChanges<TChanges> {
         }
     }
 
-    /// Creates an empty collection delta (alias for zkvm compatibility).
-    #[cfg(feature = "zkvm")]
+    /// Creates an empty collection delta (alias for zkvm guest compatibility).
+    #[cfg(target_os = "zkvm")]
     #[inline]
     pub(crate) fn empty() -> Self {
         Self::new()

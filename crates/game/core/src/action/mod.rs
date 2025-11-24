@@ -21,12 +21,14 @@
 //! - `types`: Core types (CharacterAction, ActionInput, ActionResult)
 //! - `execute`: Action execution pipeline (resolve targets + apply effects)
 //! - `system`: System actions (PrepareTurn, ActionCost, Activation)
+//! - `root`: Action root computation for ZK proofs
 
 pub mod effect;
 pub mod error;
 pub mod execute;
 pub mod formula;
 pub mod profile;
+pub mod root;
 pub mod system;
 pub mod targeting;
 pub mod types;
@@ -34,12 +36,15 @@ pub mod types;
 // Re-export commonly used types
 pub use effect::{
     ActionEffect, Condition, Displacement, EffectKind, ExecutionPhase, InteractionType,
+    RestoreResourceEffect,
 };
-pub use error::{ActionCostError, ActionError, ActivationError, RemoveFromActiveError, TurnError};
+pub use error::{ActionError, ActivationError, DeactivateError, RemoveFromWorldError, TurnError};
 pub use execute::{EffectContext, apply, post_validate, pre_validate};
 pub use formula::Formula;
 pub use profile::{ActionKind, ActionProfile, ActionTag, Requirement, ResourceCost};
-pub use system::{ActionCostAction, ActivationAction, PrepareTurnAction, RemoveFromActiveAction};
+#[cfg(feature = "serde")]
+pub use root::compute_actions_root;
+pub use system::{ActivationAction, DeactivateAction, PrepareTurnAction, RemoveFromWorldAction};
 pub use targeting::TargetingMode;
 pub use types::{
     ActionInput, ActionResult, ActionSummary, AppliedValue, CardinalDirection, CharacterAction,
@@ -77,14 +82,17 @@ pub trait ActionTransition {
     }
 }
 
-/// System action variants (turn management, cost application, activation).
+/// System action variants (turn management, activation, entity lifecycle).
+///
+/// Note: Action cost application is now integrated into character action execution
+/// to avoid the overhead of a separate system action.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SystemActionKind {
     PrepareTurn(PrepareTurnAction),
-    ActionCost(ActionCostAction),
     Activation(ActivationAction),
-    RemoveFromActive(RemoveFromActiveAction),
+    Deactivate(DeactivateAction),
+    RemoveFromWorld(RemoveFromWorldAction),
 }
 
 /// Top-level action enum that can be either a character action or system action.
@@ -132,16 +140,16 @@ impl Action {
         let base_cost = match self {
             Action::Character(action) => {
                 // Get base cost from action profile
-                env.tables()
-                    .expect("TablesOracle must be available for action cost calculation")
+                env.actions()
+                    .expect("ActionOracle must be available for action cost calculation")
                     .action_profile(action.kind)
                     .base_cost
             }
             Action::System { kind } => match kind {
                 SystemActionKind::PrepareTurn(action) => action.cost(env),
-                SystemActionKind::ActionCost(action) => action.cost(env),
                 SystemActionKind::Activation(action) => action.cost(env),
-                SystemActionKind::RemoveFromActive(action) => action.cost(env),
+                SystemActionKind::Deactivate(action) => action.cost(env),
+                SystemActionKind::RemoveFromWorld(action) => action.cost(env),
             },
         };
 
@@ -156,9 +164,9 @@ impl Action {
             Action::Character(action) => action.kind.as_snake_case(),
             Action::System { kind } => match kind {
                 SystemActionKind::PrepareTurn(_) => "prepare_turn",
-                SystemActionKind::ActionCost(_) => "action_cost",
                 SystemActionKind::Activation(_) => "activation",
-                SystemActionKind::RemoveFromActive(_) => "remove_from_active",
+                SystemActionKind::Deactivate(_) => "deactivate",
+                SystemActionKind::RemoveFromWorld(_) => "remove_from_world",
             },
         }
     }
@@ -170,15 +178,21 @@ impl From<PrepareTurnAction> for SystemActionKind {
     }
 }
 
-impl From<ActionCostAction> for SystemActionKind {
-    fn from(action: ActionCostAction) -> Self {
-        Self::ActionCost(action)
-    }
-}
-
 impl From<ActivationAction> for SystemActionKind {
     fn from(action: ActivationAction) -> Self {
         Self::Activation(action)
+    }
+}
+
+impl From<DeactivateAction> for SystemActionKind {
+    fn from(action: DeactivateAction) -> Self {
+        Self::Deactivate(action)
+    }
+}
+
+impl From<RemoveFromWorldAction> for SystemActionKind {
+    fn from(action: RemoveFromWorldAction) -> Self {
+        Self::RemoveFromWorld(action)
     }
 }
 

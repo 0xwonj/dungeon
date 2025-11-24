@@ -16,10 +16,10 @@ pub use delta::{
 };
 pub use error::StateError;
 pub use types::{
-    ActionAbilities, ActionAbility, ActorState, ArmorKind, AttackType, EntitiesState, EntityId,
-    Equipment, EquipmentBuilder, InventorySlot, InventoryState, ItemHandle, ItemState,
-    PassiveAbilities, PassiveAbility, PassiveKind, Position, PropKind, PropState, StatusEffect,
-    StatusEffectKind, StatusEffects, Tick, TileMap, TileView, TurnState, WeaponKind, WorldState,
+    ActionAbilities, ActionAbility, ActorState, EntitiesState, EntityId, Equipment,
+    EquipmentBuilder, InventorySlot, InventoryState, ItemHandle, ItemState, PassiveAbilities,
+    PassiveAbility, PassiveKind, Position, PropKind, PropState, StatusEffect, StatusEffectKind,
+    StatusEffects, Tick, TileMap, TileView, TurnState, WorldState,
 };
 
 /// Canonical snapshot of the deterministic game state.
@@ -105,6 +105,29 @@ impl GameState {
             .unwrap_or(false)
     }
 
+    /// Returns the position of an actor by ID.
+    ///
+    /// Returns `None` if the actor is not found or has no position.
+    ///
+    /// In debug builds, verifies that the actor's position matches the occupancy map.
+    pub fn actor_position(&self, id: EntityId) -> Option<Position> {
+        let pos = self.entities.position(id)?;
+
+        // Debug-only: Verify occupancy map consistency
+        debug_assert!(
+            self.world
+                .tile_map
+                .occupants(&pos)
+                .map(|occupants| occupants.contains(&id))
+                .unwrap_or(false),
+            "Actor {} has position {:?} but is not in occupancy map at that location",
+            id.0,
+            pos
+        );
+
+        Some(pos)
+    }
+
     /// Allocates a new unique EntityId.
     ///
     /// # Returns
@@ -144,7 +167,7 @@ impl GameState {
     ///
     /// # Arguments
     ///
-    /// * `template` - Actor template defining stats, equipment, abilities
+    /// * `template` - Actor template with resolved trait_profile
     /// * `position` - Starting position on the map
     ///
     /// # Returns
@@ -185,7 +208,7 @@ impl GameState {
     ///
     /// # Arguments
     ///
-    /// * `template` - Actor template defining stats, equipment, abilities
+    /// * `template` - Actor template with resolved trait_profile
     /// * `position` - Starting position on the map
     ///
     /// # Returns
@@ -242,5 +265,41 @@ impl GameState {
         state.turn.active_actors.insert(EntityId::PLAYER);
 
         state
+    }
+
+    /// Returns the current action nonce (sequential action counter).
+    pub fn nonce(&self) -> u64 {
+        self.turn.nonce
+    }
+
+    /// Computes a deterministic SHA-256 hash of the entire game state.
+    ///
+    /// This is used as the "state root" for ZK proofs, providing a cryptographic
+    /// commitment to the complete game state at a specific point in time.
+    ///
+    /// # Design Choice: Simple Hash vs Merkle Tree
+    ///
+    /// For zkVM environments (RISC0, SP1), a simple SHA-256 hash is optimal because:
+    /// - zkVM verifies the entire state transition, not partial state access
+    /// - Merkle trees provide no performance benefit in this context
+    /// - Simpler = fewer constraints = faster proving
+    /// - SHA-256 is hardware-accelerated in RISC0 zkVM
+    ///
+    /// For future custom circuits (Arkworks), Merkle trees may become valuable
+    /// to enable partial state updates and reduce circuit size.
+    ///
+    /// # Serialization
+    ///
+    /// Uses bincode for deterministic binary serialization. Bincode serialization
+    /// is stable across serialize-deserialize round-trips for our state structures.
+    #[cfg(feature = "serde")]
+    pub fn compute_state_root(&self) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+
+        let serialized =
+            bincode::serialize(self).expect("GameState serialization should never fail");
+        let mut hasher = Sha256::new();
+        hasher.update(&serialized);
+        hasher.finalize().into()
     }
 }

@@ -2,18 +2,19 @@
 //!
 //! Handlers react to GameEvents and generate system actions in response.
 //! These are used by SystemActionProvider to implement game logic.
+//!
+//! Note: Action cost application is now integrated into character action execution
+//! within game-core, so ActionCostHandler has been removed.
 
-mod action_cost;
 mod activation;
 mod death;
 
-pub use action_cost::ActionCostHandler;
 pub use activation::ActivationHandler;
 pub use death::DeathHandler;
 
 use game_core::GameState;
 
-use crate::oracle::OracleManager;
+use crate::oracle::OracleBundle;
 
 /// Criticality level for handler errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,6 +33,6 @@ pub struct EventContext<'a> {
     pub state_before: &'a GameState,
     /// Game state after the action that produced the event
     pub state_after: &'a GameState,
-    /// Oracle manager for accessing game content
-    pub oracles: &'a OracleManager,
+    /// Oracle bundle for accessing game content
+    pub oracles: &'a OracleBundle,
 }

@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::loaders::{
-    ActorLoader, ConfigLoader, ItemLoader, LoadResult, MapLoader, TablesLoader, load_trait_registry,
+    ActorLoader, ConfigLoader, ItemLoader, LoadResult, MapLoader, load_trait_registry,
 };
 use crate::traits::TraitRegistry;
 
@@ -43,14 +43,6 @@ impl ContentFactory {
         ConfigLoader::load(&path)
     }
 
-    /// Load game rules tables from `tables.toml`.
-    ///
-    /// **PLACEHOLDER**: Currently returns empty data since TablesOracle has no methods.
-    pub fn load_tables(&self) -> LoadResult<()> {
-        let path = self.data_dir.join("tables.toml");
-        TablesLoader::load(&path)
-    }
-
     /// Load item catalog from `items.ron`.
     pub fn load_items(&self) -> LoadResult<Vec<game_core::ItemDefinition>> {
         let path = self.data_dir.join("items.ron");
@@ -65,7 +57,9 @@ impl ContentFactory {
 
     /// Load actor catalog from `actors.ron`.
     ///
-    /// Loads both players and NPCs with their templates, providers, and trait profiles.
+    /// Loads both players and NPCs with their templates and trait profiles.
+    ///
+    /// Note: ActorTemplate now contains provider_kind field directly.
     ///
     /// # Arguments
     ///
@@ -73,14 +67,7 @@ impl ContentFactory {
     pub fn load_actors(
         &self,
         trait_registry: &TraitRegistry,
-    ) -> LoadResult<
-        Vec<(
-            String,
-            game_core::ActorTemplate,
-            crate::loaders::ProviderKindSpec,
-            crate::traits::TraitProfile,
-        )>,
-    > {
+    ) -> LoadResult<Vec<(String, game_core::ActorTemplate)>> {
         let path = self.data_dir.join("actors.ron");
         ActorLoader::load(&path, trait_registry)
     }

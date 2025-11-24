@@ -53,7 +53,8 @@ impl<'a> GameEngine<'a> {
     /// - Non-system actions must be from `state.turn.current_actor`
     ///
     /// Returns `ExecutionOutcome` containing both state delta and action result.
-    /// When `zkvm` feature is enabled, delta computation is skipped.
+    /// When running inside zkVM guest (`target_os = "zkvm"`), delta computation is skipped
+    /// to reduce proof generation overhead. Runtime/host always computes delta for events.
     pub fn execute(
         &mut self,
         env: GameEnv<'_>,
@@ -62,7 +63,7 @@ impl<'a> GameEngine<'a> {
         // Mandatory actor validation
         self.validate_actor(action)?;
 
-        #[cfg(not(feature = "zkvm"))]
+        #[cfg(not(target_os = "zkvm"))]
         let before = self.state.clone();
 
         // Execute the action through transition pipeline and get result
@@ -71,8 +72,8 @@ impl<'a> GameEngine<'a> {
         // Increment nonce after successful execution
         self.state.turn.nonce += 1;
 
-        // Generate delta capturing all state changes
-        #[cfg(not(feature = "zkvm"))]
+        // Generate delta capturing all state changes (host/runtime only)
+        #[cfg(not(target_os = "zkvm"))]
         {
             let delta = StateDelta::from_states(action.clone(), &before, self.state);
             Ok(ExecutionOutcome {
@@ -81,8 +82,8 @@ impl<'a> GameEngine<'a> {
             })
         }
 
-        // In zkvm mode, skip delta computation and return empty delta
-        #[cfg(feature = "zkvm")]
+        // In zkVM guest, skip delta computation to reduce proof overhead
+        #[cfg(target_os = "zkvm")]
         Ok(ExecutionOutcome {
             delta: StateDelta::empty(),
             action_result,

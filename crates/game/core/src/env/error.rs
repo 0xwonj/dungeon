@@ -25,9 +25,9 @@ pub enum OracleError {
     #[error("ActorOracle not available")]
     ActorsNotAvailable,
 
-    /// TablesOracle is not available in the environment.
-    #[error("TablesOracle not available")]
-    TablesNotAvailable,
+    /// ActionOracle is not available in the environment.
+    #[error("ActionOracle not available")]
+    ActionsNotAvailable,
 
     /// ConfigOracle is not available in the environment.
     #[error("ConfigOracle not available")]
@@ -59,7 +59,7 @@ impl GameError for OracleError {
         use OracleError::*;
         match self {
             // Missing oracles are fatal - engine cannot proceed
-            MapNotAvailable | ItemsNotAvailable | ActorsNotAvailable | TablesNotAvailable
+            MapNotAvailable | ItemsNotAvailable | ActorsNotAvailable | ActionsNotAvailable
             | ConfigNotAvailable | RngNotAvailable => ErrorSeverity::Fatal,
 
             // Not found errors are validation errors - invalid references
@@ -76,7 +76,7 @@ impl GameError for OracleError {
             MapNotAvailable => "ORACLE_MAP_NOT_AVAILABLE",
             ItemsNotAvailable => "ORACLE_ITEMS_NOT_AVAILABLE",
             ActorsNotAvailable => "ORACLE_ACTORS_NOT_AVAILABLE",
-            TablesNotAvailable => "ORACLE_TABLES_NOT_AVAILABLE",
+            ActionsNotAvailable => "ORACLE_ACTIONS_NOT_AVAILABLE",
             ConfigNotAvailable => "ORACLE_CONFIG_NOT_AVAILABLE",
             RngNotAvailable => "ORACLE_RNG_NOT_AVAILABLE",
             PositionOutOfBounds(_) => "ORACLE_POSITION_OUT_OF_BOUNDS",

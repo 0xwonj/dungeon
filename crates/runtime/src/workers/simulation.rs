@@ -9,12 +9,12 @@ use game_core::engine::{ExecuteError, TransitionPhase};
 use game_core::{
     Action, EntityId, GameEngine, GameState, PrepareTurnAction, SystemActionKind, Tick,
 };
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::api::{Result, RuntimeError};
 use crate::events::{Event, EventBus, GameStateEvent};
 use crate::handlers::HandlerCriticality;
-use crate::oracle::OracleManager;
+use crate::oracle::OracleBundle;
 use crate::providers::SystemActionProvider;
 
 /// Commands that can be sent to the simulation worker
@@ -31,6 +31,11 @@ pub enum Command {
     },
     /// Query the current game state (read-only).
     QueryState { reply: oneshot::Sender<GameState> },
+    /// Restore game state from a checkpoint (load game).
+    RestoreState {
+        state: GameState,
+        reply: oneshot::Sender<Result<()>>,
+    },
 }
 
 /// Background task that processes gameplay commands.
@@ -42,7 +47,7 @@ pub enum Command {
 /// This follows the "functional core, imperative shell" principle.
 pub struct SimulationWorker {
     state: GameState,
-    oracles: OracleManager,
+    oracles: OracleBundle,
     command_rx: mpsc::Receiver<Command>,
     event_bus: EventBus,
     system_provider: SystemActionProvider,
@@ -52,7 +57,7 @@ impl SimulationWorker {
     /// Creates a new simulation worker.
     pub fn new(
         state: GameState,
-        oracles: OracleManager,
+        oracles: OracleBundle,
         command_rx: mpsc::Receiver<Command>,
         event_bus: EventBus,
         system_provider: SystemActionProvider,
@@ -101,6 +106,12 @@ impl SimulationWorker {
             Command::QueryState { reply } => {
                 if reply.send(self.state.clone()).is_err() {
                     debug!("QueryState reply channel closed (caller dropped)");
+                }
+            }
+            Command::RestoreState { state, reply } => {
+                let result = self.handle_restore_state(state);
+                if reply.send(result).is_err() {
+                    debug!("RestoreState reply channel closed (caller dropped)");
                 }
             }
         }
@@ -167,7 +178,7 @@ impl SimulationWorker {
     fn execute_action_impl(
         action: &Action,
         state: &mut GameState,
-        oracles: &OracleManager,
+        oracles: &OracleBundle,
         event_bus: &EventBus,
     ) -> std::result::Result<game_core::StateDelta, ExecuteError> {
         // Capture state before execution
@@ -202,6 +213,29 @@ impl SimulationWorker {
         Ok(delta)
     }
 
+    /// Restores the game state from a checkpoint (load game).
+    ///
+    /// Replaces the current game state entirely with the loaded state.
+    /// Publishes a StateRestored event to notify subscribers.
+    fn handle_restore_state(&mut self, state: GameState) -> Result<()> {
+        let old_nonce = self.state.nonce();
+        let new_nonce = state.nonce();
+
+        // Replace the entire state
+        self.state = state;
+
+        // Publish event
+        self.event_bus
+            .publish(Event::GameState(GameStateEvent::StateRestored {
+                from_nonce: old_nonce,
+                to_nonce: new_nonce,
+            }));
+
+        tracing::info!("Game state restored: nonce {} → {}", old_nonce, new_nonce);
+
+        Ok(())
+    }
+
     /// Handles player/NPC action with full workflow:
     /// execute → cascading system actions
     ///
@@ -229,7 +263,7 @@ impl SimulationWorker {
                     error,
                     ExecuteError::Character(ref e) if matches!(e.error, game_core::ActionError::ActorDead)
                 ) {
-                    tracing::warn!(
+                    debug!(
                         target: "runtime::worker",
                         actor = ?action.actor(),
                         "Dead actor attempted action, skipping turn"
@@ -238,7 +272,7 @@ impl SimulationWorker {
                 }
 
                 // For other errors, try Wait fallback
-                tracing::warn!(
+                debug!(
                     target: "runtime::worker",
                     actor = ?action.actor(),
                     error = %error.message(),
@@ -275,8 +309,8 @@ impl SimulationWorker {
     ///
     /// This is the core of the reactive system action generation:
     /// 1. Provider analyzes delta and generates system actions
-    /// 2. Execute generated system actions
-    /// 3. New actions may generate more system actions (cascading)
+    /// 2. Execute each system action individually
+    /// 3. Each action may generate new deltas that trigger more system actions (cascading)
     /// 4. Repeat until no new actions are generated
     fn process_cascading(
         &mut self,
@@ -301,27 +335,33 @@ impl SimulationWorker {
                     &self.oracles,
                 );
 
-                if !reactive_actions.is_empty() {
-                    debug!(
-                        target: "runtime::worker",
-                        pass = pass,
-                        action_count = reactive_actions.len(),
-                        "Processing system actions"
-                    );
-                }
+                tracing::debug!(
+                    target: "runtime::worker",
+                    pass = pass,
+                    action_count = reactive_actions.len(),
+                    delta_empty = delta.is_empty(),
+                    action = ?delta.action.as_snake_case(),
+                    "Cascading: generated {} system actions",
+                    reactive_actions.len()
+                );
 
-                // Execute all generated system actions
+                // Execute each action individually
                 for (action, handler_name, criticality) in reactive_actions {
-                    // Clone state before executing to track before/after
-                    let state_before_action = self.state.clone();
+                    // Capture state before this action
+                    let action_state_before = self.state.clone();
 
-                    // Clone state for execution (borrow checker requirement)
-                    let mut working_state = self.state.clone();
-                    match self.execute_action(&action, &mut working_state) {
-                        Ok(new_delta) => {
-                            // Commit working state
-                            self.state = working_state;
-                            next_deltas.push((new_delta, state_before_action));
+                    // Execute action
+                    match Self::execute_action_impl(
+                        &action,
+                        &mut self.state,
+                        &self.oracles,
+                        &self.event_bus,
+                    ) {
+                        Ok(action_delta) => {
+                            // If action produced changes, queue for next pass
+                            if !action_delta.is_empty() {
+                                next_deltas.push((action_delta, action_state_before));
+                            }
                         }
                         Err(e) => {
                             // Handle based on criticality
@@ -331,7 +371,7 @@ impl SimulationWorker {
                                         target: "runtime::worker",
                                         handler = handler_name,
                                         error = ?e,
-                                        "Critical handler failed"
+                                        "Critical system action failed - aborting cascading"
                                     );
                                     return Err(e);
                                 }
@@ -340,14 +380,14 @@ impl SimulationWorker {
                                         target: "runtime::worker",
                                         handler = handler_name,
                                         error = ?e,
-                                        "Handler failed, continuing"
+                                        "Important system action failed - continuing cascading"
                                     );
                                 }
                                 HandlerCriticality::Optional => {
                                     debug!(
                                         target: "runtime::worker",
                                         handler = handler_name,
-                                        "Optional handler failed"
+                                        "Optional system action failed - continuing cascading"
                                     );
                                 }
                             }
@@ -363,7 +403,7 @@ impl SimulationWorker {
             }
 
             if pass == MAX_PASSES - 1 {
-                tracing::warn!(
+                warn!(
                     target: "runtime::worker",
                     "Cascading hit max passes limit (possible infinite loop)"
                 );
@@ -383,13 +423,13 @@ impl SimulationWorker {
             ExecuteError::PrepareTurn(phase_error) => {
                 (phase_error.phase, phase_error.error.to_string())
             }
-            ExecuteError::ActionCost(phase_error) => {
-                (phase_error.phase, phase_error.error.to_string())
-            }
             ExecuteError::Activation(phase_error) => {
                 (phase_error.phase, phase_error.error.to_string())
             }
-            ExecuteError::RemoveFromActive(phase_error) => {
+            ExecuteError::Deactivate(phase_error) => {
+                (phase_error.phase, phase_error.error.to_string())
+            }
+            ExecuteError::RemoveFromWorld(phase_error) => {
                 (phase_error.phase, phase_error.error.to_string())
             }
             ExecuteError::HookChainTooDeep {

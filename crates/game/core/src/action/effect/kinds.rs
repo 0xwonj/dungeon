@@ -6,13 +6,14 @@
 use crate::action::formula::Formula;
 use crate::action::types::DamageType;
 use crate::state::Tick;
-use crate::state::types::status::StatusEffectKind;
+use crate::state::types::StatusEffectKind;
 use crate::stats::ResourceKind;
 
 use super::condition::Condition;
 use super::damage::DamageEffect;
 use super::displacement::Displacement;
 use super::interaction::InteractionType;
+use super::item::{AcquireItemEffect, UseConsumableEffect};
 use super::movement::{MoveSelfEffect, MoveTargetEffect, SwapEffect};
 use super::resource::{RestoreResourceEffect, SetResourceEffect};
 use super::status::{ApplyStatusEffect, ClearBuffsEffect, ClearDebuffsEffect, RemoveStatusEffect};
@@ -49,6 +50,12 @@ pub enum EffectKind {
     MoveSelf(MoveSelfEffect),
     MoveTarget(MoveTargetEffect),
     Swap(SwapEffect),
+
+    // ========================================================================
+    // Items
+    // ========================================================================
+    AcquireItem(AcquireItemEffect),
+    UseConsumable(UseConsumableEffect),
 
     // ========================================================================
     // Complex/Unimplemented (keeping as enum variants for now)
@@ -148,6 +155,8 @@ impl EffectKind {
             Self::MoveSelf(e) => e.pre_validate(ctx),
             Self::MoveTarget(e) => e.pre_validate(ctx),
             Self::Swap(e) => e.pre_validate(ctx),
+            Self::AcquireItem(e) => e.pre_validate(ctx),
+            Self::UseConsumable(e) => e.pre_validate(ctx),
 
             // Unimplemented effects - no validation yet
             Self::Summon { .. }
@@ -176,6 +185,8 @@ impl EffectKind {
             Self::MoveSelf(e) => e.apply(ctx),
             Self::MoveTarget(e) => e.apply(ctx),
             Self::Swap(e) => e.apply(ctx),
+            Self::AcquireItem(e) => e.apply(ctx),
+            Self::UseConsumable(e) => e.apply(ctx),
 
             // Unimplemented effects
             Self::Summon { .. } => Err(crate::action::error::ActionError::NotImplemented(
@@ -214,6 +225,8 @@ impl EffectKind {
             Self::MoveSelf(e) => e.post_validate(ctx),
             Self::MoveTarget(e) => e.post_validate(ctx),
             Self::Swap(e) => e.post_validate(ctx),
+            Self::AcquireItem(e) => e.post_validate(ctx),
+            Self::UseConsumable(e) => e.post_validate(ctx),
 
             // Unimplemented effects - no validation yet
             Self::Summon { .. }

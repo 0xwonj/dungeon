@@ -2,32 +2,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use runtime::{
-    ActorOracleImpl, ConfigOracleImpl, ItemOracleImpl, MapOracleImpl, OracleManager,
-    TablesOracleImpl,
-};
+use runtime::{ActionOracleImpl, ActorOracleImpl, ConfigOracleImpl, ItemOracleImpl, MapOracleImpl};
 
-/// Bundle of oracle implementations that the runtime consumes.
-#[derive(Clone)]
-pub struct OracleBundle {
-    pub map: Arc<MapOracleImpl>,
-    pub items: Arc<ItemOracleImpl>,
-    pub tables: Arc<TablesOracleImpl>,
-    pub actors: Arc<ActorOracleImpl>,
-    pub config: Arc<ConfigOracleImpl>,
-}
-
-impl OracleBundle {
-    pub fn manager(&self) -> OracleManager {
-        OracleManager::new(
-            Arc::clone(&self.map),
-            Arc::clone(&self.items),
-            Arc::clone(&self.tables),
-            Arc::clone(&self.actors),
-            Arc::clone(&self.config),
-        )
-    }
-}
+// Re-export OracleBundle from runtime
+pub use runtime::OracleBundle;
 
 pub trait OracleFactory: Send + Sync {
     fn build(&self) -> OracleBundle;
@@ -102,32 +80,9 @@ impl ContentOracleFactory {
     }
 }
 
-// Convert game-content's ProviderKindSpec to runtime's ProviderKind
-fn convert_provider_kind(spec: game_content::ProviderKindSpec) -> runtime::ProviderKind {
-    use game_content::{AiKindSpec, InteractiveKindSpec, ProviderKindSpec};
-    use runtime::{AiKind, InteractiveKind, ProviderKind};
-
-    match spec {
-        ProviderKindSpec::Interactive(i) => ProviderKind::Interactive(match i {
-            InteractiveKindSpec::CliInput => InteractiveKind::CliInput,
-            InteractiveKindSpec::NetworkInput => InteractiveKind::NetworkInput,
-            InteractiveKindSpec::Replay => InteractiveKind::Replay,
-        }),
-        ProviderKindSpec::Ai(a) => ProviderKind::Ai(match a {
-            AiKindSpec::Wait => AiKind::Wait,
-            AiKindSpec::Aggressive => AiKind::Aggressive,
-            AiKindSpec::Passive => AiKind::Passive,
-            AiKindSpec::Scripted => AiKind::Scripted,
-            AiKindSpec::Utility => AiKind::Utility,
-        }),
-        ProviderKindSpec::Custom(id) => ProviderKind::Custom(id),
-    }
-}
-
 impl OracleFactory for ContentOracleFactory {
     fn build(&self) -> OracleBundle {
         use game_content::ContentFactory;
-        use runtime::AiConfig;
 
         // Verify data directory exists
         if !self.data_dir.exists() {
@@ -190,17 +145,11 @@ impl OracleFactory for ContentOracleFactory {
             )
         });
 
-        // Build actor oracle with templates and AI configs
+        // Build actor oracle with templates (trait profiles already resolved by ActorLoader)
         let mut actor_oracle = ActorOracleImpl::new();
-        for (actor_id, template, provider_spec, trait_profile) in actor_data {
-            // Convert ProviderKindSpec to runtime::ProviderKind
-            let provider = convert_provider_kind(provider_spec);
-
-            let ai_config = AiConfig {
-                traits: trait_profile,
-                default_provider: provider,
-            };
-            actor_oracle.add(actor_id, template, ai_config);
+        for (actor_id, template) in actor_data {
+            // ActorLoader has already resolved trait_profile and set it in template
+            actor_oracle.add(actor_id, template);
         }
 
         // Build item oracle
@@ -213,15 +162,15 @@ impl OracleFactory for ContentOracleFactory {
         let map_oracle = MapOracleImpl::new(dimensions, tiles);
 
         // Build other oracles
-        let tables_oracle = TablesOracleImpl::new();
+        let actions_oracle = ActionOracleImpl::new();
         let config_oracle = ConfigOracleImpl::new(config);
 
-        OracleBundle {
-            map: Arc::new(map_oracle),
-            items: Arc::new(item_oracle),
-            tables: Arc::new(tables_oracle),
-            actors: Arc::new(actor_oracle),
-            config: Arc::new(config_oracle),
-        }
+        OracleBundle::new(
+            Arc::new(map_oracle),
+            Arc::new(item_oracle),
+            Arc::new(actions_oracle),
+            Arc::new(actor_oracle),
+            Arc::new(config_oracle),
+        )
     }
 }
