@@ -13,8 +13,10 @@ pub use provider::CliActionProvider;
 /// High-level outcome of processing a keyboard event.
 #[derive(Debug)]
 pub enum KeyAction {
-    /// Exit the application.
+    /// Exit the application completely.
     Quit,
+    /// Open start screen (New Game / Continue).
+    OpenStartScreen,
     /// Submit the decoded game action to the runtime.
     Submit(Action),
     /// Toggle between Normal (auto-target) and ExamineManual mode.
@@ -39,6 +41,22 @@ pub enum KeyAction {
     ConfirmTarget,
     /// Pick up item at player's position.
     PickupItem,
+    /// Create a manual checkpoint (save game).
+    SaveGame,
+    /// Open save/load menu to view checkpoints.
+    OpenSaveMenu,
+    /// Navigate up in menu (SaveMenu, Inventory, etc.).
+    MenuUp,
+    /// Navigate down in menu (SaveMenu, Inventory, etc.).
+    MenuDown,
+    /// Confirm menu selection (SaveMenu load, etc.).
+    MenuConfirm,
+    /// Upload action log to Walrus (SaveMenu).
+    UploadToWalrus,
+    /// Submit proof to blockchain (SaveMenu).
+    SubmitProof,
+    /// Create session on blockchain (SaveMenu).
+    CreateSession,
     /// No meaningful command was produced.
     None,
 }
@@ -70,10 +88,12 @@ impl InputHandler {
         use crate::state::AppMode;
 
         match mode {
+            AppMode::StartScreen(_) => self.handle_start_screen_mode(key),
             AppMode::Normal => self.handle_normal_mode(key),
             AppMode::ExamineManual => self.handle_examine_mode(key),
             AppMode::AbilityMenu => self.handle_ability_menu(key),
             AppMode::Targeting(targeting_state) => self.handle_targeting_mode(key, targeting_state),
+            AppMode::SaveMenu(_) => self.handle_save_menu_mode(key),
             AppMode::Inventory => KeyAction::None, // TODO: Future
         }
     }
@@ -112,8 +132,22 @@ impl InputHandler {
             KeyCode::Char('a') => KeyAction::OpenAbilityMenu,
             KeyCode::Char('x') => KeyAction::ToggleExamine,
             KeyCode::Char('g') => KeyAction::PickupItem,
+            KeyCode::Char('s') => {
+                if key.modifiers.contains(KeyModifiers::CONTROL) {
+                    KeyAction::SaveGame // Ctrl+S to save
+                } else {
+                    KeyAction::None
+                }
+            }
+            KeyCode::Char('o') => {
+                if key.modifiers.contains(KeyModifiers::CONTROL) {
+                    KeyAction::OpenSaveMenu // Ctrl+O to open save menu
+                } else {
+                    KeyAction::None
+                }
+            }
             KeyCode::Char(' ') | KeyCode::Char('.') => self.wait(),
-            KeyCode::Char('q') => KeyAction::Quit,
+            KeyCode::Char('q') => KeyAction::OpenStartScreen,
 
             // Tab cycling (for auto-target in Normal mode)
             KeyCode::Tab => {
@@ -220,6 +254,31 @@ impl InputHandler {
                     _ => KeyAction::None,
                 }
             }
+        }
+    }
+
+    /// Handle input in Start Screen mode (arrow keys, Enter, ESC).
+    fn handle_start_screen_mode(&self, key: KeyEvent) -> KeyAction {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => KeyAction::MenuUp,
+            KeyCode::Down | KeyCode::Char('j') => KeyAction::MenuDown,
+            KeyCode::Enter => KeyAction::MenuConfirm,
+            KeyCode::Esc | KeyCode::Char('q') => KeyAction::Quit,
+            _ => KeyAction::None,
+        }
+    }
+
+    /// Handle input in Save Menu mode (arrow keys, Enter, C, W, S, ESC).
+    fn handle_save_menu_mode(&self, key: KeyEvent) -> KeyAction {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => KeyAction::MenuUp,
+            KeyCode::Down | KeyCode::Char('j') => KeyAction::MenuDown,
+            KeyCode::Enter => KeyAction::MenuConfirm,
+            KeyCode::Char('c') | KeyCode::Char('C') => KeyAction::CreateSession,
+            KeyCode::Char('w') | KeyCode::Char('W') => KeyAction::UploadToWalrus,
+            KeyCode::Char('s') | KeyCode::Char('S') => KeyAction::SubmitProof,
+            KeyCode::Esc | KeyCode::Char('q') => KeyAction::ExitModal,
+            _ => KeyAction::None,
         }
     }
 

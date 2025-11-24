@@ -12,6 +12,9 @@ use crate::oracles::{ContentOracleFactory, OracleBundle, OracleFactory};
 pub struct RuntimeBuilder {
     oracle_factory: Arc<dyn OracleFactory>,
     config: RuntimeConfig,
+    initial_state: Option<game_core::GameState>,
+    #[cfg(feature = "sui")]
+    blockchain_clients: Option<runtime::BlockchainClients>,
 }
 
 impl Default for RuntimeBuilder {
@@ -31,6 +34,9 @@ impl RuntimeBuilder {
         Self {
             oracle_factory: Arc::new(default_factory),
             config: RuntimeConfig::default(),
+            initial_state: None,
+            #[cfg(feature = "sui")]
+            blockchain_clients: None,
         }
     }
 
@@ -43,6 +49,23 @@ impl RuntimeBuilder {
     /// Provide a custom oracle factory (e.g., game-content backed implementation).
     pub fn oracle_factory(mut self, factory: impl OracleFactory + 'static) -> Self {
         self.oracle_factory = Arc::new(factory);
+        self
+    }
+
+    /// Provide initial game state (for resuming existing session).
+    ///
+    /// If provided, this state will be used instead of creating a new state from scenario.
+    pub fn initial_state(mut self, state: game_core::GameState) -> Self {
+        self.initial_state = Some(state);
+        self
+    }
+
+    /// Set blockchain clients for manual blockchain operations (Sui feature only).
+    ///
+    /// This enables RuntimeHandle methods for uploading to Walrus and submitting to blockchain.
+    #[cfg(feature = "sui")]
+    pub fn blockchain_clients(mut self, clients: runtime::BlockchainClients) -> Self {
+        self.blockchain_clients = Some(clients);
         self
     }
 
@@ -81,21 +104,27 @@ impl RuntimeBuilder {
 
         let mut builder = Runtime::builder().oracles(oracles.clone());
 
-        // Load scenario if available
-        // Try to find scenario file in data directory
-        let scenario_path = self.find_scenario_path();
-        if let Some(path) = scenario_path {
-            match Scenario::load_from_file(&path) {
-                Ok(scenario) => {
-                    tracing::info!("Loaded scenario from {}", path.display());
-                    builder = builder.scenario(scenario);
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to load scenario from {}: {}", path.display(), e);
-                }
-            }
+        // Use initial_state if provided (for session resumption)
+        if let Some(state) = self.initial_state {
+            tracing::info!("Using provided initial state (session resumption)");
+            builder = builder.initial_state(state);
         } else {
-            tracing::info!("No scenario file found, using default state");
+            // Load scenario if available
+            // Try to find scenario file in data directory
+            let scenario_path = self.find_scenario_path();
+            if let Some(path) = scenario_path {
+                match Scenario::load_from_file(&path) {
+                    Ok(scenario) => {
+                        tracing::info!("Loaded scenario from {}", path.display());
+                        builder = builder.scenario(scenario);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to load scenario from {}: {}", path.display(), e);
+                    }
+                }
+            } else {
+                tracing::info!("No scenario file found, using default state");
+            }
         }
 
         // Enable proving if requested
@@ -117,6 +146,12 @@ impl RuntimeBuilder {
         // Set checkpoint interval if provided
         if let Some(interval) = self.config.checkpoint_interval {
             builder = builder.checkpoint_interval(interval);
+        }
+
+        // Set blockchain clients if provided (Sui feature only)
+        #[cfg(feature = "sui")]
+        if let Some(blockchain_clients) = self.blockchain_clients {
+            builder = builder.blockchain_clients(blockchain_clients);
         }
 
         // Build the runtime

@@ -11,6 +11,8 @@ risc0 = ["runtime/risc0"]
 stub = ["runtime/stub"]
 sp1 = ["runtime/sp1"]
 arkworks = ["runtime/arkworks"]
+# Blockchain integration
+sui = ["runtime/sui"]
 
 [dependencies]
 anyhow = { workspace = true }

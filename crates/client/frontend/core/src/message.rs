@@ -28,6 +28,7 @@ impl MessageEntry {
 }
 
 /// Circular buffer of messages displayed to the player.
+#[derive(Clone, Debug)]
 pub struct MessageLog {
     entries: VecDeque<MessageEntry>,
     capacity: usize,

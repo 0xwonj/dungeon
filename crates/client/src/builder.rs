@@ -46,7 +46,7 @@ impl ClientBuilder {
     ///
     /// If provided, the client will start a background worker to submit proofs
     /// to the blockchain. If not provided, proofs will only be stored locally.
-    #[cfg(any(feature = "sui", feature = "ethereum"))]
+    #[cfg(feature = "sui")]
     pub fn blockchain(mut self, client: impl BlockchainClient + 'static) -> Self {
         self.blockchain = Some(Box::new(client));
         self

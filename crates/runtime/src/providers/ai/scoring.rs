@@ -151,12 +151,20 @@ pub fn score_for_heal_self(_kind: ActionKind, _input: &ActionInput, _ctx: &AiCon
 }
 
 /// Scores actions for the Idle goal.
-pub fn score_for_idle(kind: ActionKind, _input: &ActionInput, _ctx: &AiContext) -> u32 {
-    // Wait is best for idling
-    if kind == ActionKind::Wait {
-        100
+pub fn score_for_idle(kind: ActionKind, _input: &ActionInput, ctx: &AiContext) -> u32 {
+    let profile = match ctx.env.actions() {
+        Ok(actions) => actions.action_profile(kind),
+        Err(_) => return 30,
+    };
+
+    // When idle, prefer some variety over just waiting
+    // Movement actions get higher scores to encourage wandering/patrolling
+    if profile.tags.contains(&game_core::ActionTag::Movement) {
+        60 // Encourage movement when idle (wandering)
+    } else if kind == ActionKind::Wait {
+        50 // Wait is acceptable but not preferred
     } else {
-        30 // Other actions are acceptable but not preferred
+        30 // Other actions are acceptable
     }
 }
 

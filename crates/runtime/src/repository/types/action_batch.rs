@@ -75,15 +75,26 @@ pub enum ActionBatchStatus {
 
     /// Action log successfully uploaded to Walrus
     BlobUploaded {
-        /// Walrus blob ID
-        blob_id: String,
+        /// Sui object ID of the Blob (for Move contract calls)
+        blob_object_id: String,
+        /// Walrus blob ID (base64, for HTTP retrieval)
+        walrus_blob_id: String,
     },
 
     /// Submitting proof + blob to on-chain contract
-    SubmittingOnchain,
+    SubmittingOnchain {
+        /// Sui object ID of the Blob (for reference)
+        blob_object_id: String,
+        /// Walrus blob ID (for reference)
+        walrus_blob_id: String,
+    },
 
     /// Successfully submitted to on-chain contract
     OnChain {
+        /// Sui object ID of the Blob (for reference)
+        blob_object_id: String,
+        /// Walrus blob ID (for reference)
+        walrus_blob_id: String,
         /// Transaction digest on Sui
         tx_digest: String,
     },

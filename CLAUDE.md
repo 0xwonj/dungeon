@@ -90,6 +90,14 @@ just help
 - `just tail-logs [session]` - Monitor client logs in real-time
 - `just clean-data` - Clean save data and logs (with confirmation)
 
+#### Sui Blockchain Commands
+
+- `just sui-keygen [alias] [scheme]` - Generate a new Sui address and private key
+- `just sui-deploy [network]` - Deploy Sui Move contracts to a network
+- `just sui-setup [network]` - Setup deployment (register VK, etc.)
+- `just sui-info [network]` - Show deployment info for a network
+- `just sui-clean [network]` - Clean deployment info for a network
+
 ### Available ZK Backends
 
 - `risc0` - RISC0 zkVM (production, real proofs, Linux x86_64 only for Groth16)

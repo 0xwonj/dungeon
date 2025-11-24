@@ -98,6 +98,7 @@ impl client_frontend_core::Frontend for CliFrontend {
             self.oracles.clone(),
             None, // Use default targeting strategy (ThreatBased)
             self.cli_config.clone(),
+            handle.clone(),
         );
 
         // Initialize terminal

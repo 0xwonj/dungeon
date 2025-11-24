@@ -47,4 +47,13 @@ pub enum RuntimeError {
 
     #[error("provider registry lock poisoned")]
     LockPoisoned,
+
+    #[error("persistence is not enabled")]
+    PersistenceNotEnabled,
+
+    #[error("persistence error: {0}")]
+    PersistenceError(String),
+
+    #[error("blockchain integration is not enabled")]
+    BlockchainNotEnabled,
 }

@@ -166,6 +166,12 @@ impl ViewModelUpdater {
                 // No need to update ViewModel since state didn't change
                 UpdateScope::empty()
             }
+
+            GameStateEvent::StateRestored { .. } => {
+                // State was restored from checkpoint - full UI refresh needed
+                // Mark everything as changed for complete re-render
+                UpdateScope::all()
+            }
         }
     }
 

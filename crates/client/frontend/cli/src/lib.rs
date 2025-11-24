@@ -16,11 +16,13 @@ mod cursor;
 mod event;
 mod input;
 pub mod logging;
-mod presentation;
+pub mod presentation;
+mod start_screen;
 mod state;
 
 pub use app::CliFrontend;
 pub use config::CliConfig;
+pub use start_screen::{StartChoice, show_start_screen};
 
 // Re-export for convenience (used in main.rs)
 pub use client_frontend_core::FrontendConfig;

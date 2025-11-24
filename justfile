@@ -157,11 +157,13 @@ build *features:
         all_features="$blockchain,$all_features"
     fi
 
-    for feat in "${other_features[@]}"; do
-        all_features="$feat,$all_features"
-    done
+    if [ ${#other_features[@]} -gt 0 ]; then
+        for feat in "${other_features[@]}"; do
+            all_features="$feat,$all_features"
+        done
+    fi
 
-    just _exec "$backend" build --workspace --no-default-features --features "$all_features"
+    just _exec "$backend" build -p dungeon-client --no-default-features --features "$all_features"
 
 alias b := build
 
@@ -208,11 +210,13 @@ build-release *features:
         all_features="$blockchain,$all_features"
     fi
 
-    for feat in "${other_features[@]}"; do
-        all_features="$feat,$all_features"
-    done
+    if [ ${#other_features[@]} -gt 0 ]; then
+        for feat in "${other_features[@]}"; do
+            all_features="$feat,$all_features"
+        done
+    fi
 
-    just _exec "$backend" build --workspace --release --no-default-features --features "$all_features"
+    just _exec "$backend" build -p dungeon-client --release --no-default-features --features "$all_features"
 
 # Clean build artifacts
 clean:
@@ -298,9 +302,11 @@ run *features:
     fi
 
     # Add other features
-    for feat in "${other_features[@]}"; do
-        all_features="$feat,$all_features"
-    done
+    if [ ${#other_features[@]} -gt 0 ]; then
+        for feat in "${other_features[@]}"; do
+            all_features="$feat,$all_features"
+        done
+    fi
 
     just _exec "$backend" run -p dungeon-client --no-default-features --features "$all_features"
 
@@ -362,9 +368,11 @@ run-release *features:
         all_features="$blockchain,$all_features"
     fi
 
-    for feat in "${other_features[@]}"; do
-        all_features="$feat,$all_features"
-    done
+    if [ ${#other_features[@]} -gt 0 ]; then
+        for feat in "${other_features[@]}"; do
+            all_features="$feat,$all_features"
+        done
+    fi
 
     just _exec "$backend" run -p dungeon-client --no-default-features --features "$all_features" --release
 
@@ -412,9 +420,11 @@ test *features:
         all_features="$blockchain,$all_features"
     fi
 
-    for feat in "${other_features[@]}"; do
-        all_features="$feat,$all_features"
-    done
+    if [ ${#other_features[@]} -gt 0 ]; then
+        for feat in "${other_features[@]}"; do
+            all_features="$feat,$all_features"
+        done
+    fi
 
     just _exec "$backend" test --workspace --no-default-features --features "$all_features"
 
@@ -607,9 +617,11 @@ lint *features:
         all_features="$blockchain,$all_features"
     fi
 
-    for feat in "${other_features[@]}"; do
-        all_features="$feat,$all_features"
-    done
+    if [ ${#other_features[@]} -gt 0 ]; then
+        for feat in "${other_features[@]}"; do
+            all_features="$feat,$all_features"
+        done
+    fi
 
     just _exec "$backend" clippy --workspace --all-targets --no-default-features --features "$all_features" -- -D warnings
 
@@ -654,9 +666,11 @@ lint-fix *features:
         all_features="$blockchain,$all_features"
     fi
 
-    for feat in "${other_features[@]}"; do
-        all_features="$feat,$all_features"
-    done
+    if [ ${#other_features[@]} -gt 0 ]; then
+        for feat in "${other_features[@]}"; do
+            all_features="$feat,$all_features"
+        done
+    fi
 
     just _exec "$backend" clippy --workspace --all-targets --no-default-features --features "$all_features" --fix --allow-dirty --allow-staged
 
@@ -912,3 +926,90 @@ bootstrap: install-dev-tools
     @echo "  just dev          # Fast development loop"
     @echo "  just watch stub   # Watch mode with auto-testing"
     @echo "  just help         # See all available commands"
+
+# ============================================================================
+# Sui Blockchain Commands
+# ============================================================================
+
+# Start Sui local network with faucet (foreground - use Ctrl+C to stop)
+[group('sui')]
+sui-localnet:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "🚀 Starting Sui local network with faucet..."
+    echo ""
+    echo "📍 Network: http://127.0.0.1:9000"
+    echo "💰 Faucet: http://0.0.0.0:9123"
+    echo ""
+    echo "ℹ️  Running in foreground. Press Ctrl+C to stop."
+    echo ""
+    sui start --force-regenesis --with-faucet
+
+# Generate a new Sui key with optional alias
+[group('sui')]
+sui-keygen alias="" scheme="ed25519":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "{{alias}}" ]; then
+        cargo run -p xtask -- sui keygen --alias {{alias}} --scheme {{scheme}}
+    else
+        cargo run -p xtask -- sui keygen --scheme {{scheme}}
+    fi
+
+# Deploy Sui Move contracts (see docs/sui-deployment.md for details)
+[group('sui')]
+sui-deploy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "📖 For deployment instructions, see: docs/sui-deployment.md"
+    echo ""
+    echo "Quick deploy commands:"
+    echo "  cd contracts/move"
+    echo "  sui move build"
+    echo "  sui client publish --gas-budget 10000000000 --with-unpublished-dependencies --json"
+    echo ""
+    echo "✅ Deployment complete! Update .env with the package ID above."
+    echo "   Then run: just sui-info"
+
+# Show Sui deployment info from .env
+[group('sui')]
+sui-info:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ ! -f ".env" ]; then
+        echo "❌ No .env file found"
+        echo "   Create .env with SUI_* variables after deployment"
+        exit 1
+    fi
+
+    echo "📦 Sui Deployment Info (from .env)"
+    echo ""
+    grep "^SUI_" .env || echo "No SUI_* variables found in .env"
+
+# Clean Sui deployment info from .env
+[group('sui')]
+sui-clean:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ ! -f ".env" ]; then
+        echo "⚠️  No .env file found"
+        exit 0
+    fi
+
+    if ! grep -q "^SUI_" .env; then
+        echo "⚠️  No SUI_* variables found in .env"
+        exit 0
+    fi
+
+    read -p "Are you sure you want to remove SUI_* variables from .env? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        # Remove all lines starting with SUI_
+        sed -i.bak '/^SUI_/d' .env
+        rm -f .env.bak
+        echo "✅ SUI_* variables removed from .env"
+    else
+        echo "❌ Cancelled"
+    fi

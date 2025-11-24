@@ -14,6 +14,9 @@ stub = ["client-bootstrap/stub"]
 sp1 = ["client-bootstrap/sp1"]
 arkworks = ["client-bootstrap/arkworks"]
 
+# Blockchain integration (propagate to runtime for UI checks)
+sui = ["dep:client-blockchain-sui", "runtime/sui"]
+
 [dependencies]
 # Core dependencies
 game-core = { workspace = true }
@@ -40,3 +43,9 @@ tracing-appender = { workspace = true }
 
 # Environment variables
 dotenvy = { workspace = true }
+
+# Utilities
+hex = { workspace = true }
+
+# Optional blockchain dependencies
+client-blockchain-sui = { workspace = true, optional = true }

@@ -22,8 +22,10 @@ use client_frontend_core::{
     services::{ViewModelUpdater, targeting::TargetSelector},
     view_model::ViewModel,
 };
+use runtime::RuntimeHandle;
 
 const FRAME_INTERVAL_MS: u64 = 16;
+const SAVE_MENU_REFRESH_INTERVAL_MS: u64 = 2000; // Refresh Save Menu every 2 seconds
 
 /// Event loop managing ViewModel state and coordinating UI updates.
 ///
@@ -49,6 +51,8 @@ where
     pub(crate) oracles: OracleBundle,
     /// CLI UI configuration
     pub(crate) cli_config: crate::config::CliConfig,
+    /// Runtime handle for save/load operations
+    pub(crate) runtime_handle: RuntimeHandle,
 }
 
 impl<C> EventLoop<C>
@@ -65,6 +69,7 @@ where
         oracles: OracleBundle,
         target_selector: Option<TargetSelector>,
         cli_config: crate::config::CliConfig,
+        runtime_handle: RuntimeHandle,
     ) -> Self {
         let view_model = ViewModel::from_initial_state(initial_state, oracles.map.as_ref());
 
@@ -78,6 +83,7 @@ where
             target_selector: target_selector.unwrap_or_default(),
             oracles,
             cli_config,
+            runtime_handle,
         }
     }
 
@@ -89,6 +95,11 @@ where
         // Extract receivers from subscriptions
         let mut game_rx = self.subscriptions.remove(&Topic::GameState);
         let mut proof_rx = self.subscriptions.remove(&Topic::Proof);
+
+        // Save Menu refresh interval
+        let mut save_menu_refresh_interval =
+            time::interval(Duration::from_millis(SAVE_MENU_REFRESH_INTERVAL_MS));
+        save_menu_refresh_interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
 
         loop {
             tokio::select! {
@@ -107,6 +118,11 @@ where
                         break;
                     }
                 }
+                _ = save_menu_refresh_interval.tick() => {
+                    if self.handle_save_menu_refresh_tick(terminal).await? {
+                        break;
+                    }
+                }
             }
         }
 
@@ -121,8 +137,21 @@ where
     ) -> Result<bool> {
         match result {
             Ok(event) => {
+                // Check if we need to refresh Save Menu on Proof events
+                let should_refresh_save_menu = matches!(event, RuntimeEvent::Proof(_))
+                    && matches!(self.app_state.mode, crate::state::AppMode::SaveMenu(_));
+
                 // Let consumer process event (message logging, etc.)
                 let impact = self.consumer.on_event(&event);
+
+                // If Save Menu is open and we got a Proof event, refresh it
+                if should_refresh_save_menu {
+                    if let Err(e) = self.refresh_save_menu().await {
+                        tracing::warn!("Failed to refresh save menu: {}", e);
+                    }
+                    self.render(terminal)?;
+                    return Ok(false);
+                }
 
                 // Update ViewModel incrementally using ViewModelUpdater service
                 if impact.requires_redraw {
@@ -150,5 +179,22 @@ where
                 Ok(false)
             }
         }
+    }
+
+    /// Handle Save Menu periodic refresh tick.
+    ///
+    /// Refreshes the Save Menu state every 2 seconds to pick up batch status changes
+    /// from background ProverWorker (proving → proven transitions).
+    async fn handle_save_menu_refresh_tick(&mut self, terminal: &mut Tui) -> Result<bool> {
+        // Only refresh if Save Menu is currently open
+        if matches!(self.app_state.mode, crate::state::AppMode::SaveMenu(_)) {
+            if let Err(e) = self.refresh_save_menu().await {
+                tracing::warn!("Failed to auto-refresh save menu: {}", e);
+            } else {
+                // Re-render to show updated status
+                self.render(terminal)?;
+            }
+        }
+        Ok(false)
     }
 }

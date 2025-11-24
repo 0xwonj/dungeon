@@ -32,6 +32,9 @@ pub enum GameStateEvent {
         error: String,
         clock: Tick,
     },
+
+    /// Game state was restored from a checkpoint (load game)
+    StateRestored { from_nonce: u64, to_nonce: u64 },
 }
 
 /// Events related to ZK proof generation

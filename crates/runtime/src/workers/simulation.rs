@@ -31,6 +31,11 @@ pub enum Command {
     },
     /// Query the current game state (read-only).
     QueryState { reply: oneshot::Sender<GameState> },
+    /// Restore game state from a checkpoint (load game).
+    RestoreState {
+        state: GameState,
+        reply: oneshot::Sender<Result<()>>,
+    },
 }
 
 /// Background task that processes gameplay commands.
@@ -101,6 +106,12 @@ impl SimulationWorker {
             Command::QueryState { reply } => {
                 if reply.send(self.state.clone()).is_err() {
                     debug!("QueryState reply channel closed (caller dropped)");
+                }
+            }
+            Command::RestoreState { state, reply } => {
+                let result = self.handle_restore_state(state);
+                if reply.send(result).is_err() {
+                    debug!("RestoreState reply channel closed (caller dropped)");
                 }
             }
         }
@@ -200,6 +211,29 @@ impl SimulationWorker {
         }));
 
         Ok(delta)
+    }
+
+    /// Restores the game state from a checkpoint (load game).
+    ///
+    /// Replaces the current game state entirely with the loaded state.
+    /// Publishes a StateRestored event to notify subscribers.
+    fn handle_restore_state(&mut self, state: GameState) -> Result<()> {
+        let old_nonce = self.state.nonce();
+        let new_nonce = state.nonce();
+
+        // Replace the entire state
+        self.state = state;
+
+        // Publish event
+        self.event_bus
+            .publish(Event::GameState(GameStateEvent::StateRestored {
+                from_nonce: old_nonce,
+                to_nonce: new_nonce,
+            }));
+
+        tracing::info!("Game state restored: nonce {} → {}", old_nonce, new_nonce);
+
+        Ok(())
     }
 
     /// Handles player/NPC action with full workflow:

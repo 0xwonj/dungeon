@@ -114,15 +114,16 @@ impl Client {
     }
 }
 
-/// Blockchain client abstraction for proof submission.
+/// Blockchain client trait for proof submission.
 ///
-/// Re-exported from client-blockchain-core for convenience.
-#[cfg(any(feature = "sui", feature = "ethereum"))]
-pub use client_blockchain_core::BlockchainClient;
+/// Each blockchain implementation (Sui, Ethereum, etc.) implements this trait.
+pub trait BlockchainClient: Send + Sync {
+    // TODO: Define common blockchain operations when needed
+}
 
-/// Stub type when no blockchain features are enabled.
-#[cfg(not(any(feature = "sui", feature = "ethereum")))]
-pub trait BlockchainClient: Send + Sync {}
+// Implement BlockchainClient for Sui
+#[cfg(feature = "sui")]
+impl BlockchainClient for client_blockchain_sui::SuiBlockchainClient {}
 
 /// Background worker for blockchain proof submission.
 ///
@@ -132,7 +133,7 @@ pub trait BlockchainClient: Send + Sync {}
 ///
 /// Non-critical errors are logged. The worker only fails on critical errors
 /// (e.g., complete loss of blockchain connectivity).
-#[cfg(any(feature = "sui", feature = "ethereum"))]
+#[cfg(feature = "sui")]
 async fn run_blockchain_worker(
     handle: RuntimeHandle,
     mut client: Box<dyn BlockchainClient>,
@@ -145,17 +146,15 @@ async fn run_blockchain_worker(
 
     while let Ok(event) = proof_events.recv().await {
         // Extract proof data from event
-        match event {
-            runtime::GameEvent::ProofGenerated { proof_data, .. } => {
-                tracing::debug!("Submitting proof to blockchain");
+        if let runtime::Event::Proof(runtime::ProofEvent::ProofGenerated { proof_data, .. }) = event
+        {
+            tracing::debug!("Submitting proof to blockchain");
 
-                // Submit proof (non-blocking)
-                if let Err(e) = submit_proof(&mut *client, proof_data).await {
-                    tracing::warn!("Failed to submit proof: {}", e);
-                    // Continue processing - proof submission failures are non-critical
-                }
+            // Submit proof (non-blocking)
+            if let Err(e) = submit_proof(&mut *client, proof_data).await {
+                tracing::warn!("Failed to submit proof: {}", e);
+                // Continue processing - proof submission failures are non-critical
             }
-            _ => {} // Ignore non-proof events
         }
     }
 
@@ -164,7 +163,7 @@ async fn run_blockchain_worker(
 }
 
 /// Stub implementation when blockchain features are disabled.
-#[cfg(not(any(feature = "sui", feature = "ethereum")))]
+#[cfg(not(feature = "sui"))]
 async fn run_blockchain_worker(
     _handle: RuntimeHandle,
     _client: Box<dyn BlockchainClient>,
@@ -174,20 +173,16 @@ async fn run_blockchain_worker(
 }
 
 /// Submit a proof to the blockchain.
-#[cfg(any(feature = "sui", feature = "ethereum"))]
-async fn submit_proof(client: &mut dyn BlockchainClient, proof_data: zk::ProofData) -> Result<()> {
-    use client_blockchain_core::ProofSubmitter;
+#[cfg(feature = "sui")]
+async fn submit_proof(
+    _client: &mut dyn BlockchainClient,
+    _proof_data: zk::ProofData,
+) -> Result<()> {
+    // TODO: Implement proof submission
+    // 1. Extract session ID from proof metadata
+    // 2. Call blockchain client's submit method
+    // 3. Handle transaction result
 
-    // Get session ID from runtime config or proof metadata
-    let session_id = client_blockchain_core::SessionId::default(); // TODO: Get from proof_data metadata
-
-    let result = client.submit_proof(&session_id, proof_data).await?;
-
-    tracing::info!(
-        "Proof submitted successfully: tx_id={:?}, status={:?}",
-        result.transaction_id,
-        result.status
-    );
-
+    tracing::warn!("Proof submission not yet implemented");
     Ok(())
 }

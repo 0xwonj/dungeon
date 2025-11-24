@@ -1,22 +1,54 @@
 //! Application state for mode management and UI context.
 
 use crate::cursor::CursorState;
+use client_frontend_core::MessageLog;
 use game_core::{ActionKind, EntityId, Position};
 
 /// Top-level application mode determining input handling and UI layout.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum AppMode {
+    /// Start screen for selecting New Game or Continue (full-screen).
+    StartScreen(StartScreenState),
     /// Normal gameplay mode with auto-target tracking.
     Normal,
     /// Manual examine mode for inspecting tiles and entities.
     ExamineManual,
-    /// Ability menu for assigning actions to hotkey slots.
+    /// Ability menu for assigning actions to hotkey slots (overlay).
     AbilityMenu,
     /// Targeting mode for selecting attack/ability targets.
     Targeting(TargetingState),
+    /// Save/Load menu (full-screen).
+    SaveMenu(SaveMenuState),
     /// Inventory management mode (future).
     #[allow(dead_code)]
     Inventory,
+}
+
+/// Rendering category for mode-based UI selection.
+///
+/// This determines whether to render the full game UI or replace it entirely.
+impl AppMode {
+    /// Returns true if this mode should render full-screen UI (replacing game view).
+    pub fn is_fullscreen(&self) -> bool {
+        matches!(
+            self,
+            AppMode::StartScreen(_) | AppMode::SaveMenu(_) | AppMode::Inventory
+        )
+    }
+
+    /// Returns true if this mode should render as an overlay (on top of game view).
+    pub fn is_overlay(&self) -> bool {
+        matches!(self, AppMode::AbilityMenu)
+    }
+}
+
+/// State for start screen.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StartScreenState {
+    /// Currently selected menu item (0 = New Game, 1+ = session indices).
+    pub selected: usize,
+    /// List of available sessions.
+    pub sessions: Vec<client_bootstrap::SessionInfo>,
 }
 
 /// State for targeting mode.
@@ -26,6 +58,42 @@ pub struct TargetingState {
     pub action_kind: ActionKind,
     /// The targeting input mode based on action's targeting requirements.
     pub input_mode: TargetingInputMode,
+}
+
+/// State for save/load menu.
+///
+/// **Design:**
+/// Two-pane layout:
+/// - Left pane: List of saved states (nonces) - for loading game
+/// - Right pane: ActionBatch details for selected state - for proof management
+#[derive(Clone, Debug)]
+pub struct SaveMenuState {
+    /// Currently selected saved state index (left pane).
+    pub selected_index: usize,
+    /// List of saved states (derived from ActionBatch start_nonces).
+    pub saved_states: Vec<SavedStateInfo>,
+    /// Full list of action batches for proof operations.
+    pub action_batches: Vec<runtime::ActionBatch>,
+    /// Blockchain session info (if available).
+    #[cfg(feature = "sui")]
+    pub session_info: Option<client_blockchain_sui::contracts::GameSession>,
+}
+
+/// Information about a saved state (loadable checkpoint).
+#[derive(Clone, Debug)]
+pub struct SavedStateInfo {
+    /// The nonce at which this state was saved.
+    pub nonce: u64,
+    /// Associated action batch (if any) for proof info.
+    pub batch_index: Option<usize>,
+}
+
+// Manual PartialEq implementation for SaveMenuState (ActionBatch doesn't implement PartialEq)
+impl PartialEq for SaveMenuState {
+    fn eq(&self, other: &Self) -> bool {
+        self.selected_index == other.selected_index
+            && self.saved_states.len() == other.saved_states.len()
+    }
 }
 
 /// Targeting input mode based on action's TargetingMode.
@@ -107,6 +175,10 @@ pub struct AppState {
     pub manual_cursor: Option<CursorState>,
     /// Action hotkey slots (1-9 keys) - user-configurable
     pub action_slots: ActionSlots,
+    /// Save Menu status message log (for blockchain operations).
+    ///
+    /// Persists across Save Menu open/close to maintain operation history.
+    pub save_menu_log: MessageLog,
 }
 
 impl AppState {
@@ -119,7 +191,11 @@ impl AppState {
             AppMode::ExamineManual | AppMode::Targeting(_) => {
                 self.manual_cursor.as_ref().map(|c| c.position)
             }
-            AppMode::Normal | AppMode::AbilityMenu | AppMode::Inventory => None,
+            AppMode::StartScreen(_)
+            | AppMode::Normal
+            | AppMode::AbilityMenu
+            | AppMode::SaveMenu(_)
+            | AppMode::Inventory => None,
         }
     }
 
@@ -136,6 +212,7 @@ impl Default for AppState {
             highlighted_entity: None,
             manual_cursor: None,
             action_slots: ActionSlots::new(),
+            save_menu_log: MessageLog::new(50), // Keep last 50 blockchain operation messages
         }
     }
 }
@@ -186,6 +263,49 @@ impl AppState {
         self.mode = AppMode::Targeting(targeting_state);
         self.manual_cursor = Some(CursorState::new(cursor_position));
         // highlighted_entity will be set by targeting logic
+    }
+
+    /// Enters start screen mode with the provided session list.
+    pub fn enter_start_screen(&mut self, sessions: Vec<client_bootstrap::SessionInfo>) {
+        self.mode = AppMode::StartScreen(StartScreenState {
+            selected: 0,
+            sessions,
+        });
+        self.manual_cursor = None;
+    }
+
+    /// Enters save menu mode with the provided checkpoint list.
+    pub fn enter_save_menu(
+        &mut self,
+        action_batches: Vec<runtime::ActionBatch>,
+        #[cfg(feature = "sui")] session_info: Option<client_blockchain_sui::contracts::GameSession>,
+    ) {
+        // Build saved state list from action batch end_nonces
+        // (States are saved at the END of each batch, not the start)
+        let mut saved_states = Vec::new();
+
+        // Always add Genesis state (nonce 0) as the first entry
+        saved_states.push(SavedStateInfo {
+            nonce: 0,
+            batch_index: None, // Genesis has no associated batch
+        });
+
+        // Add completed batch checkpoints
+        for (idx, batch) in action_batches.iter().enumerate() {
+            saved_states.push(SavedStateInfo {
+                nonce: batch.end_nonce,
+                batch_index: Some(idx),
+            });
+        }
+
+        self.mode = AppMode::SaveMenu(SaveMenuState {
+            selected_index: 0,
+            saved_states,
+            action_batches,
+            #[cfg(feature = "sui")]
+            session_info,
+        });
+        self.manual_cursor = None;
     }
 
     /// Exits to Normal mode (auto-target).

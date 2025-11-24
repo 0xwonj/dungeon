@@ -94,6 +94,17 @@ impl EventConsumer for CliEventConsumer {
                 }
                 EventImpact::redraw()
             }
+            Event::GameState(GameStateEvent::StateRestored {
+                from_nonce,
+                to_nonce,
+            }) => {
+                // Game state was restored from a checkpoint
+                self.message_log_mut().push_text(format!(
+                    "Game state restored: nonce {} → {}",
+                    from_nonce, to_nonce
+                ));
+                EventImpact::redraw()
+            }
             Event::Proof(_) => {
                 // Proof events are not displayed in CLI to keep focus on gameplay
                 EventImpact::none()

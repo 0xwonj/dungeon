@@ -45,18 +45,15 @@ pub struct ProofData {
 }
 
 /// Identifies which proving backend generated a proof.
+///
+/// **IMPORTANT**: This enum must NOT be feature-gated to ensure stable bincode
+/// serialization/deserialization across different feature combinations.
+/// All variants are always available, but the Prover implementations are feature-gated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ProofBackend {
-    #[cfg(feature = "stub")]
     Stub,
-
-    #[cfg(feature = "sp1")]
     Sp1,
-
-    #[cfg(feature = "risc0")]
     Risc0,
-
-    #[cfg(feature = "arkworks")]
     Arkworks,
 }
 

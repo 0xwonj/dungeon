@@ -16,10 +16,12 @@ use crate::state::{AppMode, AppState};
 /// Displays turn clock, current actor, active actor count, and app mode.
 pub fn render(frame: &mut Frame, area: Rect, view_model: &ViewModel, app_state: &AppState) {
     let mode_text = match &app_state.mode {
+        AppMode::StartScreen(_) => " [START SCREEN]",
         AppMode::Normal => "",
         AppMode::ExamineManual => " [EXAMINE - MANUAL]",
         AppMode::AbilityMenu => " [ABILITY MENU]",
         AppMode::Targeting(state) => &format!(" [TARGETING: {:?}]", state.action_kind),
+        AppMode::SaveMenu(_) => " [SAVE/LOAD]",
         AppMode::Inventory => " [INVENTORY]",
     };
 

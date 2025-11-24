@@ -22,7 +22,6 @@
 module dungeon::game_session {
     use sui::event;
     use sui::dynamic_object_field as dof;
-    use dungeon::proof_verifier::{Self, VerifyingKey};
     use walrus::blob::Blob;
 
     // ===== Error Codes =====
@@ -167,9 +166,10 @@ module dungeon::game_session {
         transfer::public_transfer(session, player);
     }
 
-    /// Update session state with ZK proof and action log
+    /// Update session state with action log
     ///
-    /// The ZK proof must verify:
+    /// TODO: Add ZK proof verification when VK format is resolved.
+    /// The ZK proof should verify:
     /// - Transition from prev_state_root to new_state_root is valid
     /// - Actions executed match the Walrus blob (blob_id == actions_root)
     /// - All game rules were correctly enforced
@@ -180,8 +180,6 @@ module dungeon::game_session {
     ///
     /// # Arguments
     /// * `session` - Mutable reference to GameSession
-    /// * `vk` - Verifying key for proof verification
-    /// * `proof` - Groth16 proof bytes
     /// * `new_state_root` - New game state root after executing actions
     /// * `new_nonce` - Updated nonce (incremented after each action)
     /// * `actions_blob` - Walrus blob containing full action sequence
@@ -189,14 +187,11 @@ module dungeon::game_session {
     ///
     /// # Aborts
     /// * `ENotOwner` - If caller is not the session owner
-    /// * `EActionsRootMismatch` - If blob_id doesn't match actions_root from proof
     ///
     /// # Events
     /// Emits `SessionUpdatedEvent` and `ActionLogPublishedEvent`
     public fun update(
         session: &mut GameSession,
-        vk: &VerifyingKey,
-        proof: vector<u8>,
         new_state_root: vector<u8>,
         new_nonce: u64,
         actions_blob: Blob,
@@ -207,26 +202,24 @@ module dungeon::game_session {
 
         // Get blob_id which serves as actions_root
         let blob_id = walrus::blob::blob_id(&actions_blob);
-        let actions_root = u256_to_bytes(blob_id);
 
-        // Construct journal data for verification
-        let journal_data = proof_verifier::new_journal_data(
-            session.oracle_root,
-            session.seed_commitment,
-            session.state_root,
-            actions_root,
-            new_state_root,
-            new_nonce,
-        );
-
-        // TODO: Extract journal_digest from proof data
-        // For now, using a placeholder. In production, the caller should provide
-        // both the journal_digest and the journal_data.
-        let journal_digest = vector::empty<u8>(); // Placeholder
-
-        // Verify ZK proof (aborts if invalid)
-        // The proof verifies that blob_id (actions_root) matches the actions used in state transition
-        proof_verifier::verify_game_proof(vk, journal_digest, &journal_data, proof);
+        // TODO: Add ZK proof verification here
+        // When verification is enabled, this function should accept:
+        // - vk: &VerifyingKey (or extract from global registry)
+        // - proof: vector<u8>
+        // - journal_digest: vector<u8>
+        //
+        // Then verify:
+        // let actions_root = u256_to_bytes(blob_id);
+        // let journal_data = proof_verifier::new_journal_data(
+        //     session.oracle_root,
+        //     session.seed_commitment,
+        //     session.state_root,
+        //     actions_root,
+        //     new_state_root,
+        //     new_nonce,
+        // );
+        // proof_verifier::verify_game_proof(vk, journal_digest, &journal_data, proof);
 
         // Create action log blob wrapper with metadata
         let action_log = ActionLogBlob {
@@ -523,26 +516,5 @@ module dungeon::game_session {
     /// Get the challenge period duration in epochs
     public fun challenge_period_epochs(): u64 {
         CHALLENGE_PERIOD_EPOCHS
-    }
-
-    // ===== Helper Functions =====
-
-    /// Convert u256 to 32-byte vector (big-endian)
-    /// Used to convert Walrus blob_id to actions_root format for ZK proof
-    fun u256_to_bytes(value: u256): vector<u8> {
-        let mut bytes = vector::empty<u8>();
-        let mut v = value;
-        let mut i = 0;
-
-        // Extract 32 bytes (big-endian)
-        while (i < 32) {
-            vector::push_back(&mut bytes, ((v & 0xFF) as u8));
-            v = v >> 8;
-            i = i + 1;
-        };
-
-        // Reverse for big-endian
-        vector::reverse(&mut bytes);
-        bytes
     }
 }

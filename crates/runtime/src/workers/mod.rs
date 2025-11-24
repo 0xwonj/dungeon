@@ -4,9 +4,9 @@
 //! (e.g., prover) can be added to offload specialized duties.
 
 mod metrics;
-mod persistence;
+pub mod persistence;
 mod prover;
-mod simulation;
+pub mod simulation;
 
 pub use metrics::ProofMetrics;
 pub use persistence::{CheckpointStrategy, PersistenceConfig, PersistenceWorker};

@@ -10,7 +10,6 @@ members = [
     "crates/client/bootstrap",
     "crates/client/frontend/core",
     "crates/client/frontend/cli",
-    "crates/client/blockchain/core",
     "crates/client/blockchain/sui",
 
     "crates/xtask",
@@ -39,7 +38,6 @@ zk = { path = "crates/zk", default-features = false }
 client-bootstrap = { path = "crates/client/bootstrap", default-features = false }
 client-frontend-core = { path = "crates/client/frontend/core", default-features = false }
 client-frontend-cli = { path = "crates/client/frontend/cli", default-features = false }
-client-blockchain-core = { path = "crates/client/blockchain/core", default-features = false }
 client-blockchain-sui = { path = "crates/client/blockchain/sui", default-features = false }
 
 # ----------------------------------------------------------------------------
@@ -98,6 +96,7 @@ risc0-groth16 = "3.0"
 # SP1 zkVM
 sp1-sdk = { version = "5.2", features = ["network"] }
 sp1-build = "5.2"
+sp1-verifier = "5.2"
 
 # ----------------------------------------------------------------------------
 # Terminal UI (client only)
@@ -110,6 +109,8 @@ crossterm = { version = "0.29", features = ["event-stream"] }
 # ----------------------------------------------------------------------------
 directories = "6.0"
 dotenvy = "0.15"
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.8"
 
 # ----------------------------------------------------------------------------
 # Development & Testing

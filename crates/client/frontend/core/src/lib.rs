@@ -13,4 +13,5 @@ pub mod view_model;
 pub use config::{ChannelConfig, EffectVisibility, FrontendConfig, MessageConfig};
 pub use event::{EventConsumer, EventImpact};
 pub use frontend::{Frontend, FrontendApp};
+pub use message::{MessageEntry, MessageLevel, MessageLog};
 pub use services::{UpdateScope, ViewModelUpdater, targeting};

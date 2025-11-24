@@ -23,9 +23,42 @@ console = "0.16"
 bincode = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml = "0.8"
 
 # Game core types (with serde feature for deserialization)
 game-core = { path = "../game/core", features = ["serde"] }
+
+# ZK proof types (for proof inspection and VK extraction)
+# Use stub feature (ProofBackend enum is now feature-agnostic for stable serialization)
+zk = { path = "../zk", features = ["stub"] }
+
+# Hex encoding for proof inspection
+hex = { workspace = true }
+
+# Sui blockchain client (for deployment info)
+# Use stub feature to avoid requiring a real ZK backend for deployment tools
+client-blockchain-sui = { path = "../client/blockchain/sui", features = ["stub"] }
+
+# Sui keystore management (for keygen command)
+sui-keys = { git = "https://github.com/mystenlabs/sui", package = "sui-keys" }
+sui-types = { git = "https://github.com/mystenlabs/sui", package = "sui-types" }
+sui-sdk = { git = "https://github.com/mystenlabs/sui", package = "sui-sdk" }
+sui-json-rpc-types = { git = "https://github.com/mystenlabs/sui", package = "sui-json-rpc-types" }
+shared-crypto = { git = "https://github.com/mystenlabs/sui", package = "shared-crypto" }
+
+# SP1 SDK for proof handling and VK extraction
+sp1-sdk = { workspace = true }
+
+# SP1-Sui for VK constants and proof conversion utilities
+sp1-sui = { git = "https://github.com/SoundnessLabs/sp1-sui" }
+
+# Arkworks for VK conversion (gnark -> arkworks format for Sui)
+ark-bn254 = "0.5"
+ark-groth16 = "0.5"
+ark-serialize = "0.5"
+
+# Async runtime (for keygen command)
+tokio = { workspace = true }
 
 # Environment variable loading from .env file
 dotenvy = { workspace = true }
